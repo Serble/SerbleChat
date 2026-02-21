@@ -10,6 +10,8 @@ public class Message {
     [ForeignKey(nameof(ChannelNavigation))]
     public int ChannelId { get; set; }
     
+    public DateTime CreatedAt { get; set; }
+    
     [ForeignKey(nameof(AuthorNavigation))]
     [StringLength(64)]
     public string AuthorId { get; set; } = null!;

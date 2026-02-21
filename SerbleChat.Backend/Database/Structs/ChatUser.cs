@@ -10,6 +10,8 @@ public class ChatUser {
     [StringLength(255)]
     public string Username { get; set; } = null!;
     
+    public DateTime CreatedAt { get; set; }
+    
     public string RefreshToken { get; set; } = null!;
     
     public bool IsAdmin { get; set; }

@@ -7,6 +7,8 @@ public class Channel {
     [Key]
     public int Id { get; set; }
     
+    public DateTime CreatedAt { get; set; }
+    
     [ForeignKey(nameof(GuildNavigation))]
     public int? GuildId { get; set; }
     

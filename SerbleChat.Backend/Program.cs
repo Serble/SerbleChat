@@ -8,6 +8,7 @@ using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Repos.Impl;
 using SerbleChat.Backend.Services;
 using SerbleChat.Backend.Services.Impl;
+using SerbleChat.Backend.SocketHubs;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -31,8 +32,21 @@ builder.Services.AddAuthentication(options => {
         ValidAudience = jwtSettings.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
     };
+    // SignalR sends the JWT token as a query-string param because WebSocket
+    // upgrades cannot carry custom headers.
+    options.Events = new JwtBearerEvents {
+        OnMessageReceived = context => {
+            string? accessToken = context.Request.Query["access_token"];
+            PathString path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/updates")) {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 
+builder.Services.AddSignalR();
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -50,6 +64,7 @@ builder.Services.AddDbContext<ChatDatabaseContext>(options =>
     options.UseMySql(builder.Configuration.GetConnectionString("MySql"),
         ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("MySql"))));
 builder.Services.AddScoped<IUserRepo, UserRepo>();
+builder.Services.AddScoped<IFriendshipRepo, FriendshipRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
@@ -62,9 +77,10 @@ if (app.Environment.IsDevelopment()) {
     app.UseSwaggerUI();
 }
 
-app.MapControllers();
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHub<ChatHub>("/updates");
+app.MapControllers();
 app.Run();
 

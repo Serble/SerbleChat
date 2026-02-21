@@ -9,6 +9,8 @@ public class Guild {
     
     [StringLength(64)]
     public string Name { get; set; } = null!;
+    
+    public DateTime CreatedAt { get; set; }
 
     [ForeignKey(nameof(OwnerNavigation))]
     [StringLength(64)]

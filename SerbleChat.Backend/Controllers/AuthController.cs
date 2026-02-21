@@ -25,7 +25,8 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
             user = new ChatUser {
                 Id = info.Id,
                 Username = info.Username,
-                RefreshToken = tokenResponse.RefreshToken
+                RefreshToken = tokenResponse.RefreshToken,
+                CreatedAt = DateTime.UtcNow
             };
             await users.CreateUser(user);
         }
