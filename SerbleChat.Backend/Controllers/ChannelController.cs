@@ -185,11 +185,12 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Unauthorized();
         }
 
-        GroupChat groupChat = new GroupChat { OwnerId = userId };
+        GroupChat groupChat = new() { OwnerId = userId };
         await groups.AddGroupChat(groupChat, new Channel {
             CreatedAt = DateTime.UtcNow,
             Name = body.Name,
-            VoiceCapable = true
+            VoiceCapable = true,
+            Type = ChannelType.Group
         });
 
         HashSet<string> users = body.Users.ToHashSet();
