@@ -6,7 +6,6 @@ using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Repos.Impl;
-using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Services;
 using SerbleChat.Backend.Services.Impl;
 using SerbleChat.Backend.SocketHubs;
@@ -69,6 +68,7 @@ builder.Services.AddScoped<IFriendshipRepo, FriendshipRepo>();
 builder.Services.AddScoped<IChannelRepo, ChannelRepo>();
 builder.Services.AddScoped<IDmChannelRepo, DmChannelRepo>();
 builder.Services.AddScoped<IMessageRepo, MessageRepo>();
+builder.Services.AddScoped<IGroupChatRepo, GroupChatRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();

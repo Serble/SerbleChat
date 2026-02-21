@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SerbleChat.Backend.Database.Structs;
 
-public class GuildChannels {
+public class GuildChannel {
     [Key]
     public int Id { get; set; }
     
