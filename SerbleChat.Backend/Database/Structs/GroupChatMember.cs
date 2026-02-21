@@ -4,6 +4,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace SerbleChat.Backend.Database.Structs;
 
 public class GroupChatMember {
+    [Key]
+    public int Id { get; set; }
+    
     [ForeignKey(nameof(UserNavigation)), StringLength(64)]
     public string UserId { get; set; } = null!;
     
