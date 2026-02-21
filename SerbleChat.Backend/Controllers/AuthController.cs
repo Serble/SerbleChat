@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleChat.Backend.Database.Repos;
@@ -19,6 +20,9 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
         }
         
         SerbleUser info = await serbleApi.GetUserInfo(tokenResponse.AccessToken) ?? throw new Exception("Failed to get user info");
+        if (info.Username == null!) {
+            throw new Exception("User info does not contain a username: " + JsonSerializer.Serialize(info));
+        }
         
         ChatUser? user = await users.GetUserById(info.Id);
         if (user == null) {

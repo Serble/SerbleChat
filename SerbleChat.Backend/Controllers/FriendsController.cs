@@ -55,7 +55,9 @@ public class FriendsController(IFriendshipRepo friendships, IHubContext<ChatHub>
         // no existing friendship, create a new one
         await friendships.AddFriendship(new Friendship {
             User1Id = userId,
-            User2Id = friendId
+            User2Id = friendId,
+            CreatedAt = DateTime.UtcNow,
+            Pending = true
         });
         
         // let the other user know
