@@ -12,6 +12,8 @@ public class Channel {
     [ForeignKey(nameof(GuildNavigation))]
     public int? GuildId { get; set; }
     
+    public ChannelType Type { get; set; }
+    
     [StringLength(64)]
     public string Name { get; set; } = null!;
     
@@ -19,4 +21,10 @@ public class Channel {
     
     // Navigation Properties
     public Guild GuildNavigation = null!;
+}
+
+public enum ChannelType {
+    Guild,
+    Dm,
+    Group
 }

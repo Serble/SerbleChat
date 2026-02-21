@@ -68,6 +68,7 @@ builder.Services.AddScoped<IUserRepo, UserRepo>();
 builder.Services.AddScoped<IFriendshipRepo, FriendshipRepo>();
 builder.Services.AddScoped<IChannelRepo, ChannelRepo>();
 builder.Services.AddScoped<IDmChannelRepo, DmChannelRepo>();
+builder.Services.AddScoped<IMessageRepo, MessageRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();

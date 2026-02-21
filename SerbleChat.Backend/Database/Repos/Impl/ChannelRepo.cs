@@ -4,7 +4,7 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class ChannelRepo(ChatDatabaseContext context) : IChannelRepo {
     
-    public async Task<Channel?> GetChannel(string id) {
+    public async Task<Channel?> GetChannel(int id) {
         return await context.Channels.FindAsync(id);
     }
 
@@ -18,7 +18,7 @@ public class ChannelRepo(ChatDatabaseContext context) : IChannelRepo {
         await context.SaveChangesAsync();
     }
 
-    public async Task DeleteChannel(string id) {
+    public async Task DeleteChannel(int id) {
         Channel? channel = await GetChannel(id);
         if (channel == null) {
             return;
