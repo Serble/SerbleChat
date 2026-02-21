@@ -11,7 +11,7 @@ public class UserRepo(ChatDatabaseContext context) : IUserRepo {
         return user;
     }
 
-    public async Task<ChatUser?> GetUserById(int id) { 
+    public async Task<ChatUser?> GetUserById(string id) { 
         return await context.Users.FirstOrDefaultAsync(u => u.Id == id);
     }
     
@@ -19,7 +19,7 @@ public class UserRepo(ChatDatabaseContext context) : IUserRepo {
         return await context.Users.FirstOrDefaultAsync(u => u.Username == username);
     }
     
-    public async Task UpdateRefreshToken(int id, string refreshToken) {
+    public async Task UpdateRefreshToken(string id, string refreshToken) {
         ChatUser? user = await context.Users.FindAsync(id);
         if (user != null) {
             user.RefreshToken = refreshToken;

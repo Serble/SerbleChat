@@ -52,6 +52,7 @@ builder.Services.AddDbContext<ChatDatabaseContext>(options =>
 builder.Services.AddScoped<IUserRepo, UserRepo>();
 
 // services
+builder.Services.AddScoped<IJwtManager, JwtManager>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 
 WebApplication app = builder.Build();

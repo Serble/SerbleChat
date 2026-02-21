@@ -4,7 +4,8 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class ChatUser {
     [Key]
-    public int Id { get; set; }
+    [StringLength(64)]
+    public string Id { get; set; } = null!;
 
     [StringLength(255)]
     public string Username { get; set; } = null!;
