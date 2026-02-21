@@ -8,6 +8,7 @@ public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
     public Task<List<DmChannel>> GetDmChannels(string userId) {
         return context.DmChannels
             .Where(dm => dm.User1Id == userId || dm.User2Id == userId)
+            .Include(dm => dm.ChannelNavigation)
             .ToListAsync();
     }
 

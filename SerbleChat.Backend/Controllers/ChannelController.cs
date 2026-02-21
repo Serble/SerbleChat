@@ -48,7 +48,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             await dms.CreateDmChannel(dmChannel);
         }
         
-        return Ok(await channels.GetChannel(dmChannel.ChannelId));
+        return Ok(dmChannel.ChannelNavigation);
     }
     
     [HttpGet("dm")]
