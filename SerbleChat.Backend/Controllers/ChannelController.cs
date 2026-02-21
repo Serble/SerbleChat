@@ -21,7 +21,7 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("channel")]
 [Authorize]
-public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IMessageRepo msgs) : ControllerBase {
+public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs) : ControllerBase {
 
     [HttpGet("dm/{otherId}")]
     public async Task<ActionResult<Channel>> GetDmChannel(string otherId) {
@@ -65,7 +65,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IMessa
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
         switch (channel.Type) {
             case ChannelType.Group: {
-                throw new NotImplementedException();
+                return await groups.IsMemberInChat(channel.Id, userId);
             }
             
             case ChannelType.Dm: {
@@ -146,5 +146,58 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IMessa
         }
         
         return Ok(channel);
+    }
+
+    [HttpGet("group")]
+    public async Task<ActionResult<IEnumerable<GroupChat>>> GetGroupChats() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        IEnumerable<GroupChatMember> dmChannels = await groups.GetGroupChats(userId);
+        return Ok(dmChannels);
+    }
+    
+    [HttpGet("group/{groupId:int}")]
+    public async Task<ActionResult<GroupChat>> GetGroupChat(int groupId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        GroupChat? chat = await groups.GetGroupChat(groupId);
+        if (chat == null) {
+            return NotFound("Group not found");
+        }
+
+        if (!await groups.IsMemberInChat(groupId, userId)) {
+            return Forbid();
+        }
+        
+        return Ok(chat);
+    }
+
+    [HttpPost("group")] // TEST: does this return channel information??
+    public async Task<ActionResult<GroupChat>> CreateGroupChat([FromBody] CreateGroupChatBody body) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        GroupChat groupChat = new GroupChat { OwnerId = userId };
+        await groups.AddGroupChat(groupChat, new Channel {
+            CreatedAt = DateTime.UtcNow,
+            Name = body.Name,
+            VoiceCapable = true
+        });
+
+        HashSet<string> users = body.Users.ToHashSet();
+        users.Add(userId);
+        await groups.AddMembers(
+            users.Select(id => new GroupChatMember {GroupChatId = groupChat.ChannelId, UserId = id})
+        );
+        
+        return Ok(groupChat);
     }
 }
