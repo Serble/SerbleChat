@@ -19,6 +19,10 @@ public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
             );
     }
 
+    public async Task<DmChannel?> GetDmChannel(int channelId) {
+        return await context.DmChannels.FindAsync(channelId);
+    }
+
     public async Task CreateDmChannel(DmChannel channel) {
         context.DmChannels.Add(channel);
         await context.SaveChangesAsync();
