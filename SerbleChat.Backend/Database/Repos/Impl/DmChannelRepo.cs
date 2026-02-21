@@ -13,14 +13,18 @@ public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
 
     public async Task<DmChannel?> GetDmChannel(string user1Id, string user2Id) {
         return await context.DmChannels
-            .FirstOrDefaultAsync(dm =>
+            .Where(dm =>
                 (dm.User1Id == user1Id && dm.User2Id == user2Id) 
                 || (dm.User1Id == user2Id && dm.User2Id == user1Id)
-            );
+            ).Include(dm => dm.ChannelNavigation)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<DmChannel?> GetDmChannel(int channelId) {
-        return await context.DmChannels.FindAsync(channelId);
+        return await context.DmChannels
+            .Where(dm => dm.ChannelId == channelId)
+            .Include(dm => dm.ChannelNavigation)
+            .FirstOrDefaultAsync();
     }
 
     public async Task CreateDmChannel(DmChannel channel) {

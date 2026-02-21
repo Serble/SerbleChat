@@ -15,5 +15,6 @@ public class GroupChat {
     [JsonPropertyName("channel")]
     public Channel ChannelNavigation { get; set; } = null!;
 
+    [JsonIgnore]
     public ChatUser OwnerNavigation { get; set; } = null!;
 }

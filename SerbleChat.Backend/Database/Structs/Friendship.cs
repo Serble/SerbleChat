@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace SerbleChat.Backend.Database.Structs;
 
@@ -30,6 +31,8 @@ public class Friendship {
     public bool Pending { get; set; }
     
     // Navigation Properties
+    [JsonIgnore]
     public ChatUser User1Navigation { get; set; } = null!;
+    [JsonIgnore]
     public ChatUser User2Navigation { get; set; } = null!;
 }

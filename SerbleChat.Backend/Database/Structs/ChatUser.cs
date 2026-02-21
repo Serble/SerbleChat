@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace SerbleChat.Backend.Database.Structs;
 
@@ -12,6 +13,7 @@ public class ChatUser {
     
     public DateTime CreatedAt { get; set; }
     
+    [JsonIgnore]
     public string RefreshToken { get; set; } = null!;
     
     public bool IsAdmin { get; set; }

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace SerbleChat.Backend.Database.Structs;
 
@@ -20,6 +21,7 @@ public class Channel {
     public bool VoiceCapable { get; set; }
     
     // Navigation Properties
+    [JsonIgnore]
     public Guild GuildNavigation = null!;
 }
 

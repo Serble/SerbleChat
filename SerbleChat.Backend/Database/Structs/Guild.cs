@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace SerbleChat.Backend.Database.Structs;
 
@@ -17,5 +18,6 @@ public class Guild {
     public string OwnerId { get; set; } = null!;
     
     // Navigation Properties
+    [JsonIgnore]
     public ChatUser OwnerNavigation { get; set; } = null!;
 }
