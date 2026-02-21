@@ -10,6 +10,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<GuildChannels> GuildChannels { get; set; } = null!;
     public DbSet<Message> Messages { get; set; } = null!;
     public DbSet<Friendship> Friendships { get; set; } = null!;
+    public DbSet<DmChannel> DmChannels { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<GuildChannels>()
