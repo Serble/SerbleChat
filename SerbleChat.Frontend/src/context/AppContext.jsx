@@ -17,10 +17,20 @@ export function AppProvider({ children }) {
   const [userCache,   setUserCache]     = useState({});
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
+  const [toasts,      setToasts]        = useState([]);
 
   const hubRef       = useRef(null);
   const userCacheRef = useRef({});
   const heartbeatRef = useRef(null);
+
+  function addToast({ title, body, type = 'info', duration = 5000 }) {
+    const id = `${Date.now()}_${Math.random()}`;
+    setToasts(p => [...p, { id, title, body, type, duration }]);
+  }
+
+  function removeToast(id) {
+    setToasts(p => p.filter(t => t.id !== id));
+  }
 
   useEffect(() => {
     init();
@@ -115,8 +125,22 @@ export function AppProvider({ children }) {
       });
     });
 
-    conn.on('FriendRequestReceived', () => {
-      getFriends().then(setFriends).catch(console.error);
+    conn.on('FriendRequestReceived', async ({ fromUserId }) => {
+      await getFriends().then(setFriends).catch(console.error);
+      const u = await resolveUser(fromUserId);
+      addToast({ title: 'New Friend Request', body: `${u.username} sent you a friend request.`, type: 'info' });
+    });
+
+    conn.on('FriendRequestAccepted', async ({ userId }) => {
+      await getFriends().then(setFriends).catch(console.error);
+      const u = await resolveUser(userId);
+      addToast({ title: 'Friend Request Accepted', body: `${u.username} accepted your friend request!`, type: 'success' });
+    });
+
+    conn.on('FriendRemoved', async ({ userId }) => {
+      await getFriends().then(setFriends).catch(console.error);
+      const u = await resolveUser(userId);
+      addToast({ title: 'Friend Removed', body: `${u.username} removed you as a friend.`, type: 'danger' });
     });
 
     conn.on('NewChannel', async () => {
@@ -165,6 +189,7 @@ export function AppProvider({ children }) {
       groupChats, setGroupChats,
       userCache, isConnected,
       messages,  setMessages,
+      toasts, addToast, removeToast,
       resolveUser,
       refreshFriends: () => getFriends().then(setFriends).catch(console.error),
       refreshDms: () => {

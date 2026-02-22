@@ -1,8 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import ServerStrip  from '../components/ServerStrip.jsx';
-import DmSidebar    from '../components/DmSidebar.jsx';
-import FriendsHome  from '../components/FriendsHome.jsx';
-import ChatView     from '../components/ChatView.jsx';
+import ServerStrip     from '../components/ServerStrip.jsx';
+import DmSidebar       from '../components/DmSidebar.jsx';
+import FriendsHome     from '../components/FriendsHome.jsx';
+import ChatView        from '../components/ChatView.jsx';
+import ToastContainer  from '../components/ToastContainer.jsx';
 
 export default function AppShell() {
   return (
@@ -16,6 +17,7 @@ export default function AppShell() {
           <Route path="channel/:channelId"  element={<ChatView />} />
         </Routes>
       </div>
+      <ToastContainer />
     </div>
   );
 }

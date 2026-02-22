@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
-import { addFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
+import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 
 const TABS = ['All', 'Pending', 'Add Friend'];
@@ -92,6 +92,16 @@ function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
     } finally { setBusy(false); }
   }
 
+  async function handleRemove() {
+    setBusy(true);
+    try {
+      await removeFriend(otherId);
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+    } finally { setBusy(false); }
+  }
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '0.875rem',
@@ -123,13 +133,22 @@ function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
         {!friendship.pending && (
-          <ActionBtn label="Message" color="#23a55a" onClick={handleMessage} disabled={busy} />
+          <>
+            <ActionBtn label="Message" color="#23a55a" onClick={handleMessage} disabled={busy} />
+            <ActionBtn label="Remove"  color="#ed4245" onClick={handleRemove}  disabled={busy} />
+          </>
         )}
         {isIncoming && (
-          <ActionBtn label="Accept" color="#23a55a" onClick={handleAccept} disabled={busy} />
+          <>
+            <ActionBtn label="Accept" color="#23a55a" onClick={handleAccept} disabled={busy} />
+            <ActionBtn label="Ignore" color="#ed4245" onClick={handleRemove} disabled={busy} />
+          </>
         )}
         {isOutgoing && (
-          <Pill label="Pending" color="#f0b232" />
+          <>
+            <Pill label="Pending" color="#f0b232" />
+            <ActionBtn label="Cancel" color="#ed4245" onClick={handleRemove} disabled={busy} />
+          </>
         )}
       </div>
     </div>
@@ -249,7 +268,7 @@ export default function FriendsHome() {
               <EmptyState icon="🤝" title="No friends yet" text="Add friends to start chatting." />
             ) : (
               accepted.map(f => (
-                <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
+                <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
               ))
             )}
           </div>
@@ -268,7 +287,7 @@ export default function FriendsHome() {
                       Incoming — {incoming.length}
                     </div>
                     {incoming.map(f => (
-                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
+                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
                     ))}
                   </>
                 )}
@@ -278,7 +297,7 @@ export default function FriendsHome() {
                       Outgoing — {outgoing.length}
                     </div>
                     {outgoing.map(f => (
-                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
+                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
                     ))}
                   </>
                 )}
@@ -338,6 +357,15 @@ export default function FriendsHome() {
           </div>
         )}
       </div>
+
+      {popout && (
+        <UserPopout
+          userId={popout.userId}
+          username={popout.username}
+          anchorRect={popout.anchorRect}
+          onClose={() => setPopout(null)}
+        />
+      )}
     </div>
   );
 }

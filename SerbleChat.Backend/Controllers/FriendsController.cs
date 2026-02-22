@@ -45,6 +45,10 @@ public class FriendsController(IFriendshipRepo friendships, IHubContext<ChatHub>
                 existing.Pending = false;
                 existing.CreatedAt = DateTime.UtcNow;
                 await friendships.ModifyFriendship(existing);
+                
+                await updates.Clients.User(friendId).SendAsync("FriendRequestAccepted", new {
+                    UserId = userId
+                });
                 return Ok();
             }
             
@@ -63,6 +67,27 @@ public class FriendsController(IFriendshipRepo friendships, IHubContext<ChatHub>
         // let the other user know
         await updates.Clients.User(friendId).SendAsync("FriendRequestReceived", new {
             FromUserId = userId
+        });
+        
+        return Ok();
+    }
+
+    [HttpDelete("{friendId}")]
+    public async Task<ActionResult> RemoveFriend(string friendId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Friendship? existing = await friendships.GetFriendship(userId, friendId);
+        if (existing == null) {
+            return NotFound("Friendship not found");
+        }
+        
+        await friendships.RemoveFriendship(existing.Id);
+        
+        await updates.Clients.User(friendId).SendAsync("FriendRemoved", new {
+            UserId = userId
         });
         
         return Ok();

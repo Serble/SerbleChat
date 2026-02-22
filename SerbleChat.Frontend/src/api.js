@@ -74,6 +74,15 @@ export async function addFriend(friendId) {
   return handle(res);
 }
 
+/** DELETE /friends/:friendId  – remove a friend or cancel a request */
+export async function removeFriend(friendId) {
+  const res = await fetch(`${BASE}/friends/${encodeURIComponent(friendId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 // ── Channels ──────────────────────────────────────────────────────────────────
 
 /** GET /channel/dm  – list all my DM channels */
