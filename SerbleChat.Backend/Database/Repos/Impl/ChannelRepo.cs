@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
@@ -26,5 +27,25 @@ public class ChannelRepo(ChatDatabaseContext context) : IChannelRepo {
 
         context.Channels.Remove(channel);
         await context.SaveChangesAsync();
+    }
+
+    // will need to collect:
+    // - all DMs the user is in
+    // - all group chats the user is in
+    // - all channels in guilds the user is in (not implemented yet)
+    public async Task<List<Channel>> GetChannelsVisibleToUser(string userId) {
+        List<Channel> channels = [];
+
+        channels.AddRange(await context.DmChannels
+            .Where(dm => dm.User1Id == userId || dm.User2Id == userId)
+            .Select(dm => dm.ChannelNavigation)
+            .ToListAsync());
+
+        channels.AddRange(await context.GroupChatMembers
+            .Where(g => g.UserId == userId)
+            .Select(g => g.GroupChatNavigation.ChannelNavigation)
+            .ToListAsync());
+
+        return channels;
     }
 }

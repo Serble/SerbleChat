@@ -61,8 +61,11 @@ export default function SignalRPanel() {
       .build();
 
     connection.on('ReceiveMessage', (msg) => addLog(`ReceiveMessage: ${msg}`));
-    connection.on('FriendRequestReceived', (data) =>
-      addLog(`FriendRequestReceived: ${JSON.stringify(data)}`));
+    connection.on('FriendRequestReceived', (data) => addLog(`FriendRequestReceived: ${JSON.stringify(data)}`));
+    connection.on('Hello', (greeting) => addLog(`Hello from server: ${greeting}`, 'success'));
+    connection.on('GroupsUpdated', (groups) => addLog(`GroupsUpdated: ${JSON.stringify(groups)}`, 'info'));
+    connection.on('NewMessage', (msg) => addLog(`NewMessage: ${JSON.stringify(msg)}`, 'info'));
+    connection.on('NewChannel', (channel) => addLog(`NewChannel: ${JSON.stringify(channel)}`, 'info'));
 
     connection.onclose(() => { setConnected(false); addLog('Connection closed', 'info'); });
     connection.onreconnecting(() => addLog('Reconnecting…', 'info'));

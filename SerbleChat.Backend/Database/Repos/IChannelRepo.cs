@@ -7,4 +7,5 @@ public interface IChannelRepo {
     Task CreateChannel(Channel channel);
     Task UpdateChannel(Channel channel);
     Task DeleteChannel(int id);
+    Task<List<Channel>> GetChannelsVisibleToUser(string userId);
 }

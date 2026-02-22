@@ -1,27 +1,19 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.SocketHubs;
 
 namespace SerbleChat.Backend.Controllers;
-
-// POST /channel/dm/{userId}
-// GET /channel/dm/{userId}
-// GET /channel/dm
-
-// POST /channel/group
-// GET /channel/group/{groupId}
-// GET /channel/group
-
-// POST /channel/{channelId}
-// GET /channel/{channelId}/messages
 
 [ApiController]
 [Route("channel")]
 [Authorize]
-public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs) : ControllerBase {
+public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs, 
+    IHubContext<ChatHub> updates) : ControllerBase {
 
     [HttpGet("dm/{otherId}")]
     public async Task<ActionResult<Channel>> GetDmChannel(string otherId) {
@@ -46,6 +38,12 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
                 ChannelId = channel.Id
             };
             await dms.CreateDmChannel(dmChannel);
+            
+            // add them to the chat hub group
+            await updates.Clients.Users([
+                userId,
+                otherId
+            ]).SendAsync("NewChannel", channel);
         }
         
         return Ok(dmChannel.ChannelNavigation);
@@ -104,6 +102,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             CreatedAt = DateTime.UtcNow
         };
         await msgs.CreateMessage(msg);
+        await updates.Clients.Group($"channel-{channel.Id}").SendAsync("NewMessage", msg);
         return Ok();
     }
     
@@ -186,18 +185,20 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
 
         GroupChat groupChat = new() { OwnerId = userId };
-        await groups.AddGroupChat(groupChat, new Channel {
+        Channel channel = new() {
             CreatedAt = DateTime.UtcNow,
             Name = body.Name,
             VoiceCapable = true,
             Type = ChannelType.Group
-        });
+        };
+        await groups.AddGroupChat(groupChat, channel);
 
         HashSet<string> users = body.Users.ToHashSet();
         users.Add(userId);
         await groups.AddMembers(
             users.Select(id => new GroupChatMember {GroupChatId = groupChat.ChannelId, UserId = id})
         );
+        await updates.Clients.Users(users).SendAsync("NewChannel", channel);
         
         return Ok(groupChat);
     }

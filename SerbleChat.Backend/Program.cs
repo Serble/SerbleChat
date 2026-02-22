@@ -12,12 +12,12 @@ using SerbleChat.Backend.SocketHubs;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOptions<SerbleApiSettings>()
-    .Bind(builder.Configuration.GetSection("SerbleApi"));
-builder.Services.AddOptions<JwtSettings>()
-    .Bind(builder.Configuration.GetSection("Jwt"));
+builder.Services.AddOptions<SerbleApiSettings>().Bind(builder.Configuration.GetSection("SerbleApi"));
+builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
+builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
+ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
 
 builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -53,9 +53,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowAll", policy => {
-        policy.AllowAnyOrigin()
+        // Cors enforces that allow origin isn't * for SignalR with creds.
+        // So we need to actually specify the origin.
+        policy.WithOrigins(apiSettings.AllowedOrigins)
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 
