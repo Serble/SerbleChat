@@ -9,6 +9,7 @@ using SerbleChat.Backend.Database.Repos.Impl;
 using SerbleChat.Backend.Services;
 using SerbleChat.Backend.Services.Impl;
 using SerbleChat.Backend.SocketHubs;
+using StackExchange.Redis;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -60,6 +61,13 @@ builder.Services.AddCors(options => {
             .AllowAnyHeader()
             .AllowCredentials();
     });
+});
+
+// redis
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => {
+    string configuration = builder.Configuration.GetConnectionString("Redis") 
+                           ?? throw new Exception("Redis connection string not found");
+    return ConnectionMultiplexer.Connect(configuration);
 });
 
 // db

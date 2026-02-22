@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Mvc;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using StackExchange.Redis;
 
 namespace SerbleChat.Backend.Controllers;
 
 [Route("/account")]
 [ApiController]
 [Authorize]
-public class AccountController(IUserRepo users) : ControllerBase {
+public class AccountController(IUserRepo users, IConnectionMultiplexer redis) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<UserAccountResponse>> Get() {
@@ -34,7 +35,8 @@ public class AccountController(IUserRepo users) : ControllerBase {
             return NotFound("User not found");
         }
         
-        return Ok(PublicUserResponse.FromChatUser(user));
+        RedisValue result = await redis.GetDatabase().StringGetAsync("status:" + id);
+        return Ok(PublicUserResponse.FromChatUser(user, result.HasValue));
     }
 
     [HttpGet("from-username/{username}")]
@@ -44,6 +46,7 @@ public class AccountController(IUserRepo users) : ControllerBase {
             return NotFound("User not found");
         }
 
-        return Ok(PublicUserResponse.FromChatUser(user));
+        RedisValue result = await redis.GetDatabase().StringGetAsync("status:" + user.Id);
+        return Ok(PublicUserResponse.FromChatUser(user, result.HasValue));
     }
 }

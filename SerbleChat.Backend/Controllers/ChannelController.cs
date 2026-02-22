@@ -105,7 +105,31 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         await updates.Clients.Group($"channel-{channel.Id}").SendAsync("NewMessage", msg);
         return Ok();
     }
-    
+
+    [HttpDelete("{channelId:int}/message/{messageId:int}")]
+    public async Task<ActionResult> DeleteMessage(int channelId, int messageId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Message? message = await msgs.GetMessage(messageId);
+        if (message == null || message.ChannelId != channelId) {
+            return NotFound("Message not found");
+        }
+
+        if (message.AuthorId != userId) {
+            return Forbid();
+        }
+        
+        await msgs.DeleteMessage(messageId);
+        await updates.Clients.Group($"channel-{channelId}").SendAsync("DeleteMessage", new {
+            Id = messageId,
+            ChannelId = channelId
+        });
+        return Ok();
+    }
+
     [HttpGet("{channelId:int}/messages")]
     public async Task<ActionResult<IEnumerable<Message>>> GetMessages(int channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

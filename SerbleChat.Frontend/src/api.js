@@ -103,6 +103,15 @@ export async function getMessages(channelId, limit = 50, offset = 0) {
   return handle(res);
 }
 
+/** DELETE /channel/:channelId/message/:messageId  – delete a message */
+export async function deleteMessage(channelId, messageId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/message/${encodeURIComponent(messageId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 /** POST /channel/:channelId  – send a message */
 export async function sendMessage(channelId, content) {
   const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}`, {

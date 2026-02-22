@@ -30,3 +30,12 @@
     "voiceCapable": bool
 }
 ```
+
+`DeleteMessage`:
+```json
+{
+  "id": int
+}
+```
+
+

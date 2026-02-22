@@ -2,14 +2,20 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
+using StackExchange.Redis;
 
 namespace SerbleChat.Backend.SocketHubs;
 
 [Authorize]
-public class ChatHub(IChannelRepo channels) : Hub {
+public class ChatHub(IChannelRepo channels, IConnectionMultiplexer redis) : Hub {
     
     public async Task SayHello(string name) {
         await Clients.All.SendAsync("ReceiveMessage", $"Hello, {name}!");
+    }
+
+    public async Task UpdateStatus() {
+        string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");
+        await redis.GetDatabase().StringSetAsync("status:" + userId, "online", TimeSpan.FromMinutes(1));
     }
 
     public override async Task OnConnectedAsync() {

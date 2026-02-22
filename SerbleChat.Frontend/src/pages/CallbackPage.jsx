@@ -71,7 +71,7 @@ export default function CallbackPage() {
         setOk(true);
         setStatus('Authentication successful! Redirecting to dashboard…');
         setDetails({ accessToken: data.accessToken });
-        setTimeout(() => navigate('/dashboard'), 1500);
+        setTimeout(() => navigate('/app'), 1500);
       } catch (err) {
         setOk(false);
         setStatus(`Token exchange failed: ${err.message}`);
