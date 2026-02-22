@@ -8,6 +8,7 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
     public Task<List<GroupChatMember>> GetMembers(int channelId) {
         return context.GroupChatMembers
             .Where(g => g.GroupChatId == channelId)
+            .Include(g => g.UserNavigation)
             .ToListAsync();
     }
     

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Schemas;
+using StackExchange.Redis;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
-public class UserRepo(ChatDatabaseContext context) : IUserRepo {
+public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis) : IUserRepo {
     
     public async Task<ChatUser> CreateUser(ChatUser user) {
         context.Users.Add(user);
@@ -30,5 +32,13 @@ public class UserRepo(ChatDatabaseContext context) : IUserRepo {
     public async Task UpdateUser(ChatUser user) {
         context.Entry(user).State = EntityState.Modified;
         await context.SaveChangesAsync();
+    }
+
+    public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
+        if (user == null!) {
+            throw new ArgumentNullException(nameof(user));
+        }
+        bool isOnline = redis.GetDatabase().StringGet("status:" + user.Id).HasValue;
+        return Task.FromResult(PublicUserResponse.FromChatUser(user, isOnline));
     }
 }

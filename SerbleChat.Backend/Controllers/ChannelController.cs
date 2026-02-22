@@ -13,52 +13,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("channel")]
 [Authorize]
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs, 
-    IHubContext<ChatHub> updates) : ControllerBase {
-
-    [HttpGet("dm/{otherId}")]
-    public async Task<ActionResult<Channel>> GetDmChannel(string otherId) {
-        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId == null) {
-            return Unauthorized();
-        }
-        
-        DmChannel? dmChannel = await dms.GetDmChannel(userId, otherId);
-        if (dmChannel == null) {
-            // create a new one
-            Channel channel = new() {
-                CreatedAt = DateTime.UtcNow,
-                Name = "DM Channel",
-                VoiceCapable = true,
-                Type = ChannelType.Dm
-            };
-            await channels.CreateChannel(channel);
-            dmChannel = new DmChannel {
-                User1Id = userId,
-                User2Id = otherId,
-                ChannelId = channel.Id
-            };
-            await dms.CreateDmChannel(dmChannel);
-            
-            // add them to the chat hub group
-            await updates.Clients.Users([
-                userId,
-                otherId
-            ]).SendAsync("NewChannel", channel);
-        }
-        
-        return Ok(dmChannel.ChannelNavigation);
-    }
-    
-    [HttpGet("dm")]
-    public async Task<ActionResult<IEnumerable<DmChannel>>> GetDmChannels() {
-        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId == null) {
-            return Unauthorized();
-        }
-        
-        List<DmChannel> dmChannels = await dms.GetDmChannels(userId);
-        return Ok(dmChannels);
-    }
+    IHubContext<ChatHub> updates, IUserRepo users) : ControllerBase {
     
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
         switch (channel.Type) {
@@ -171,6 +126,55 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         return Ok(channel);
     }
 
+    [HttpGet("{channelId:int}/members")]
+    public async Task<ActionResult<IEnumerable<string>>> GetChannelMembers(int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+    
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+        
+        // permission check
+        if (!await UserHasAccessToChannel(userId, channel)) {
+            return Forbid();
+        }
+
+        switch (channel.Type) {
+            case ChannelType.Group: {
+                IEnumerable<GroupChatMember> members = await groups.GetMembers(channelId);
+                List<PublicUserResponse> response = [];
+                foreach (GroupChatMember member in members) {
+                    response.Add(await users.CompilePublicUserResponse(member.UserNavigation));
+                }
+                return Ok(response);
+            }
+            
+            case ChannelType.Dm: {
+                DmChannel? dmChannel = await dms.GetDmChannel(channelId);
+                if (dmChannel == null) {
+                    return NotFound("DM channel not found");
+                }
+                List<PublicUserResponse> response = [];
+                response.Add(await users.CompilePublicUserResponse(dmChannel.User1Navigation));
+                response.Add(await users.CompilePublicUserResponse(dmChannel.User2Navigation));
+                return Ok(response);
+            }
+
+            case ChannelType.Guild:
+            default:
+                // guild channel
+                throw new NotImplementedException();
+        }
+    }
+
+    // ==============================
+    //     Group chat endpoints
+    // ==============================
+
     [HttpGet("group")]
     public async Task<ActionResult<IEnumerable<GroupChat>>> GetGroupChats() {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -200,6 +204,69 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         
         return Ok(chat);
     }
+    
+    [HttpPost("group/{groupId:int}/members")]
+    public async Task<ActionResult> AddMembersToGroupChat(int groupId, [FromBody] AddGroupChatMembersBody body) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        GroupChat? chat = await groups.GetGroupChat(groupId);
+        if (chat == null) {
+            return NotFound("Group not found");
+        }
+
+        if (chat.OwnerId != userId) {
+            return Forbid();
+        }
+        
+        HashSet<string> users = body.UserIds.ToHashSet();
+        await groups.AddMembers(
+            users.Select(id => new GroupChatMember {GroupChatId = groupId, UserId = id})
+        );
+        await updates.Clients.Users(users).SendAsync("NewChannel", new {
+            Id = groupId,
+            Channel = chat.ChannelNavigation,
+            Type = ChannelType.Group
+        });
+        
+        return Ok();
+    }
+    
+    [HttpDelete("group/{groupId:int}")]
+    public async Task<ActionResult> DeleteOrLeaveGroupChat(int groupId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        GroupChat? chat = await groups.GetGroupChat(groupId);
+        if (chat == null) {
+            return NotFound("Group not found");
+        }
+
+        if (!await groups.IsMemberInChat(groupId, userId)) {
+            return Forbid();
+        }
+        
+        if (chat.OwnerId == userId) {
+            // delete the group
+            await groups.RemoveGroupChat(groupId);
+            await updates.Clients.Group($"channel-{groupId}").SendAsync("ChannelDeleted", new {
+                ChannelId = groupId
+            });
+        }
+        else {
+            // just leave
+            await groups.RemoveMember(groupId, userId);
+            await updates.Clients.Group($"channel-{groupId}").SendAsync("UserLeft", new {
+                UserId = userId
+            });
+        }
+        
+        return Ok();
+    }
 
     [HttpPost("group")] // TEST: does this return channel information??
     public async Task<ActionResult<GroupChat>> CreateGroupChat([FromBody] CreateGroupChatBody body) {
@@ -225,5 +292,54 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         await updates.Clients.Users(users).SendAsync("NewChannel", channel);
         
         return Ok(groupChat);
+    }
+    
+    // ==============================
+    //        DM endpoints
+    // ==============================
+
+    [HttpGet("dm/{otherId}")]
+    public async Task<ActionResult<Channel>> GetDmChannel(string otherId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        DmChannel? dmChannel = await dms.GetDmChannel(userId, otherId);
+        if (dmChannel == null) {
+            // create a new one
+            Channel channel = new() {
+                CreatedAt = DateTime.UtcNow,
+                Name = "DM Channel",
+                VoiceCapable = true,
+                Type = ChannelType.Dm
+            };
+            await channels.CreateChannel(channel);
+            dmChannel = new DmChannel {
+                User1Id = userId,
+                User2Id = otherId,
+                ChannelId = channel.Id
+            };
+            await dms.CreateDmChannel(dmChannel);
+            
+            // add them to the chat hub group
+            await updates.Clients.Users([
+                userId,
+                otherId
+            ]).SendAsync("NewChannel", channel);
+        }
+        
+        return Ok(dmChannel.ChannelNavigation);
+    }
+    
+    [HttpGet("dm")]
+    public async Task<ActionResult<IEnumerable<DmChannel>>> GetDmChannels() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        List<DmChannel> dmChannels = await dms.GetDmChannels(userId);
+        return Ok(dmChannels);
     }
 }

@@ -143,6 +143,31 @@ export async function createGroupChat(name, users) {
   return handle(res);
 }
 
+/** GET /channel/:channelId/members  – list members of a channel */
+export async function getChannelMembers(channelId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/members`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** DELETE /channel/group/:groupId  – leave (or delete if owner) a group chat */
+export async function leaveOrDeleteGroupChat(groupId) {
+  const res = await fetch(`${BASE}/channel/group/${encodeURIComponent(groupId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** POST /channel/group/:groupId/members  – add members to a group chat (owner only) */
+export async function addGroupChatMembers(groupId, userIds) {
+  const res = await fetch(`${BASE}/channel/group/${encodeURIComponent(groupId)}/members`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds }),
+  });
+  return handle(res);
+}
+
 /** GET /channel/group  – list all group chats the authenticated user is in */
 export async function getGroupChats() {
   const res = await fetch(`${BASE}/channel/group`, { headers: authHeaders() });

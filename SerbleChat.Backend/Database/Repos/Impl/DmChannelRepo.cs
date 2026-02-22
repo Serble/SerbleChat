@@ -25,6 +25,8 @@ public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
         return await context.DmChannels
             .Where(dm => dm.ChannelId == channelId)
             .Include(dm => dm.ChannelNavigation)
+            .Include(dm => dm.User1Navigation)
+            .Include(dm => dm.User2Navigation)
             .FirstOrDefaultAsync();
     }
 

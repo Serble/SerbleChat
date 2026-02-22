@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
-import { getMessages, sendMessage, getChannel, deleteMessage } from '../api.js';
+import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat } from '../api.js';
 import UserPopout from './UserPopout.jsx';
+import MemberList from './MemberList.jsx';
+import AddMembersModal from './AddMembersModal.jsx';
 
 function Avatar({ name, size = 40 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -17,6 +19,30 @@ function Avatar({ name, size = 40 }) {
     }}>
       {initial}
     </div>
+  );
+}
+
+function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
+  const [hov, setHov] = useState(false);
+  const bg = danger && hov ? 'rgba(242,63,67,0.15)'
+    : active ? 'rgba(255,255,255,0.1)'
+    : hov ? 'rgba(255,255,255,0.07)'
+    : 'transparent';
+  const color = danger ? (hov ? '#f23f43' : '#72767d') : active ? '#f2f3f5' : '#949ba4';
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background: bg, border: 'none', color, borderRadius: '6px',
+        padding: '0.25rem 0.5rem', cursor: disabled ? 'default' : 'pointer',
+        fontSize: '1rem', lineHeight: 1, transition: 'all 0.15s',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >{children}</button>
   );
 }
 
@@ -87,18 +113,69 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
 
 export default function ChatView() {
   const { channelId } = useParams();
-  const { currentUser, dmChannels, messages, setMessages, resolveUser } = useApp();
-  const [input, setInput]         = useState('');
-  const [channel, setChannel]     = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [otherUser, setOtherUser] = useState(null);
-  const [ctxMenu, setCtxMenu]     = useState(null); // { x, y, msg }
-  const [popout,  setPopout]      = useState(null); // { userId, username, anchorRect }
+  const nav = useNavigate();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms } = useApp();
+  const [input, setInput]           = useState('');
+  const [channel, setChannel]       = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [otherUser, setOtherUser]   = useState(null);
+  const [ctxMenu, setCtxMenu]       = useState(null);
+  const [popout,  setPopout]        = useState(null);
+  const [showMembers, setShowMembers] = useState(
+    () => sessionStorage.getItem('memberPanelOpen') !== 'false'
+  );
+  const [memberRefreshTick, setMemberRefreshTick] = useState(0);
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [leaveBusy, setLeaveBusy]   = useState(false);
+
+  function toggleMembers() {
+    setShowMembers(v => {
+      sessionStorage.setItem('memberPanelOpen', String(!v));
+      return !v;
+    });
+  }
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
   const ctxRef    = useRef(null);
 
   const channelMessages = messages[String(channelId)] ?? [];
+
+  // Derive group chat info
+  const isGroupChannel = channel?.type === 2;
+  const groupChat = isGroupChannel
+    ? groupChats.find(g => String(g.channelId) === String(channelId))
+    : null;
+  const isOwner = groupChat?.ownerId === currentUser?.id;
+  const existingMemberIds = new Set(); // populated lazily by MemberList, used by AddMembersModal
+
+  // React to channel-level SignalR events
+  useEffect(() => {
+    if (!channelEvent) return;
+    if (channelEvent.channelId === Number(channelId)) {
+      if (channelEvent.type === 'ChannelDeleted') {
+        nav('/app/friends', { replace: true });
+      } else if (channelEvent.type === 'UserLeft') {
+        setMemberRefreshTick(t => t + 1);
+      }
+    }
+  }, [channelEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleLeave() {
+    if (leaveBusy) return;
+    const confirmed = isOwner
+      ? window.confirm('You are the owner. Leaving will DELETE this group chat for everyone. Continue?')
+      : window.confirm('Are you sure you want to leave this group chat?');
+    if (!confirmed) return;
+    setLeaveBusy(true);
+    try {
+      await leaveOrDeleteGroupChat(Number(channelId));
+      refreshDms();
+      nav('/app/friends', { replace: true });
+    } catch (err) {
+      console.error('Leave failed:', err);
+      setLeaveBusy(false);
+    }
+  }
 
   // Close context menu on outside click or Escape
   useEffect(() => {
@@ -246,141 +323,133 @@ export default function ChatView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#313338' }}>
-      {/* Channel header */}
-      <div style={{
-        height: 48, display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0 1.25rem', borderBottom: '1px solid #1e1f22',
-        flexShrink: 0, background: '#313338',
-      }}>
-        <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
-        <span style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.95rem' }}>
-          {channelDisplayName}
-        </span>
-        {channel?.type === 1 && otherUser && (
-          <span style={{ fontSize: '0.78rem', color: '#72767d', marginLeft: '0.25rem' }}>
-            Direct Message
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Main chat column */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: '#313338' }}>
+        {/* Channel header */}
+        <div style={{
+          height: 48, display: 'flex', alignItems: 'center', gap: '0.5rem',
+          padding: '0 0.75rem 0 1.25rem', borderBottom: '1px solid #1e1f22',
+          flexShrink: 0, background: '#313338',
+        }}>
+          <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
+          <span style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.95rem', flex: 1 }}>
+            {channelDisplayName}
           </span>
-        )}
-      </div>
+          {channel?.type === 1 && otherUser && (
+            <span style={{ fontSize: '0.78rem', color: '#72767d' }}>Direct Message</span>
+          )}
 
-      {/* Messages area */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
-        {channelMessages.length === 0 && !loading && (
-          <div style={{
-            padding: '3rem 1.5rem', textAlign: 'center',
-            color: '#72767d',
-          }}>
-            <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-              {channel?.type === 1 ? '👋' : '🎉'}
-            </div>
-            <div style={{ fontWeight: 700, color: '#b5bac1', marginBottom: '0.3rem', fontSize: '1rem' }}>
-              {channel?.type === 1
-                ? `This is the beginning of your conversation with ${channelDisplayName}`
-                : `Welcome to ${channelDisplayName}!`}
-            </div>
-            <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
-          </div>
-        )}
-
-        {channelMessages.map((msg, i) => (
-          <MessageBubble
-            key={msg.id ?? `tmp-${i}`}
-            msg={msg}
-            prevMsg={channelMessages[i - 1] ?? null}
-            resolveUser={resolveUser}
-            currentUserId={currentUser?.id}
-            onContextMenu={handleContextMenu}
-            onUserClick={handleUserClick}
-          />
-        ))}
-        <div ref={bottomRef} style={{ height: 8 }} />
-      </div>
-
-      {/* Message input */}
-      <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
-        <form onSubmit={handleSend}>
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            background: '#383a40', borderRadius: '8px',
-            padding: '0 0.75rem',
-          }}>
-            <input
-              ref={inputRef}
-              style={{
-                flex: 1, background: 'transparent', border: 'none',
-                color: '#dbdee1', fontSize: '0.9375rem', padding: '0.875rem 0.25rem',
-                outline: 'none',
-              }}
-              placeholder={`Message ${channelDisplayName}`}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              maxLength={2000}
-            />
-            {input.trim() && (
-              <button
-                type="submit"
-                style={{
-                  background: '#7c3aed', border: 'none', borderRadius: '4px',
-                  cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem',
-                  fontSize: '0.9rem', marginLeft: '0.5rem', lineHeight: 1,
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
-                onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}
-              >
-                ↵
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-
-      {/* Context menu */}
-      {ctxMenu && (
-        <div
-          ref={ctxRef}
-          style={{
-            position: 'fixed', zIndex: 500,
-            top: ctxMenu.y, left: ctxMenu.x,
-            background: '#111214', border: '1px solid #3b3d43',
-            borderRadius: '6px', padding: '0.3rem',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-            minWidth: 150,
-          }}
-        >
-          {ctxMenu.msg.authorId === currentUser?.id ? (
-            <button
-              onClick={handleDelete}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.6rem',
-                width: '100%', padding: '0.5rem 0.75rem',
-                background: 'transparent', border: 'none',
-                color: '#f23f43', fontSize: '0.875rem', fontWeight: 500,
-                borderRadius: '4px', cursor: 'pointer', textAlign: 'left',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(242,63,67,0.15)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              🗑 Delete Message
-            </button>
-          ) : (
-            <div style={{ padding: '0.5rem 0.75rem', color: '#4f5660', fontSize: '0.8rem' }}>
-              No actions available
+          {/* Group chat actions */}
+          {isGroupChannel && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
+              {isOwner && (
+                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}>
+                  ➕
+                </HeaderBtn>
+              )}
+              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}>
+                🚪
+              </HeaderBtn>
             </div>
           )}
+
+          {/* Members toggle */}
+          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>
+            👥
+          </HeaderBtn>
         </div>
+
+        {/* Messages area */}
+        <div style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
+          {channelMessages.length === 0 && !loading && (
+            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#72767d' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
+                {channel?.type === 1 ? '👋' : '🎉'}
+              </div>
+              <div style={{ fontWeight: 700, color: '#b5bac1', marginBottom: '0.3rem', fontSize: '1rem' }}>
+                {channel?.type === 1
+                  ? `This is the beginning of your conversation with ${channelDisplayName}`
+                  : `Welcome to ${channelDisplayName}!`}
+              </div>
+              <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
+            </div>
+          )}
+
+          {channelMessages.map((msg, i) => (
+            <MessageBubble
+              key={msg.id ?? `tmp-${i}`}
+              msg={msg}
+              prevMsg={channelMessages[i - 1] ?? null}
+              resolveUser={resolveUser}
+              currentUserId={currentUser?.id}
+              onContextMenu={handleContextMenu}
+              onUserClick={handleUserClick}
+            />
+          ))}
+          <div ref={bottomRef} style={{ height: 8 }} />
+        </div>
+
+        {/* Message input */}
+        <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
+          <form onSubmit={handleSend}>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
+              <input
+                ref={inputRef}
+                style={{ flex: 1, background: 'transparent', border: 'none', color: '#dbdee1', fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none' }}
+                placeholder={`Message ${channelDisplayName}`}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                maxLength={2000}
+              />
+              {input.trim() && (
+                <button type="submit"
+                  style={{ background: '#7c3aed', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', lineHeight: 1, transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}
+                >↵</button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Context menu */}
+        {ctxMenu && (
+          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 150 }}>
+            {ctxMenu.msg.authorId === currentUser?.id ? (
+              <button onClick={handleDelete}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', color: '#f23f43', fontSize: '0.875rem', fontWeight: 500, borderRadius: '4px', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(242,63,67,0.15)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >🗑 Delete Message</button>
+            ) : (
+              <div style={{ padding: '0.5rem 0.75rem', color: '#4f5660', fontSize: '0.8rem' }}>No actions available</div>
+            )}
+          </div>
+        )}
+
+        {/* User popout */}
+        {popout && (
+          <UserPopout userId={popout.userId} username={popout.username} anchorRect={popout.anchorRect} onClose={() => setPopout(null)} />
+        )}
+      </div>
+
+      {/* Member list panel */}
+      {showMembers && channel && (
+        <MemberList
+          channelId={channelId}
+          ownerId={groupChat?.ownerId ?? null}
+          refreshTick={memberRefreshTick}
+        />
       )}
 
-      {/* User popout */}
-      {popout && (
-        <UserPopout
-          userId={popout.userId}
-          username={popout.username}
-          anchorRect={popout.anchorRect}
-          onClose={() => setPopout(null)}
+      {/* Add members modal */}
+      {showAddMembers && (
+        <AddMembersModal
+          groupId={Number(channelId)}
+          existingMemberIds={existingMemberIds}
+          onClose={() => { setShowAddMembers(false); setMemberRefreshTick(t => t + 1); }}
         />
       )}
     </div>

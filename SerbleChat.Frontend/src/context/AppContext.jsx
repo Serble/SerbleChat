@@ -17,7 +17,8 @@ export function AppProvider({ children }) {
   const [userCache,   setUserCache]     = useState({});
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
-  const [toasts,      setToasts]        = useState([]);
+  const [toasts,        setToasts]        = useState([]);
+  const [channelEvent,  setChannelEvent]  = useState(null); // { type, channelId, data }
 
   const hubRef       = useRef(null);
   const userCacheRef = useRef({});
@@ -143,6 +144,15 @@ export function AppProvider({ children }) {
       addToast({ title: 'Friend Removed', body: `${u.username} removed you as a friend.`, type: 'danger' });
     });
 
+    conn.on('ChannelDeleted', ({ channelId }) => {
+      setGroupChats(p => p.filter(g => g.channelId !== channelId));
+      setChannelEvent({ type: 'ChannelDeleted', channelId });
+    });
+
+    conn.on('UserLeft', ({ userId, channelId }) => {
+      setChannelEvent({ type: 'UserLeft', channelId, data: { userId } });
+    });
+
     conn.on('NewChannel', async () => {
       await getDmChannels().then(setDmChannels).catch(console.error);
       await reloadGroups();
@@ -190,6 +200,7 @@ export function AppProvider({ children }) {
       userCache, isConnected,
       messages,  setMessages,
       toasts, addToast, removeToast,
+      channelEvent,
       resolveUser,
       refreshFriends: () => getFriends().then(setFriends).catch(console.error),
       refreshDms: () => {
