@@ -16,7 +16,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("channel")]
 [Authorize]
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
-    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IRoleRepo roles, IOptions<LiveKitSettings> liveKitSettings) : ControllerBase {
+    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings) : ControllerBase {
 
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
         switch (channel.Type) {
@@ -274,11 +274,11 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Forbid();
         }
         
-        HashSet<string> users = body.UserIds.ToHashSet();
+        HashSet<string> members = body.UserIds.ToHashSet();
         await groups.AddMembers(
-            users.Select(id => new GroupChatMember {GroupChatId = groupId, UserId = id})
+            members.Select(id => new GroupChatMember {GroupChatId = groupId, UserId = id})
         );
-        await updates.Clients.Users(users).SendAsync("NewChannel", new {
+        await updates.Clients.Users(members).SendAsync("NewChannel", new {
             Id = groupId,
             Channel = chat.ChannelNavigation,
             Type = ChannelType.Group
@@ -409,7 +409,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return NotFound();
         }
         
-        if (!await UserHasAccessToChannel(userId, channel)) {
+        if (!await UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
         
@@ -418,7 +418,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         if (channel.Type == ChannelType.Guild) {
-            GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, channel.GuildId!.Value);
+            GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId!.Value);
             if (!(perms.JoinVoice.ToBool() || perms.Administrator.ToBool())) {
                 return Forbid();
             }
