@@ -88,9 +88,9 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
   }
 
   const tabStyle = active => ({
-    background: active ? '#404249' : 'transparent', border: 'none',
+    background: active ? 'var(--bg-active)' : 'transparent', border: 'none',
     padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
-    fontSize: '0.875rem', fontWeight: 600, color: active ? '#f2f3f5' : '#72767d',
+    fontSize: '0.875rem', fontWeight: 600, color: active ? 'var(--text-primary)' : 'var(--text-muted)',
     transition: 'background 0.1s, color 0.1s', whiteSpace: 'nowrap',
   });
 
@@ -103,14 +103,14 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
     >
-      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: modalWidth, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column', transition: 'max-width 0.15s' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: modalWidth, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column', transition: 'max-width 0.15s' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#f2f3f5' }}>Guild Settings</div>
+          <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Guild Settings</div>
           <button onClick={onClose}
-            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
         </div>
 
         {/* Tabs */}
@@ -131,21 +131,21 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
                 <label style={labelStyle}>Guild Name</label>
                 <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64}
                   style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = '#7c3aed'}
-                  onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'} />
               </div>
-              {error && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{error}</div>}
+              {error && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{error}</div>}
               <button type="submit" disabled={busy || !name.trim()}
-                style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-                onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
-                onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>Save Changes</button>
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>Save Changes</button>
               {isOwner && (
-                <div style={{ borderTop: '1px solid #3b3d43', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f23f43', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
                   <button type="button" onClick={handleDelete} disabled={busy}
-                    style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.5rem 1rem', color: '#f23f43', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
-                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>Delete Guild</button>
+                    style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; } }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>Delete Guild</button>
                 </div>
               )}
             </form>
@@ -155,29 +155,29 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
           {tab === 'invites' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button onClick={handleCreateInvite} disabled={creating}
-                style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.55rem 1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1, alignSelf: 'flex-start', transition: 'background 0.15s' }}
-                onMouseEnter={e => { if (!creating) e.currentTarget.style.background = '#6d28d9'; }}
-                onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.55rem 1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1, alignSelf: 'flex-start', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!creating) e.currentTarget.style.background = 'var(--accent-hover)'; }}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
                 {creating ? 'Creating…' : '+ Create Invite'}
               </button>
-              {invLoading && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Loading…</div>}
-              {!invLoading && invites.length === 0 && <div style={{ color: '#4f5660', fontSize: '0.85rem' }}>No active invites. Create one above.</div>}
+              {invLoading && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading…</div>}
+              {!invLoading && invites.length === 0 && <div style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>No active invites. Create one above.</div>}
               {invites.map(inv => {
                 const link = `${FRONTEND_URL}/invite/${inv.id}`;
                 return (
-                  <div key={inv.id} style={{ background: '#1e1f22', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div key={inv.id} style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ flex: 1, overflow: 'hidden' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#72767d', marginBottom: '0.15rem' }}>Invite #{inv.id}</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#b5bac1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Invite #{inv.id}</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</div>
                     </div>
                     <button onClick={() => copyLink(inv)}
-                      style={{ background: copied === inv.id ? '#23a55a' : '#383a40', border: 'none', borderRadius: '5px', padding: '0.35rem 0.65rem', color: '#fff', fontSize: '0.78rem', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', fontWeight: 600 }}>
+                      style={{ background: copied === inv.id ? 'var(--success)' : 'var(--bg-active)', border: 'none', borderRadius: '5px', padding: '0.35rem 0.65rem', color: '#fff', fontSize: '0.78rem', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', fontWeight: 600 }}>
                       {copied === inv.id ? '✓ Copied' : 'Copy'}
                     </button>
                     <button onClick={() => handleDeleteInvite(inv.id)} title="Delete invite"
-                      style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem', borderRadius: '4px', flexShrink: 0, lineHeight: 1 }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#f23f43'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🗑</button>
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem', borderRadius: '4px', flexShrink: 0, lineHeight: 1 }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>🗑</button>
                   </div>
                 );
               })}
@@ -238,20 +238,20 @@ function InvitePopup({ guildId, onClose }) {
   return (
     <div ref={backdropRef} onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f2f3f5' }}>🔗 Invite People</div>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>🔗 Invite People</div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
         </div>
-        {busy && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Creating invite link…</div>}
+        {busy && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Creating invite link…</div>}
         {!busy && invite && (
           <>
-            <div style={{ fontSize: '0.82rem', color: '#72767d' }}>Share this link with people you want to invite:</div>
-            <div style={{ background: '#1e1f22', borderRadius: '6px', padding: '0.65rem 0.75rem', fontFamily: 'monospace', fontSize: '0.82rem', color: '#b5bac1', wordBreak: 'break-all' }}>{link}</div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Share this link with people you want to invite:</div>
+            <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', padding: '0.65rem 0.75rem', fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{link}</div>
             <button onClick={copyLink}
-              style={{ background: copied ? '#23a55a' : '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
+              style={{ background: copied ? 'var(--success)' : 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
               {copied ? '✓ Copied to Clipboard!' : 'Copy Invite Link'}
             </button>
           </>
@@ -296,14 +296,14 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
     >
-      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: 420, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: 420, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f2f3f5' }}>Create Channel</div>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Create Channel</div>
           <button onClick={onClose}
-            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
         </div>
 
         {/* Form */}
@@ -313,33 +313,33 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
             <input ref={inputRef} value={name} onChange={e => setName(e.target.value)} maxLength={64}
               placeholder="new-channel"
               style={inputStyle}
-              onFocus={e => e.target.style.borderColor = '#7c3aed'}
-              onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           </div>
 
           {/* Voice capable toggle */}
           <div
             onClick={() => setVoiceCapable(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: '#2b2d31', borderRadius: '8px', cursor: 'pointer', userSelect: 'none', border: '1px solid #3b3d43' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '8px', cursor: 'pointer', userSelect: 'none', border: '1px solid var(--border)' }}
           >
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>Voice Channel</div>
-              <div style={{ fontSize: '0.72rem', color: '#72767d', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
+              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Voice Channel</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
             </div>
             <Toggle on={voiceCapable} />
           </div>
 
-          {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{err}</div>}
+          {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{err}</div>}
 
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
             <button type="button" onClick={onClose} disabled={busy}
-              style={{ background: 'transparent', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.55rem 1rem', color: '#b5bac1', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'border-color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#72767d'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = '#3b3d43'}>Cancel</button>
+              style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.55rem 1rem', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'border-color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-muted)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>Cancel</button>
             <button type="submit" disabled={busy || !name.trim()}
-              style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.55rem 1.1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-              onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
-              onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>
+              style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.55rem 1.1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+              onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
               {busy ? 'Creating…' : 'Create Channel'}
             </button>
           </div>
@@ -409,9 +409,9 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
   }
 
   const tabStyle = active => ({
-    background: active ? '#404249' : 'transparent', border: 'none',
+    background: active ? 'var(--bg-active)' : 'transparent', border: 'none',
     padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
-    fontSize: '0.875rem', fontWeight: 600, color: active ? '#f2f3f5' : '#72767d',
+    fontSize: '0.875rem', fontWeight: 600, color: active ? 'var(--text-primary)' : 'var(--text-muted)',
     transition: 'background 0.1s, color 0.1s', whiteSpace: 'nowrap',
   });
 
@@ -421,17 +421,17 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
     >
-      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: tab === 'permissions' ? 560 : 420, maxHeight: '85vh', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'max-width 0.15s' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: tab === 'permissions' ? 560 : 420, maxHeight: '85vh', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'max-width 0.15s' }}>
         {/* Header */}
         <div style={{ padding: '1.1rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#f2f3f5' }}>Channel Settings</div>
-            <div style={{ fontSize: '0.75rem', color: '#72767d', marginTop: '0.1rem' }}># {channel.name}</div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>Channel Settings</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}># {channel.name}</div>
           </div>
           <button onClick={onClose}
-            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
         </div>
 
         {/* Tabs */}
@@ -448,36 +448,36 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
                 <label style={labelStyle}>Channel Name</label>
                 <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64}
                   style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = '#7c3aed'}
-                  onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'} />
               </div>
 
               {/* Voice capable toggle */}
               <div
                 onClick={() => canManage && setVoiceCapable(v => !v)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: '#2b2d31', borderRadius: '8px', cursor: canManage ? 'pointer' : 'default', userSelect: 'none', border: '1px solid #3b3d43', opacity: canManage ? 1 : 0.5 }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '8px', cursor: canManage ? 'pointer' : 'default', userSelect: 'none', border: '1px solid var(--border)', opacity: canManage ? 1 : 0.5 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>Voice Channel</div>
-                  <div style={{ fontSize: '0.72rem', color: '#72767d', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Voice Channel</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
                 </div>
                 <Toggle on={voiceCapable} />
               </div>
 
-              {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{err}</div>}
+              {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{err}</div>}
               {canManage && (
                 <button type="submit" disabled={busy || !name.trim()}
-                  style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-                  onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
-                  onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>Save Changes</button>
+                  style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+                  onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>Save Changes</button>
               )}
               {canManage && (
-                <div style={{ borderTop: '1px solid #3b3d43', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f23f43', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
                   <button type="button" onClick={handleDelete} disabled={busy}
-                    style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.5rem 1rem', color: '#f23f43', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
-                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>Delete Channel</button>
+                    style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; } }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>Delete Channel</button>
                 </div>
               )}
             </form>
@@ -532,15 +532,15 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
         style={{
           display: 'flex', alignItems: 'center', gap: '0.35rem',
           padding: '0.3rem 0.4rem', borderRadius: '5px', flex: 1,
-          background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
           border: 'none', cursor: 'pointer', textAlign: 'left',
-          color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
           fontSize: '0.875rem', fontWeight: active ? 600 : 400,
           transition: 'background 0.1s, color 0.1s',
           minWidth: 0,
         }}
       >
-        <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
+        <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
           {ch.voiceCapable ? '🔊' : '#'}
         </span>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
@@ -638,41 +638,41 @@ export default function GuildSidebar({ guildId }) {
   }
 
   return (
-    <div style={{ width: 240, background: '#2b2d31', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #111213' }}>
+    <div style={{ width: 240, background: 'var(--bg-secondary)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
       {/* Guild header */}
-      <div style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 0.75rem 0 1rem', borderBottom: '1px solid #1e1f22', flexShrink: 0, gap: '0.25rem' }}>
-        <span style={{ flex: 1, fontWeight: 700, color: '#f2f3f5', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 0.75rem 0 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0, gap: '0.25rem' }}>
+        <span style={{ flex: 1, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {guild?.name ?? '…'}
         </span>
         {canCreateInvites && (
           <button title="Create Invite" onClick={() => setShowInvite(true)}
-            style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '0.9rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🔗</button>
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>🔗</button>
         )}
         {canOpenSettings && (
           <button title="Guild Settings" onClick={() => setShowSettings(true)}
-            style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>⚙</button>
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>⚙</button>
         )}
       </div>
 
       {/* Channel list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.5rem 0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.25rem', marginBottom: '0.2rem' }}>
-          <span style={{ flex: 1, fontSize: '0.68rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none' }}>Text Channels</span>
+          <span style={{ flex: 1, fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none' }}>Text Channels</span>
           {canManageChannels && (
             <button title="Create Channel" onClick={() => setShowCreateChannel(true)}
-              style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.1rem', borderRadius: '4px', transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
-              onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>＋</button>
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.1rem', borderRadius: '4px', transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>＋</button>
           )}
         </div>
 
-        {loading && <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem' }}>Loading…</div>}
+        {loading && <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '0.4rem 0.5rem' }}>Loading…</div>}
         {!loading && channels.length === 0 && (
-          <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem', lineHeight: 1.5 }}>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '0.4rem 0.5rem', lineHeight: 1.5 }}>
             No channels yet.{canManageChannels ? ' Use ＋ to add one.' : ''}
           </div>
         )}
@@ -744,12 +744,12 @@ export default function GuildSidebar({ guildId }) {
 
 const labelStyle = {
   display: 'block', fontSize: '0.72rem', fontWeight: 700,
-  color: '#72767d', textTransform: 'uppercase',
+  color: 'var(--text-muted)', textTransform: 'uppercase',
   letterSpacing: '0.07em', marginBottom: '0.4rem',
 };
 const inputStyle = {
-  width: '100%', background: '#1e1f22', border: '1px solid #3b3d43',
-  borderRadius: '6px', padding: '0.65rem 0.75rem', color: '#f2f3f5',
+  width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+  borderRadius: '6px', padding: '0.65rem 0.75rem', color: 'var(--text-primary)',
   fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.15s',
   boxSizing: 'border-box',
 };

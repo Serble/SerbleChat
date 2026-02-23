@@ -34,20 +34,19 @@ function extractInviteIds(content) {
 const mdComponents = {
   p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
-    // Render invite links as plain text — the InviteCard below the message handles them
     if (href && INVITE_RE().test(href)) {
-      return <span style={{ color: '#7c9ef8' }}>{children}</span>;
+      return <span style={{ color: 'var(--text-link)' }}>{children}</span>;
     }
-    return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#7c9ef8', textDecoration: 'underline' }}>{children}</a>;
+    return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', textDecoration: 'underline' }}>{children}</a>;
   },
-  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: '#f2f3f5' }}>{children}</strong>,
+  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{children}</strong>,
   em:         ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
   del:        ({ children }) => <del style={{ textDecoration: 'line-through', opacity: 0.7 }}>{children}</del>,
   code:       ({ inline, children }) => inline
-    ? <code style={{ background: '#2b2d31', borderRadius: 3, padding: '0.1em 0.35em', fontFamily: 'monospace', fontSize: '0.85em', color: '#e3e5e8' }}>{children}</code>
+    ? <code style={{ background: 'var(--bg-secondary)', borderRadius: 3, padding: '0.1em 0.35em', fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{children}</code>
     : <code>{children}</code>,
-  pre:        ({ children }) => <pre style={{ background: '#2b2d31', borderRadius: 6, padding: '0.6rem 0.8rem', overflowX: 'auto', margin: '0.3rem 0', fontSize: '0.85em', fontFamily: 'monospace', color: '#e3e5e8' }}>{children}</pre>,
-  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid #4f5660', paddingLeft: '0.6rem', margin: '0.2rem 0', color: '#b5bac1' }}>{children}</blockquote>,
+  pre:        ({ children }) => <pre style={{ background: 'var(--bg-secondary)', borderRadius: 6, padding: '0.6rem 0.8rem', overflowX: 'auto', margin: '0.3rem 0', fontSize: '0.85em', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{children}</pre>,
+  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid var(--text-subtle)', paddingLeft: '0.6rem', margin: '0.2rem 0', color: 'var(--text-secondary)' }}>{children}</blockquote>,
   ul:         ({ children }) => <ul style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ul>,
   ol:         ({ children }) => <ol style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ol>,
   li:         ({ children }) => <li style={{ margin: '0.1rem 0' }}>{children}</li>,
@@ -56,7 +55,7 @@ const mdComponents = {
   h3:         ({ children }) => <strong style={{ fontSize: '1em', display: 'block' }}>{children}</strong>,
 };
 
-// Inject the highlight-flash keyframe once
+// Inject the highlight-flash keyframe once (ThemeContext updates it when accent changes)
 if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-style')) {
   const s = document.createElement('style');
   s.id = 'msg-highlight-style';
@@ -71,7 +70,7 @@ if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-s
 
 function CtxBtn({ icon, label, onClick, danger, copied }) {
   const [hov, setHov] = useState(false);
-  const color  = copied ? '#23a55a' : danger ? '#f23f43' : '#dbdee1';
+  const color  = copied ? 'var(--success)' : danger ? 'var(--danger)' : 'var(--text-secondary)';
   const hovBg  = copied ? 'rgba(35,165,90,0.12)' : danger ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.07)';
   return (
     <button
@@ -161,13 +160,13 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
         className={highlighted ? 'msg-highlighted' : undefined}
         onContextMenu={e => onContextMenu(e, msg)}
         style={{ padding: '0.1rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-        onMouseEnter={e => e.currentTarget.style.background = '#2e3035'}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
-        <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : '#4f5660', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
+        <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
           {ts}
         </span>
-        <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
           {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
@@ -183,7 +182,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
       className={highlighted ? 'msg-highlighted' : undefined}
       onContextMenu={e => onContextMenu(e, msg)}
       style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-      onMouseEnter={e => e.currentTarget.style.background = '#2e3035'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
       <div
@@ -200,9 +199,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           >
             {author?.username ?? msg.authorId.slice(0, 10)}
           </span>
-          <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : '#4f5660' }}>{ts}</span>
+          <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{ts}</span>
         </div>
-        <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
           {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
@@ -248,8 +247,15 @@ export default function ChatView() {
     });
   }
   const bottomRef = useRef(null);
+  const scrollRef = useRef(null);
   const inputRef  = useRef(null);
   const ctxRef    = useRef(null);
+
+  // Scroll the messages container to the very bottom instantly
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
 
   const channelMessages = messages[String(channelId)] ?? [];
 
@@ -417,6 +423,9 @@ export default function ChatView() {
       setChannel(ch);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
+      // Scroll to bottom after React has painted the new messages.
+      // requestAnimationFrame fires after the browser has done layout/paint.
+      requestAnimationFrame(() => scrollToBottom());
     }).catch(e => {
       console.error(e);
       setLoading(false);
@@ -432,10 +441,15 @@ export default function ChatView() {
     resolveUser(otherId).then(setOtherUser);
   }, [channel, dmChannels, currentUser, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll on new messages (skip when we're jumping to a specific message)
+  // When a new message arrives and the user is already near the bottom, keep them there.
+  // We intentionally do NOT run this on the initial load — that's handled by the
+  // requestAnimationFrame call inside the fetch .then() above.
   useEffect(() => {
     if (searchParams.get('message')) return;
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) scrollToBottom();
   }, [channelMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a linked message once messages have loaded
@@ -541,6 +555,8 @@ export default function ChatView() {
       ...p,
       [String(channelId)]: [...(p[String(channelId)] ?? []), tempMsg],
     }));
+    // Always snap to bottom when the user sends a message
+    requestAnimationFrame(() => scrollToBottom());
 
     try {
       await sendMessage(channelId, text);
@@ -621,7 +637,7 @@ export default function ChatView() {
 
   if (loading) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#72767d' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💬</div>
           <div>Loading…</div>
@@ -633,19 +649,19 @@ export default function ChatView() {
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Main chat column */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: '#313338' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-base)' }}>
         {/* Channel header */}
         <div style={{
           height: 48, display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0 0.75rem 0 1.25rem', borderBottom: '1px solid #1e1f22',
-          flexShrink: 0, background: '#313338',
+          padding: '0 0.75rem 0 1.25rem', borderBottom: '1px solid var(--border)',
+          flexShrink: 0, background: 'var(--bg-base)',
         }}>
           <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
-          <span style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.95rem', flex: 1 }}>
+          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1 }}>
             {channelDisplayName}
           </span>
           {isDmChannel && otherUser && (
-            <span style={{ fontSize: '0.78rem', color: '#72767d' }}>Direct Message</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Direct Message</span>
           )}
 
           {(isDmChannel || isGroupChannel) && (
@@ -659,39 +675,26 @@ export default function ChatView() {
             </HeaderBtn>
           )}
 
-          {/* Group chat actions */}
           {isGroupChannel && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
               {isOwner && (
-                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}>
-                  ➕
-                </HeaderBtn>
+                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}>➕</HeaderBtn>
               )}
-              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}>
-                🚪
-              </HeaderBtn>
+              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}>🚪</HeaderBtn>
             </div>
           )}
 
-          {/* Members toggle — not shown for guild channels */}
           {!isGuildChannel && (
-            <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>
-              👥
-            </HeaderBtn>
+            <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
           )}
         </div>
 
         {(isDmChannel || isGroupChannel) && voiceStatus !== 'idle' && (
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.75rem',
-            padding: '0.5rem 1rem',
-            borderBottom: '1px solid #1e1f22',
-            background: '#1f2023',
-            color: '#dbdee1',
-            fontSize: '0.85rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: '0.75rem', padding: '0.5rem 1rem',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '0.85rem',
           }}>
             <div>
               {voiceStatus === 'connecting' && 'Connecting to voice…'}
@@ -703,12 +706,8 @@ export default function ChatView() {
                 onClick={handleToggleMute}
                 style={{
                   background: voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
-                  border: 'none',
-                  color: voiceMuted ? '#f23f43' : '#f2f3f5',
-                  borderRadius: '6px',
-                  padding: '0.25rem 0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
+                  border: 'none', color: voiceMuted ? 'var(--danger)' : 'var(--text-primary)',
+                  borderRadius: '6px', padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem',
                 }}
                 title={voiceMuted ? 'Unmute microphone' : 'Mute microphone'}
               >
@@ -719,13 +718,13 @@ export default function ChatView() {
         )}
 
         {/* Messages area */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
+        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
           {channelMessages.length === 0 && !loading && (
-            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#72767d' }}>
+            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
                 {channel?.type === 1 ? '👋' : '🎉'}
               </div>
-              <div style={{ fontWeight: 700, color: '#b5bac1', marginBottom: '0.3rem', fontSize: '1rem' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
                 {channel?.type === 1
                   ? `This is the beginning of your conversation with ${channelDisplayName}`
                   : `Welcome to ${channelDisplayName}!`}
@@ -754,7 +753,6 @@ export default function ChatView() {
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
           {canSend ? (
           <form onSubmit={handleSend} style={{ position: 'relative' }}>
-            {/* Mention autocomplete picker */}
             {mentionPicker && (
               <MentionPicker
                 suggestions={pickerSuggestions}
@@ -763,12 +761,12 @@ export default function ChatView() {
                 onHoverIndex={setPickerIndex}
               />
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-end', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
               <textarea
                 ref={inputRef}
                 rows={1}
                 style={{
-                  flex: 1, background: 'transparent', border: 'none', color: '#dbdee1',
+                  flex: 1, background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                   fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
                   resize: 'none', overflow: 'hidden', lineHeight: 1.5,
                   maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
@@ -778,7 +776,6 @@ export default function ChatView() {
                 onChange={e => { setInput(e.target.value); detectMention(e.target.value, e.target.selectionStart); }}
                 onKeyDown={handleKeyDown}
                 onKeyUp={e => {
-                  // Re-check when cursor moves through arrow keys
                   if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
                     detectMention(input, e.target.selectionStart);
                   }
@@ -788,15 +785,15 @@ export default function ChatView() {
               />
               {input.trim() && (
                 <button type="submit"
-                  style={{ background: '#7c3aed', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}
+                  style={{ background: 'var(--accent)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
                 >↵</button>
               )}
             </div>
           </form>
           ) : (
-            <div style={{ background: '#2b2d31', borderRadius: '8px', padding: '0.75rem 1rem', color: '#72767d', fontSize: '0.875rem', textAlign: 'center' }}>
+            <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center' }}>
               🔒 You don't have permission to send messages here.
             </div>
           )}
@@ -804,7 +801,7 @@ export default function ChatView() {
 
         {/* Context menu */}
         {ctxMenu && (
-          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
+          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
             <CtxBtn icon="📋" label="Copy Text"
               copied={copiedCtx === 'text'}
               onClick={() => {
@@ -829,14 +826,13 @@ export default function ChatView() {
               }} />
             {(ctxMenu.msg.authorId === currentUser?.id || canManageMsgs) && (
               <>
-                <div style={{ height: 1, background: '#3b3d43', margin: '0.25rem 0' }} />
+                <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
                 <CtxBtn icon="🗑" label="Delete Message" danger onClick={handleDelete} />
               </>
             )}
           </div>
         )}
 
-        {/* User popout */}
         {popout && (
           <UserPopout
             userId={popout.userId}
@@ -848,7 +844,6 @@ export default function ChatView() {
         )}
       </div>
 
-      {/* Member list panel */}
       {showMembers && channel && (
         <MemberList
           channelId={channelId}
@@ -858,7 +853,6 @@ export default function ChatView() {
         />
       )}
 
-      {/* Add members modal */}
       {showAddMembers && (
         <AddMembersModal
           groupId={Number(channelId)}

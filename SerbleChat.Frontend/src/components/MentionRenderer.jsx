@@ -195,7 +195,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
             height: '3rem',
-            background: 'linear-gradient(to bottom, transparent, #313338)',
+            background: 'linear-gradient(to bottom, transparent, var(--bg-base))',
             pointerEvents: 'none',
           }} />
         )}
@@ -205,7 +205,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
         style={{
           marginTop: '0.25rem',
           background: 'none', border: 'none',
-          color: '#7c9ef8', fontSize: '0.8rem', fontWeight: 600,
+          color: 'var(--text-link)', fontSize: '0.8rem', fontWeight: 600,
           cursor: 'pointer', padding: 0,
         }}
       >

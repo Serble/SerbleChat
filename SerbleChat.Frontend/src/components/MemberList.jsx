@@ -78,27 +78,27 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
 
   return (
     <div style={{
-      width: 240, flexShrink: 0, background: '#2b2d31',
-      borderLeft: '1px solid #1e1f22',
+      width: 240, flexShrink: 0, background: 'var(--bg-secondary)',
+      borderLeft: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       <div style={{
         height: 48, display: 'flex', alignItems: 'center',
-        padding: '0 1rem', borderBottom: '1px solid #1e1f22', flexShrink: 0,
+        padding: '0 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0,
       }}>
-        <span style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.875rem' }}>
+        <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem' }}>
           Members — {normalised.length}
         </span>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.5rem' }}>
         {loading && (
-          <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.5rem 0.5rem' }}>Loading…</div>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '0.5rem 0.5rem' }}>Loading…</div>
         )}
 
         {!loading && online.length > 0 && (
           <>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.25rem 0.5rem 0.4rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.25rem 0.5rem 0.4rem' }}>
               Online — {online.length}
             </div>
             {online.map(m => <MemberRow key={m.id} member={m} ownerId={ownerId} onClick={handleClick} />)}
@@ -107,7 +107,7 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
 
         {!loading && offline.length > 0 && (
           <>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.75rem 0.5rem 0.4rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.75rem 0.5rem 0.4rem' }}>
               Offline — {offline.length}
             </div>
             {offline.map(m => <MemberRow key={m.id} member={m} ownerId={ownerId} onClick={handleClick} />)}
@@ -131,10 +131,9 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
 function MemberRow({ member, ownerId, onClick }) {
   const [hovered, setHovered] = useState(false);
   const isOwner = ownerId && member.id === ownerId;
-  // Use role color if present and not empty/white-ish
   const nameColor = member.color && member.color !== '#ffffff' && member.color !== ''
     ? member.color
-    : (hovered ? '#f2f3f5' : '#dbdee1');
+    : (hovered ? 'var(--text-primary)' : 'var(--text-secondary)');
 
   return (
     <button
@@ -144,7 +143,7 @@ function MemberRow({ member, ownerId, onClick }) {
       style={{
         display: 'flex', alignItems: 'center', gap: '0.6rem',
         padding: '0.35rem 0.5rem', borderRadius: '6px', width: '100%',
-        background: hovered ? '#35363c' : 'transparent',
+        background: hovered ? 'var(--bg-hover)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
         transition: 'background 0.1s',
         opacity: member.isOnline ? 1 : 0.45,
@@ -155,8 +154,8 @@ function MemberRow({ member, ownerId, onClick }) {
         <div style={{
           position: 'absolute', bottom: 0, right: 0,
           width: 10, height: 10, borderRadius: '50%',
-          background: member.isOnline ? '#23a55a' : '#747f8d',
-          border: '2px solid #2b2d31',
+          background: member.isOnline ? 'var(--success)' : 'var(--text-subtle)',
+          border: '2px solid var(--bg-secondary)',
         }} />
       </div>
       <span style={{

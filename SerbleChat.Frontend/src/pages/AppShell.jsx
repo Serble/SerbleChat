@@ -68,7 +68,7 @@ export default function AppShell() {
         ? <GuildSidebar guildId={activeGuildId} />
         : <DmSidebar />
       }
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#313338' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
         <Routes>
           <Route index                                    element={<Navigate to="friends" replace />} />
           <Route path="friends"                          element={<FriendsHome />} />

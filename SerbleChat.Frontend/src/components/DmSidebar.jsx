@@ -29,9 +29,9 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
       style={{
         display: 'flex', alignItems: 'center', gap: '0.6rem',
         padding: '0.45rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
         fontSize: '0.9rem', fontWeight: active ? 600 : 400,
         transition: 'background 0.1s, color 0.1s', flexShrink: 0,
       }}
@@ -42,7 +42,7 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
       </span>
       {badge > 0 && (
         <span style={{
-          background: '#ed4245', color: '#fff', borderRadius: '9999px',
+          background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
           padding: '0.1rem 0.4rem', fontSize: '0.68rem', fontWeight: 700,
           minWidth: 18, textAlign: 'center', flexShrink: 0,
         }}>
@@ -76,9 +76,9 @@ function DmItem({ dm, currentChannelId }) {
       style={{
         display: 'flex', alignItems: 'center', gap: '0.6rem',
         padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
         fontSize: '0.875rem', fontWeight: active ? 600 : 400,
         transition: 'background 0.1s, color 0.1s',
       }}
@@ -103,9 +103,9 @@ function GroupItem({ chat, currentChannelId }) {
       style={{
         display: 'flex', alignItems: 'center', gap: '0.6rem',
         padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
         border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
         fontSize: '0.875rem', fontWeight: active ? 600 : 400,
         transition: 'background 0.1s, color 0.1s',
       }}
@@ -120,7 +120,7 @@ function SectionHeader({ label }) {
   return (
     <div style={{
       padding: '1rem 0.5rem 0.3rem',
-      fontSize: '0.7rem', fontWeight: 700, color: '#72767d',
+      fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
       textTransform: 'uppercase', letterSpacing: '0.07em',
       userSelect: 'none',
     }}>
@@ -144,19 +144,19 @@ export default function DmSidebar() {
 
   return (
     <div style={{
-      width: 240, background: '#2b2d31', flexShrink: 0,
+      width: 240, background: 'var(--bg-secondary)', flexShrink: 0,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      borderRight: '1px solid #111213',
+      borderRight: '1px solid var(--border)',
     }}>
       {/* Search / header area */}
       <div style={{
         height: 48, display: 'flex', alignItems: 'center',
-        padding: '0 0.75rem', borderBottom: '1px solid #1e1f22',
+        padding: '0 0.75rem', borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
         <div style={{
-          flex: 1, background: '#1e1f22', borderRadius: '4px',
-          padding: '0.35rem 0.6rem', color: '#72767d',
+          flex: 1, background: 'var(--bg-tertiary)', borderRadius: '4px',
+          padding: '0.35rem 0.6rem', color: 'var(--text-muted)',
           fontSize: '0.82rem', cursor: 'text', userSelect: 'none',
         }}>
           Find a conversation…
@@ -187,7 +187,7 @@ export default function DmSidebar() {
         {/* Group Chats */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '1rem 0.5rem 0.3rem' }}>
           <span style={{
-            flex: 1, fontSize: '0.7rem', fontWeight: 700, color: '#72767d',
+            flex: 1, fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
             textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none',
           }}>
             Group Chats
@@ -196,13 +196,13 @@ export default function DmSidebar() {
             title="Create Group Chat"
             onClick={() => setShowCreateGroup(true)}
             style={{
-              background: 'transparent', border: 'none', color: '#72767d',
+              background: 'transparent', border: 'none', color: 'var(--text-muted)',
               cursor: 'pointer', fontSize: '1rem', lineHeight: 1,
               padding: '0 0.1rem', borderRadius: '4px',
               transition: 'color 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
           >
             ＋
           </button>
@@ -212,7 +212,7 @@ export default function DmSidebar() {
         ))}
 
         {dmChannels.length === 0 && groupChats.length === 0 && (
-          <div style={{ padding: '1.25rem 0.5rem', color: '#4f5660', fontSize: '0.82rem', lineHeight: 1.6 }}>
+          <div style={{ padding: '1.25rem 0.5rem', color: 'var(--text-subtle)', fontSize: '0.82rem', lineHeight: 1.6 }}>
             No conversations yet.<br />Add friends to start chatting!
           </div>
         )}
@@ -221,7 +221,7 @@ export default function DmSidebar() {
       {/* User panel */}
       {currentUser && (
         <div style={{
-          padding: '0.6rem 0.75rem', background: '#232428',
+          padding: '0.6rem 0.75rem', background: 'var(--bg-user-panel)',
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           flexShrink: 0,
         }}>
@@ -230,18 +230,18 @@ export default function DmSidebar() {
             <div style={{
               position: 'absolute', bottom: 0, right: 0,
               width: 10, height: 10, borderRadius: '50%',
-              background: isConnected ? '#23a55a' : '#747f8d',
-              border: '2px solid #232428',
+              background: isConnected ? 'var(--success)' : 'var(--text-subtle)',
+              border: '2px solid var(--bg-user-panel)',
             }} />
           </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <div style={{
-              fontSize: '0.875rem', fontWeight: 600, color: '#f2f3f5',
+              fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {currentUser.username}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#72767d' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {isConnected ? '● Online' : '○ Offline'}
             </div>
           </div>
@@ -250,12 +250,12 @@ export default function DmSidebar() {
             onClick={() => { localStorage.removeItem('jwt'); window.location.href = '/'; }}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
-              color: '#72767d', padding: '0.3rem', borderRadius: '4px',
+              color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '4px',
               fontSize: '1rem', flexShrink: 0, lineHeight: 1,
               transition: 'color 0.15s, background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f23f43'; e.currentTarget.style.background = 'rgba(242,63,67,0.1)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#72767d'; e.currentTarget.style.background = 'transparent'; }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(242,63,67,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
           >
             ⏻
           </button>

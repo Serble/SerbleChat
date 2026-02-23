@@ -42,7 +42,7 @@ export default function InviteCard({ inviteId }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: '0.75rem',
-      background: '#2b2d31', border: '1px solid #3b3d43',
+      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
       borderRadius: '8px', padding: '0.75rem 1rem',
       marginTop: '0.35rem', maxWidth: 340,
     }}>
@@ -55,10 +55,10 @@ export default function InviteCard({ inviteId }) {
       }}>🏰</div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div style={{ fontSize: '0.7rem', color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: '0.1rem' }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: '0.1rem' }}>
           Guild Invite
         </div>
-        <div style={{ fontSize: '0.88rem', color: '#f2f3f5', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {guildName ?? `Invite #${inviteId}`}
         </div>
       </div>
@@ -66,28 +66,28 @@ export default function InviteCard({ inviteId }) {
       {/* Action */}
       {state === 'idle' && (
         <button onClick={handleJoin}
-          style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: '#fff', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
-          onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
-          onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>
+          style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: '#fff', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
           Join Guild
         </button>
       )}
       {state === 'joining' && (
-        <span style={{ fontSize: '0.82rem', color: '#72767d', flexShrink: 0 }}>Joining…</span>
+        <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flexShrink: 0 }}>Joining…</span>
       )}
       {state === 'joined' && (
-        <span style={{ fontSize: '0.82rem', color: '#23a55a', fontWeight: 600, flexShrink: 0 }}>✓ Joined!</span>
+        <span style={{ fontSize: '0.82rem', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}>✓ Joined!</span>
       )}
       {state === 'already' && (
         <button onClick={() => nav(`/app/friends`)}
-          style={{ background: '#383a40', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: '#b5bac1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
-          onMouseEnter={e => e.currentTarget.style.background = '#4a4c55'}
-          onMouseLeave={e => e.currentTarget.style.background = '#383a40'}>
+          style={{ background: 'var(--bg-input)', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-active)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
           Already joined
         </button>
       )}
       {state === 'error' && (
-        <span style={{ fontSize: '0.75rem', color: '#f23f43', flexShrink: 0, maxWidth: 80 }} title={errMsg}>Failed</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', flexShrink: 0, maxWidth: 80 }} title={errMsg}>Failed</span>
       )}
     </div>
   );

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
+import ThemeEditorModal from './ThemeEditorModal.jsx';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
     width: 48, height: 48, borderRadius: active ? '30%' : '50%',
-    background: active ? '#7c3aed' : '#36393f',
+    background: active ? 'var(--accent)' : 'var(--bg-active)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.25rem',
     transition: 'border-radius 0.2s, background 0.2s',
@@ -20,13 +21,13 @@ function StripButton({ title, active, onClick, children }) {
       onMouseEnter={e => {
         if (!active) {
           e.currentTarget.style.borderRadius = '30%';
-          e.currentTarget.style.background = '#7c3aed';
+          e.currentTarget.style.background = 'var(--accent)';
         }
       }}
       onMouseLeave={e => {
         if (!active) {
           e.currentTarget.style.borderRadius = '50%';
-          e.currentTarget.style.background = '#36393f';
+          e.currentTarget.style.background = 'var(--bg-active)';
         }
       }}
     >
@@ -72,15 +73,16 @@ export default function ServerStrip() {
   const nav = useNavigate();
   const { guilds, refreshGuilds, activeGuildId, setActiveGuildId } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
 
   const onHome = !activeGuildId;
 
   return (
     <div style={{
-      width: 72, background: '#1e1f22', flexShrink: 0,
+      width: 72, background: 'var(--bg-tertiary)', flexShrink: 0,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       paddingTop: '0.75rem', paddingBottom: '0.75rem', gap: '0.5rem',
-      borderRight: '1px solid #111213', overflowY: 'auto',
+      borderRight: '1px solid var(--border)', overflowY: 'auto',
     }}>
       {/* Home */}
       <StripButton title="Home" active={onHome} onClick={() => { setActiveGuildId(null); nav('/app/friends'); }}>
@@ -88,7 +90,7 @@ export default function ServerStrip() {
       </StripButton>
 
       {/* Divider */}
-      <div style={{ width: 32, height: 2, background: '#36393f', borderRadius: 1, flexShrink: 0 }} />
+      <div style={{ width: 32, height: 2, background: 'var(--bg-active)', borderRadius: 1, flexShrink: 0 }} />
 
       {/* Guild icons */}
       {guilds.map(g => (
@@ -106,23 +108,42 @@ export default function ServerStrip() {
         onClick={() => setShowCreate(true)}
         style={{
           width: 48, height: 48, borderRadius: '50%',
-          background: '#36393f', border: 'none',
+          background: 'var(--bg-active)', border: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: '#23a55a', fontSize: '1.6rem', fontWeight: 400,
+          cursor: 'pointer', color: 'var(--success)', fontSize: '1.6rem', fontWeight: 400,
           transition: 'border-radius 0.2s, background 0.2s, color 0.2s',
           userSelect: 'none', flexShrink: 0, lineHeight: 1,
         }}
         onMouseEnter={e => {
           e.currentTarget.style.borderRadius = '30%';
-          e.currentTarget.style.background = '#23a55a';
+          e.currentTarget.style.background = 'var(--success)';
           e.currentTarget.style.color = '#fff';
         }}
         onMouseLeave={e => {
           e.currentTarget.style.borderRadius = '50%';
-          e.currentTarget.style.background = '#36393f';
-          e.currentTarget.style.color = '#23a55a';
+          e.currentTarget.style.background = 'var(--bg-active)';
+          e.currentTarget.style.color = 'var(--success)';
         }}
       >+</button>
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* Theme editor button */}
+      <button
+        title="Themes"
+        onClick={() => setShowThemes(true)}
+        style={{
+          width: 48, height: 48, borderRadius: '50%',
+          background: 'var(--bg-active)', border: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', fontSize: '1.3rem',
+          transition: 'border-radius 0.2s, background 0.2s',
+          userSelect: 'none', flexShrink: 0,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderRadius = '30%'; e.currentTarget.style.background = 'var(--accent)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderRadius = '50%'; e.currentTarget.style.background = 'var(--bg-active)'; }}
+      >🎨</button>
 
       {showCreate && (
         <CreateGuildModal
@@ -130,6 +151,8 @@ export default function ServerStrip() {
           onCreated={refreshGuilds}
         />
       )}
+
+      {showThemes && <ThemeEditorModal onClose={() => setShowThemes(false)} />}
     </div>
   );
 }

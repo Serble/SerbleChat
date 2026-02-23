@@ -90,7 +90,7 @@ export default function CreateGroupModal({ onClose }) {
       }}
     >
       <div style={{
-        background: '#313338', borderRadius: '12px',
+        background: 'var(--bg-base)', borderRadius: '12px',
         width: '100%', maxWidth: 460,
         boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
         display: 'flex', flexDirection: 'column',
@@ -102,23 +102,23 @@ export default function CreateGroupModal({ onClose }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#f2f3f5' }}>
+            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
               Create a Group Chat
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#72767d', marginTop: '0.2rem' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
               Give it a name and pick your friends.
             </div>
           </div>
           <button
             onClick={onClose}
             style={{
-              background: 'transparent', border: 'none', color: '#72767d',
+              background: 'transparent', border: 'none', color: 'var(--text-muted)',
               fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1,
               padding: '0.25rem', borderRadius: '4px',
               transition: 'color 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
           >
             ✕
           </button>
@@ -127,36 +127,36 @@ export default function CreateGroupModal({ onClose }) {
         <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Group name */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
               Group Name
             </label>
             <input
               autoFocus
               style={{
-                width: '100%', background: '#1e1f22', border: '1px solid #3b3d43',
-                borderRadius: '6px', padding: '0.6rem 0.75rem', color: '#f2f3f5',
+                width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                borderRadius: '6px', padding: '0.6rem 0.75rem', color: 'var(--text-primary)',
                 fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.15s',
               }}
               placeholder="My Awesome Group"
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={64}
-              onFocus={e => e.target.style.borderColor = '#7c3aed'}
-              onBlur={e => e.target.style.borderColor = '#3b3d43'}
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 
           {/* Friend picker */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
-              Add Friends {selected.size > 0 && <span style={{ color: '#a78bfa' }}>— {selected.size} selected</span>}
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
+              Add Friends {selected.size > 0 && <span style={{ color: 'var(--accent)' }}>— {selected.size} selected</span>}
             </label>
             <div style={{
-              background: '#1e1f22', border: '1px solid #3b3d43', borderRadius: '6px',
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px',
               maxHeight: 220, overflowY: 'auto',
             }}>
               {acceptedFriends.length === 0 && (
-                <div style={{ padding: '1rem', color: '#4f5660', fontSize: '0.85rem', textAlign: 'center' }}>
+                <div style={{ padding: '1rem', color: 'var(--text-subtle)', fontSize: '0.85rem', textAlign: 'center' }}>
                   You have no friends to add yet.
                 </div>
               )}
@@ -174,12 +174,12 @@ export default function CreateGroupModal({ onClose }) {
                       background: isSelected ? 'rgba(124,58,237,0.15)' : 'transparent',
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#2b2d31'; }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                   >
                     <Avatar name={u?.username} size={32} />
                     <span style={{
-                      flex: 1, color: '#dbdee1', fontSize: '0.875rem', fontWeight: isSelected ? 600 : 400,
+                      flex: 1, color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: isSelected ? 600 : 400,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {u?.username ?? '…'}
@@ -187,8 +187,8 @@ export default function CreateGroupModal({ onClose }) {
                     {/* Checkbox */}
                     <div style={{
                       width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                      border: `2px solid ${isSelected ? '#7c3aed' : '#4f5660'}`,
-                      background: isSelected ? '#7c3aed' : 'transparent',
+                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--text-subtle)'}`,
+                      background: isSelected ? 'var(--accent)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       transition: 'background 0.15s, border-color 0.15s',
                     }}>
@@ -207,7 +207,7 @@ export default function CreateGroupModal({ onClose }) {
           {error && (
             <div style={{
               padding: '0.6rem 0.75rem', borderRadius: '6px',
-              background: 'rgba(237,66,69,0.15)', color: '#f23f43',
+              background: 'rgba(237,66,69,0.15)', color: 'var(--danger)',
               fontSize: '0.82rem', border: '1px solid rgba(237,66,69,0.3)',
             }}>
               {error}
@@ -222,11 +222,11 @@ export default function CreateGroupModal({ onClose }) {
               style={{
                 padding: '0.6rem 1.25rem', borderRadius: '6px',
                 background: 'transparent', border: 'none',
-                color: '#949ba4', fontWeight: 600, fontSize: '0.875rem',
+                color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.875rem',
                 cursor: 'pointer', transition: 'color 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-              onMouseLeave={e => e.currentTarget.style.color = '#949ba4'}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
             >
               Cancel
             </button>
@@ -235,13 +235,13 @@ export default function CreateGroupModal({ onClose }) {
               disabled={busy || !name.trim() || selected.size === 0}
               style={{
                 padding: '0.6rem 1.5rem', borderRadius: '6px',
-                background: busy || !name.trim() || selected.size === 0 ? '#404249' : '#7c3aed',
+                background: busy || !name.trim() || selected.size === 0 ? 'var(--bg-active)' : 'var(--accent)',
                 border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.875rem',
                 cursor: busy || !name.trim() || selected.size === 0 ? 'default' : 'pointer',
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = '#6d28d9'; }}
-              onMouseLeave={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = '#7c3aed'; }}
+              onMouseEnter={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = 'var(--accent-hover)'; }}
+              onMouseLeave={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = 'var(--accent)'; }}
             >
               {busy ? 'Creating…' : 'Create Group'}
             </button>

@@ -22,7 +22,7 @@ function Avatar({ name, size = 64 }) {
 }
 
 const sectionLabel = {
-  fontSize: '0.68rem', fontWeight: 700, color: '#72767d',
+  fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
   textTransform: 'uppercase', letterSpacing: '0.07em',
   marginBottom: '0.4rem',
 };
@@ -119,7 +119,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
       ref={popoutRef}
       style={{
         position: 'fixed', zIndex: 600, top, left, width: POPOUT_W,
-        background: '#1e1f22', border: '1px solid #3b3d43', borderRadius: '10px',
+        background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '10px',
         boxShadow: '0 12px 40px rgba(0,0,0,0.6)', overflow: 'hidden',
         userSelect: 'none', maxHeight: 'calc(100vh - 16px)',
         display: 'flex', flexDirection: 'column',
@@ -130,7 +130,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
 
       {/* Avatar */}
       <div style={{ position: 'relative', padding: '0 1rem', flexShrink: 0 }}>
-        <div style={{ position: 'absolute', top: -32, background: '#1e1f22', borderRadius: '50%', padding: 3, outline: sm ? `3px solid ${sm.color}` : 'none', outlineOffset: 1 }}>
+        <div style={{ position: 'absolute', top: -32, background: 'var(--bg-overlay)', borderRadius: '50%', padding: 3, outline: sm ? `3px solid ${sm.color}` : 'none', outlineOffset: 1 }}>
           <Avatar name={displayName} size={56} />
         </div>
       </div>
@@ -138,31 +138,31 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
       {/* Scrollable body */}
       <div style={{ overflowY: 'auto', flex: 1 }}>
         <div style={{ padding: '2rem 1rem 0.75rem' }}>
-          <div style={{ fontWeight: 800, fontSize: '1rem', color: '#f2f3f5', marginBottom: '0.2rem' }}>{displayName}</div>
+          <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>{displayName}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: 9, height: 9, borderRadius: '50%', background: sm?.color ?? '#747f8d', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.78rem', color: sm?.color ?? '#747f8d', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
+            <div style={{ width: 9, height: 9, borderRadius: '50%', background: sm?.color ?? 'var(--text-subtle)', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.78rem', color: sm?.color ?? 'var(--text-subtle)', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
           </div>
-          <div style={{ height: 1, background: '#3b3d43', margin: '0 0 0.65rem' }} />
+          <div style={{ height: 1, background: 'var(--border)', margin: '0 0 0.65rem' }} />
           <div style={sectionLabel}>User ID</div>
           <div
             title="Click to copy" onClick={() => navigator.clipboard?.writeText(userId)}
-            style={{ fontSize: '0.78rem', color: '#b5bac1', fontFamily: 'monospace', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0.25rem 0.4rem', background: '#111214', borderRadius: '4px', transition: 'background 0.1s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#2b2d31'}
-            onMouseLeave={e => e.currentTarget.style.background = '#111214'}
+            style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0.25rem 0.4rem', background: 'var(--bg-tertiary)', borderRadius: '4px', transition: 'background 0.1s' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
           >{userId}</div>
         </div>
 
         {/* ── Guild Roles section ───────────────────────────────────────── */}
         {guildId && rolesLoaded && (
           <div style={{ padding: '0 1rem 1rem' }}>
-            <div style={{ height: 1, background: '#3b3d43', margin: '0 0 0.75rem' }} />
+            <div style={{ height: 1, background: 'var(--border)', margin: '0 0 0.75rem' }} />
 
             {/* ── Assigned roles display ── */}
             <div style={sectionLabel}>Roles</div>
 
             {assignedRoles.length === 0 ? (
-              <div style={{ fontSize: '0.8rem', color: '#4f5660', marginBottom: '0.5rem' }}>No roles</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', marginBottom: '0.5rem' }}>No roles</div>
             ) : (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.5rem' }}>
                 {assignedRoles.map(role => (
@@ -170,10 +170,10 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                     background: 'rgba(255,255,255,0.07)', borderRadius: '4px',
                     padding: '0.2rem 0.5rem', fontSize: '0.78rem', fontWeight: 600,
-                    color: role.color || '#dbdee1',
-                    border: `1px solid ${role.color ? role.color + '55' : '#3b3d43'}`,
+                    color: role.color || 'var(--text-secondary)',
+                    border: `1px solid ${role.color ? role.color + '55' : 'var(--border)'}`,
                   }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: role.color || '#99aab5', flexShrink: 0, display: 'inline-block' }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: role.color || 'var(--text-muted)', flexShrink: 0, display: 'inline-block' }} />
                     {role.name}
                   </span>
                 ))}
@@ -187,21 +187,21 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                   onClick={() => setDropOpen(v => !v)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: '#2b2d31', border: '1px solid #3b3d43', borderRadius: '6px',
-                    padding: '0.4rem 0.6rem', color: '#b5bac1', fontSize: '0.8rem',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px',
+                    padding: '0.4rem 0.6rem', color: 'var(--text-secondary)', fontSize: '0.8rem',
                     cursor: 'pointer', transition: 'border-color 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = '#7c3aed'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = dropOpen ? '#7c3aed' : '#3b3d43'}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = dropOpen ? 'var(--accent)' : 'var(--border)'}
                 >
                   <span>Manage roles…</span>
-                  <span style={{ fontSize: '0.65rem', color: '#72767d' }}>{dropOpen ? '▲' : '▼'}</span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{dropOpen ? '▲' : '▼'}</span>
                 </button>
 
                 {dropOpen && (
                   <div style={{
                     position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
-                    background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px',
+                    background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                     maxHeight: 220, overflowY: 'auto', zIndex: 10,
                   }}>
@@ -221,26 +221,26 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                             transition: 'background 0.1s',
                             background: 'transparent',
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#1e1f22'}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           {/* Checkbox */}
                           <div style={{
                             width: 16, height: 16, borderRadius: '3px', flexShrink: 0,
-                            background: has ? '#7c3aed' : 'transparent',
-                            border: `2px solid ${has ? '#7c3aed' : '#4f5660'}`,
+                            background: has ? 'var(--accent)' : 'transparent',
+                            border: `2px solid ${has ? 'var(--accent)' : 'var(--text-subtle)'}`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             transition: 'all 0.15s',
                           }}>
                             {has && <span style={{ color: '#fff', fontSize: '0.6rem', fontWeight: 900, lineHeight: 1 }}>✓</span>}
                           </div>
                           {/* Colour dot */}
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: role.color || '#99aab5', border: '1px solid rgba(255,255,255,0.1)' }} />
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: role.color || 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }} />
                           {/* Name */}
-                          <span style={{ flex: 1, fontSize: '0.83rem', fontWeight: 500, color: has ? '#f2f3f5' : '#72767d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ flex: 1, fontSize: '0.83rem', fontWeight: 500, color: has ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {role.name}
                           </span>
-                          {busy && <span style={{ fontSize: '0.7rem', color: '#72767d' }}>…</span>}
+                          {busy && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>…</span>}
                         </div>
                       );
                     })}
