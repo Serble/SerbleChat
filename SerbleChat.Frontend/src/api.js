@@ -235,10 +235,15 @@ export async function updateGuild(id, patch) {
   return handle(res);
 }
 
-/** GET /guild/:guildId/channel  – list channels in a guild */
+/** GET /guild/:guildId/channel  – list channels in a guild, sorted by index */
 export async function getGuildChannels(guildId) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel`, { headers: authHeaders() });
-  return handle(res);
+  const guildChannels = await handle(res); // GuildChannel[] — { channelId, guildId, index, channel }
+  // Sort by index then extract the inner channel, adding id = channelId for consistency
+  return guildChannels
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map(gc => ({ ...gc.channel, id: gc.channelId ?? gc.channel?.id }));
 }
 
 /** POST /guild/:guildId/channel  – create a channel in a guild; returns Channel */
@@ -285,6 +290,16 @@ export async function getGuildMembers(guildId) {
 /** GET /guild/:guildId/channel/:channelId/members – guild member list with role colours */
 export async function getGuildChannelMembersDetails(guildId, channelId) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/members`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/channel/:channelId/reorder – move channel to newIndex */
+export async function reorderGuildChannel(guildId, channelId, newIndex) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/reorder`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newIndex }),
+  });
   return handle(res);
 }
 
@@ -378,6 +393,49 @@ export async function deleteGuildInvite(inviteId) {
 export async function acceptGuildInvite(inviteId) {
   const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}/accept`, {
     method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+// ── Channel Permission Overrides ──────────────────────────────────────────────
+
+/** GET /guild/:guildId/channel/:channelId/my-permissions – resolved perms for this specific channel */
+export async function getMyChannelPermissions(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/my-permissions`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/channel/:channelId/permission-overrides – list all overrides */
+export async function getChannelPermissionOverrides(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/channel/:channelId/permission-overrides – create an override */
+export async function createChannelPermissionOverride(guildId, channelId, { userId, roleId, permissions }) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, roleId, permissions }),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:guildId/channel/:channelId/permission-overrides/:overrideId – update permissions */
+export async function updateChannelPermissionOverride(guildId, channelId, overrideId, permissions) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides/${encodeURIComponent(overrideId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permissions }),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/channel/:channelId/permission-overrides/:overrideId */
+export async function deleteChannelPermissionOverride(guildId, channelId, overrideId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides/${encodeURIComponent(overrideId)}`, {
+    method: 'DELETE',
     headers: authHeaders(),
   });
   return handle(res);

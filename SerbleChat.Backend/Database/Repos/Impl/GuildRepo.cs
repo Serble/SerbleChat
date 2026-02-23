@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Helpers;
 using SerbleChat.Backend.Schemas;
 using StackExchange.Redis;
 using Role = SerbleChat.Backend.Database.Structs.Role;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
-public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis) : IGuildRepo {
+public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis, IRoleRepo roles) : IGuildRepo {
     
     public async Task<Guild?> GetGuild(int id) {
         return await context.Guilds.FindAsync(id);
@@ -142,6 +143,30 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return members.ToArray();
     }
 
+    public Task<ChannelPermissionOverride[]> GetChannelPermissionOverrides(int channelId) {
+        return context.ChannelPermissionOverrides
+            .Where(o => o.ChannelId == channelId)
+            .ToArrayAsync();
+    }
+
+    public async Task<ChannelPermissionOverride?> GetChannelPermissionOverride(int id) {
+        return await context.ChannelPermissionOverrides.FindAsync(id);
+    }
+
+    public Task CreateChannelPermissionOverride(ChannelPermissionOverride permissionOverride) {
+        context.ChannelPermissionOverrides.Add(permissionOverride);
+        return context.SaveChangesAsync();
+    }
+
+    public Task DeleteChannelPermissionOverride(int id) {
+        return context.ChannelPermissionOverrides.Where(o => o.Id == id).ExecuteDeleteAsync();
+    }
+
+    public Task UpdateChannelPermissionOverride(ChannelPermissionOverride permissionOverride) {
+        context.ChannelPermissionOverrides.Update(permissionOverride);
+        return context.SaveChangesAsync();
+    }
+
     public Task CreateInvite(GuildInvite invite) {
         context.GuildInvites.Add(invite);
         return context.SaveChangesAsync();
@@ -159,5 +184,52 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return context.GuildInvites
             .Where(i => i.GuildId == guildId)
             .ToArrayAsync();
+    }
+    
+    // TODO: Redis cache result
+    public async Task<GuildPermissions> GetUserPermissions(string userId, int guildId, int channelId) {
+        Guild guild = (await context.Guilds.FindAsync(guildId))!;
+
+        if (guild.OwnerId == userId) {
+            return GuildPermissions.OwnerPermissions;
+        }
+        
+        List<GuildPermissions?> permissions = await context.Roles
+            .AsNoTracking()
+            .Where(r => r.GuildId == guildId)
+            .GroupJoin(context.UserRoleAssignments.Where(a => a.UserId == userId),
+                r => r.Id,
+                a => a.RoleId,
+                (r, a) => new { Role = r, HasRole = a.Any() })
+            .OrderByDescending(x => x.Role.Priority)
+            .Select(x => x.HasRole ? x.Role.Permissions : null)
+            .ToListAsync();
+
+        GuildPermissions current = guild.DefaultPermissions;
+
+        if (channelId != -1) {
+            AsyncLazy<Role[]> userRoles = new(() => roles.GetUserRolesInGuild(userId, guildId));
+            
+            ChannelPermissionOverride[] overrides = await GetChannelPermissionOverrides(channelId);
+            foreach (ChannelPermissionOverride co in overrides) {
+                if (co.RoleId != null) {  // role id override
+                    if ((await userRoles.Value).Any(r => r.Id == co.RoleId)) {
+                        permissions.Add(co.Permissions);
+                    }
+                }
+                else {  // user id override
+                    ArgumentNullException.ThrowIfNull(co.UserId);
+                    if (co.UserId == userId) {
+                        permissions.Add(co.Permissions);
+                    }
+                }
+            }
+        }
+
+        for (int i = permissions.Count - 1; i >= 0; i--) {
+            current = current.ApplyOverrides(permissions[i]);
+        }
+        
+        return current;
     }
 }
