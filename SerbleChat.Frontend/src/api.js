@@ -225,10 +225,15 @@ export async function updateGuild(id, patch) {
   return handle(res);
 }
 
-/** GET /guild/:guildId/channel  – list channels in a guild */
+/** GET /guild/:guildId/channel  – list channels in a guild, sorted by index */
 export async function getGuildChannels(guildId) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel`, { headers: authHeaders() });
-  return handle(res);
+  const guildChannels = await handle(res); // GuildChannel[] — { channelId, guildId, index, channel }
+  // Sort by index then extract the inner channel, adding id = channelId for consistency
+  return guildChannels
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map(gc => ({ ...gc.channel, id: gc.channelId ?? gc.channel?.id }));
 }
 
 /** POST /guild/:guildId/channel  – create a channel in a guild; returns Channel */
@@ -275,6 +280,16 @@ export async function getGuildMembers(guildId) {
 /** GET /guild/:guildId/channel/:channelId/members – guild member list with role colours */
 export async function getGuildChannelMembersDetails(guildId, channelId) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/members`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/channel/:channelId/reorder – move channel to newIndex */
+export async function reorderGuildChannel(guildId, channelId, newIndex) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/reorder`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newIndex }),
+  });
   return handle(res);
 }
 

@@ -5,6 +5,7 @@ import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
   updateGuildChannel, updateGuild, deleteGuild,
   createGuildInvite, getGuildInvites, deleteGuildInvite,
+  reorderGuildChannel,
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
@@ -261,7 +262,8 @@ function InvitePopup({ guildId, onClose }) {
 
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
-function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete }) {
+function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete,
+                       onDragStart, onDragEnter, onDragEnd, isDragOver }) {
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(ch.name);
@@ -292,24 +294,54 @@ function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete }) {
   }
 
   return (
-    <button
-      onClick={onNavigate}
+    <div
+      draggable={canManage}
+      onDragStart={canManage ? onDragStart : undefined}
+      onDragEnter={canManage ? onDragEnter : undefined}
+      onDragEnd={canManage ? onDragEnd : undefined}
+      onDragOver={canManage ? e => e.preventDefault() : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: '0.35rem',
-        padding: '0.35rem 0.5rem', borderRadius: '6px', width: '100%',
-        background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
-        border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
-        fontSize: '0.875rem', fontWeight: active ? 600 : 400,
-        transition: 'background 0.1s, color 0.1s',
+        display: 'flex', alignItems: 'center', gap: '0.25rem',
+        padding: '0.1rem 0.25rem 0.1rem 0',
+        borderRadius: '6px',
+        background: isDragOver ? 'rgba(88,101,242,0.15)' : 'transparent',
+        borderTop: isDragOver ? '2px solid #5865f2' : '2px solid transparent',
+        transition: 'background 0.1s',
+        cursor: canManage ? 'grab' : 'default',
       }}
     >
-      <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '1rem', flexShrink: 0, lineHeight: 1 }}>#</span>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+      {/* Drag handle — only visible to managers on hover */}
+      {canManage && (
+        <span style={{
+          color: hovered ? '#4f5660' : 'transparent',
+          fontSize: '0.75rem', lineHeight: 1, padding: '0 0.1rem',
+          flexShrink: 0, cursor: 'grab', userSelect: 'none',
+          transition: 'color 0.1s',
+        }}>⠿</span>
+      )}
+
+      <button
+        onClick={onNavigate}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.35rem',
+          padding: '0.3rem 0.4rem', borderRadius: '5px', flex: 1,
+          background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+          fontSize: '0.875rem', fontWeight: active ? 600 : 400,
+          transition: 'background 0.1s, color 0.1s',
+          minWidth: 0,
+        }}
+      >
+        <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '1rem', flexShrink: 0, lineHeight: 1 }}>#</span>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+      </button>
+
+      {/* Edit / delete buttons */}
       {canManage && hovered && (
-        <span style={{ display: 'flex', gap: '0.1rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+        <span style={{ display: 'flex', gap: '0.1rem', flexShrink: 0 }}>
           <span title="Rename" onClick={startEdit}
             style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.78rem', padding: '0.15rem 0.2rem', borderRadius: '3px', lineHeight: 1 }}
             onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
@@ -320,7 +352,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete }) {
             onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🗑</span>
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -335,6 +367,9 @@ export default function GuildSidebar({ guildId }) {
   const [addingChannel, setAddingChannel] = useState(false);
   const [newChName, setNewChName]         = useState('');
   const [addBusy, setAddBusy]             = useState(false);
+  // Drag-to-reorder state
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const dragIndexRef = useRef(null); // index being dragged
   const addInputRef = useRef(null);
   const nav = useNavigate();
   const loc = useLocation();
@@ -410,6 +445,28 @@ export default function GuildSidebar({ guildId }) {
     } catch (err) { console.error('deleteGuildChannel failed:', err); }
   }
 
+  async function handleReorder(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+    const ch = channels[fromIndex];
+    if (!ch) return;
+
+    // Optimistic update
+    setChannels(prev => {
+      const next = [...prev];
+      next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, ch);
+      return next;
+    });
+
+    try {
+      await reorderGuildChannel(guildId, ch.id, toIndex);
+    } catch (err) {
+      console.error('reorderGuildChannel failed:', err);
+      // Roll back by re-fetching
+      loadChannels();
+    }
+  }
+
   return (
     <div style={{ width: 240, background: '#2b2d31', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #111213' }}>
       {/* Guild header */}
@@ -450,12 +507,23 @@ export default function GuildSidebar({ guildId }) {
           </div>
         )}
 
-        {channels.map(ch => (
+        {channels.map((ch, i) => (
           <ChannelRow key={ch.id} ch={ch} canManage={canManageChannels}
             active={String(currentChannelId) === String(ch.id)}
             onNavigate={() => nav(`/app/channel/${ch.id}`)}
             onRename={n => handleRenameChannel(ch, n)}
-            onDelete={() => handleDeleteChannel(ch)} />
+            onDelete={() => handleDeleteChannel(ch)}
+            isDragOver={dragOverIndex === i}
+            onDragStart={() => { dragIndexRef.current = i; }}
+            onDragEnter={() => setDragOverIndex(i)}
+            onDragEnd={() => {
+              const from = dragIndexRef.current;
+              const to   = dragOverIndex;
+              dragIndexRef.current = null;
+              setDragOverIndex(null);
+              if (from !== null && to !== null) handleReorder(from, to);
+            }}
+          />
         ))}
 
         {addingChannel && (

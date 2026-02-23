@@ -141,7 +141,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         if (guild == null) return NotFound("Guild not found");
         if (!await guilds.IsGuildMember(guildId, userId)) return Forbid();
         // Re-use channel-based details but for any channel in this guild
-        Channel[]? guildChannels = await guilds.GetGuildChannelsAsChannels(guildId);
+        Channel[] guildChannels = await guilds.GetGuildChannelsAsChannels(guildId);
         if (guildChannels.Length == 0) {
             // No channels — just return empty member list with no colour info
             return Ok(Array.Empty<GuildMemberResponse>());
@@ -152,7 +152,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     // CHANNEL ENDPOINTS
 
     [HttpGet("{guildId:int}/channel")]
-    public async Task<ActionResult<Channel[]>> GetChannels(int guildId) {
+    public async Task<ActionResult<GuildChannel[]>> GetChannels(int guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -163,7 +163,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
 
-        return await guilds.GetGuildChannelsAsChannels(guildId);
+        return await guilds.GetGuildChannels(guildId);
     }
 
     [HttpPost("{guildId:int}/channel")]
@@ -271,6 +271,54 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await channels.UpdateChannel(channel);
+        return Ok();
+    }
+
+    [HttpPost("{guildId:int}/channel/{channelId:int}/reorder")]
+    public async Task<ActionResult> ReorderChannels(int guildId, int channelId, ChannelReorderRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
+        
+        GuildChannel[] guildChannels = await guilds.GetGuildChannels(guildId);
+        int oldIndex = guildChannel.Index;
+        int newIndex = request.NewIndex;
+        if (newIndex < 0 || newIndex >= guildChannels.Length) {
+            return BadRequest("New index out of bounds");
+        }
+        
+        if (newIndex == oldIndex) {
+            return Ok("No change was needed");  // no change needed
+        }
+
+        List<GuildChannel> orderedChannels = guildChannels
+            .Where(c => c.ChannelId != channelId)
+            .OrderBy(c => c.Index)
+            .ToList();
+        orderedChannels.Insert(newIndex, guildChannel);
+        
+        // re-assign indices
+        for (int i = 0; i < orderedChannels.Count; i++) {
+            orderedChannels[i].Index = i;
+            await guilds.UpdateGuildChannel(orderedChannels[i]);
+        }
+        
         return Ok();
     }
 
