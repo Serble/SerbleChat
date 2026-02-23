@@ -12,24 +12,21 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("channel")]
 [Authorize]
-public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs, 
-    IHubContext<ChatHub> updates, IUserRepo users) : ControllerBase {
-    
+public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
+    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds) : ControllerBase {
+
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
         switch (channel.Type) {
-            case ChannelType.Group: {
+            case ChannelType.Group:
                 return await groups.IsMemberInChat(channel.Id, userId);
-            }
-            
             case ChannelType.Dm: {
                 DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
                 return dmChannel != null && (dmChannel.User1Id == userId || dmChannel.User2Id == userId);
             }
-
             case ChannelType.Guild:
+                return channel.GuildId.HasValue && await guilds.IsGuildMember(channel.GuildId.Value, userId);
             default:
-                // guild channel
-                throw new NotImplementedException();
+                return false;
         }
     }
 
@@ -127,7 +124,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
     }
 
     [HttpGet("{channelId:int}/members")]
-    public async Task<ActionResult<IEnumerable<string>>> GetChannelMembers(int channelId) {
+    public async Task<ActionResult<IEnumerable<PublicUserResponse>>> GetChannelMembers(int channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -164,10 +161,17 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
                 return Ok(response);
             }
 
-            case ChannelType.Guild:
+            case ChannelType.Guild: {
+                ChatUser[] members = await guilds.GetGuildChannelMembers(channelId);
+                List<PublicUserResponse> response = [];
+                foreach (ChatUser member in members) {
+                    response.Add(await users.CompilePublicUserResponse(member));
+                }
+                return Ok(response);
+            }
+                
             default:
-                // guild channel
-                throw new NotImplementedException();
+                throw new InvalidOperationException("Unknown channel type");
         }
     }
 
@@ -261,7 +265,8 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             // just leave
             await groups.RemoveMember(groupId, userId);
             await updates.Clients.Group($"channel-{groupId}").SendAsync("UserLeft", new {
-                UserId = userId
+                UserId = userId,
+                chat.ChannelId
             });
         }
         
@@ -284,12 +289,12 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         };
         await groups.AddGroupChat(groupChat, channel);
 
-        HashSet<string> users = body.Users.ToHashSet();
-        users.Add(userId);
+        HashSet<string> members = body.Users.ToHashSet();
+        members.Add(userId);
         await groups.AddMembers(
-            users.Select(id => new GroupChatMember {GroupChatId = groupChat.ChannelId, UserId = id})
+            members.Select(id => new GroupChatMember {GroupChatId = groupChat.ChannelId, UserId = id})
         );
-        await updates.Clients.Users(users).SendAsync("NewChannel", channel);
+        await updates.Clients.Users(members).SendAsync("NewChannel", channel);
         
         return Ok(groupChat);
     }

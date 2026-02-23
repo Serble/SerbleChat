@@ -32,7 +32,7 @@ public class ChannelRepo(ChatDatabaseContext context) : IChannelRepo {
     // will need to collect:
     // - all DMs the user is in
     // - all group chats the user is in
-    // - all channels in guilds the user is in (not implemented yet)
+    // - all channels in guilds the user is in
     public async Task<List<Channel>> GetChannelsVisibleToUser(string userId) {
         List<Channel> channels = [];
 
@@ -44,6 +44,13 @@ public class ChannelRepo(ChatDatabaseContext context) : IChannelRepo {
         channels.AddRange(await context.GroupChatMembers
             .Where(g => g.UserId == userId)
             .Select(g => g.GroupChatNavigation.ChannelNavigation)
+            .ToListAsync());
+
+        channels.AddRange(await context.GuildMembers
+            .Where(m => m.UserId == userId)
+            .SelectMany(m => context.GuildChannels
+                .Where(gc => gc.GuildId == m.GuildId)
+                .Select(gc => gc.ChannelNavigation))
             .ToListAsync());
 
         return channels;

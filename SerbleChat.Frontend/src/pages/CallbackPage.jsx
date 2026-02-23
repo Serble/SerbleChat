@@ -69,9 +69,11 @@ export default function CallbackPage() {
         if (!data.success || !data.accessToken) throw new Error('Backend returned success=false');
         localStorage.setItem('jwt', data.accessToken);
         setOk(true);
-        setStatus('Authentication successful! Redirecting to dashboard…');
+        setStatus('Authentication successful! Redirecting…');
         setDetails({ accessToken: data.accessToken });
-        setTimeout(() => navigate('/app'), 1500);
+        const redirect = sessionStorage.getItem('postLoginRedirect') ?? '/app';
+        sessionStorage.removeItem('postLoginRedirect');
+        setTimeout(() => navigate(redirect), 1500);
       } catch (err) {
         setOk(false);
         setStatus(`Token exchange failed: ${err.message}`);

@@ -179,3 +179,116 @@ export async function getGroupChat(groupId) {
   const res = await fetch(`${BASE}/channel/group/${encodeURIComponent(groupId)}`, { headers: authHeaders() });
   return handle(res);
 }
+
+// ── Guilds ────────────────────────────────────────────────────────────────────
+
+/** GET /guild  – list all guilds the current user is in */
+export async function getMyGuilds() {
+  const res = await fetch(`${BASE}/guild`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** GET /guild/:id  – get a specific guild */
+export async function getGuild(id) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(id)}`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild  – create a new guild; returns the created Guild */
+export async function createGuild(name) {
+  const res = await fetch(`${BASE}/guild`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:id  – delete a guild (owner only) */
+export async function deleteGuild(id) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:id  – rename a guild (owner only) */
+export async function updateGuild(id, name) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/channel  – list channels in a guild */
+export async function getGuildChannels(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/channel  – create a channel in a guild; returns Channel */
+export async function createGuildChannel(guildId, name) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, voiceCapable: false }),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/channel/:channelId  – delete a channel */
+export async function deleteGuildChannel(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:guildId/channel/:channelId  – rename a channel */
+export async function updateGuildChannel(guildId, channelId, name) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return handle(res);
+}
+
+// ── Guild Invites ─────────────────────────────────────────────────────────────
+
+/** POST /guild/:guildId/invite  – create an invite; returns GuildInvite */
+export async function createGuildInvite(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/invite`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/invite  – list invites for a guild (owner only) */
+export async function getGuildInvites(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/invite`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** DELETE /guild/invite/:inviteId  – delete an invite (owner only) */
+export async function deleteGuildInvite(inviteId) {
+  const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** POST /guild/invite/:inviteId/accept  – accept an invite; returns Guild */
+export async function acceptGuildInvite(inviteId) {
+  const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}/accept`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}

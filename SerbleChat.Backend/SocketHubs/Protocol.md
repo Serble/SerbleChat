@@ -34,8 +34,22 @@
 `DeleteMessage`:
 ```json
 {
-  "id": int
+    "id": int
 }
 ```
 
+`ChannelDeleted`:
+```json
+{
+    "channelId": int
+}
+```
+
+`UserLeft`:
+```json
+{
+    "userId": "string",
+    "channelId": int
+}
+```
 

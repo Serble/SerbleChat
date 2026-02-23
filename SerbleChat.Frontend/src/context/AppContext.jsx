@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
 import {
   getMyAccount, getFriends, getDmChannels,
-  getGroupChats, getGroupChat, getAccountById,
+  getGroupChats, getGroupChat, getAccountById, getMyGuilds,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -14,11 +14,18 @@ export function AppProvider({ children }) {
   const [friends,     setFriends]       = useState([]);
   const [dmChannels,  setDmChannels]    = useState([]);
   const [groupChats,  setGroupChats]    = useState([]);
+  const [guilds,      setGuilds]        = useState([]);
   const [userCache,   setUserCache]     = useState({});
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
   const [toasts,        setToasts]        = useState([]);
   const [channelEvent,  setChannelEvent]  = useState(null); // { type, channelId, data }
+  const [guildChannelEvent, setGuildChannelEvent] = useState(null); // { type, channelId, guildId }
+  // Initialise from URL so the correct sidebar is shown immediately on page reload
+  const [activeGuildId, setActiveGuildId] = useState(() => {
+    const m = window.location.pathname.match(/\/app\/guild\/(\d+)/);
+    return m ? m[1] : null;
+  });
 
   const hubRef       = useRef(null);
   const userCacheRef = useRef({});
@@ -52,6 +59,7 @@ export function AppProvider({ children }) {
       setFriends(fr);
       setDmChannels(dms);
       await reloadGroups();
+      await reloadGuilds();
       connectHub();
     } catch (e) {
       console.error('AppContext init failed:', e);
@@ -68,6 +76,13 @@ export function AppProvider({ children }) {
     } catch (e) { console.error('reloadGroups failed:', e); }
   }
 
+  async function reloadGuilds() {
+    try {
+      const gs = await getMyGuilds();
+      setGuilds(gs);
+    } catch (e) { console.error('reloadGuilds failed:', e); }
+  }
+
   async function resolveUser(id) {
     if (userCacheRef.current[id]) return userCacheRef.current[id];
     try {
@@ -80,6 +95,13 @@ export function AppProvider({ children }) {
       userCacheRef.current[id] = fb;
       return fb;
     }
+  }
+
+  async function reconnectHub() {
+    try { await hubRef.current?.stop(); } catch { /* ignore */ }
+    hubRef.current = null;
+    setIsConnected(false);
+    await connectHub();
   }
 
   async function connectHub() {
@@ -147,16 +169,24 @@ export function AppProvider({ children }) {
     conn.on('ChannelDeleted', ({ channelId }) => {
       setGroupChats(p => p.filter(g => g.channelId !== channelId));
       setChannelEvent({ type: 'ChannelDeleted', channelId });
+      // Also notify the guild sidebar so it can remove the channel
+      setGuildChannelEvent({ type: 'ChannelDeleted', channelId });
     });
 
     conn.on('UserLeft', ({ userId, channelId }) => {
       setChannelEvent({ type: 'UserLeft', channelId, data: { userId } });
     });
 
-    conn.on('NewChannel', async () => {
-      await getDmChannels().then(setDmChannels).catch(console.error);
-      await reloadGroups();
-      // Reconnect so OnConnectedAsync adds us to the new channel's SignalR group
+    conn.on('NewChannel', async (channel) => {
+      // channel.type: 0=Guild, 1=DM, 2=Group
+      if (channel?.type === 0) {
+        // Guild channel created — notify guild sidebar to reload its channel list
+        setGuildChannelEvent({ type: 'NewChannel', channelId: channel.id, guildId: channel.guildId });
+      } else {
+        await getDmChannels().then(setDmChannels).catch(console.error);
+        await reloadGroups();
+      }
+      // Always reconnect so OnConnectedAsync adds us to the new channel's SignalR group
       try { await hubRef.current?.stop(); } catch { /* ignore */ }
       hubRef.current = null;
       setIsConnected(false);
@@ -197,16 +227,21 @@ export function AppProvider({ children }) {
       friends,  setFriends,
       dmChannels, setDmChannels,
       groupChats, setGroupChats,
+      guilds,     setGuilds,
       userCache, isConnected,
       messages,  setMessages,
       toasts, addToast, removeToast,
       channelEvent,
+      guildChannelEvent,
       resolveUser,
       refreshFriends: () => getFriends().then(setFriends).catch(console.error),
       refreshDms: () => {
         getDmChannels().then(setDmChannels).catch(console.error);
         reloadGroups();
       },
+      refreshGuilds: reloadGuilds,
+      reconnectHub,
+      activeGuildId, setActiveGuildId,
     }}>
       {children}
     </Ctx.Provider>

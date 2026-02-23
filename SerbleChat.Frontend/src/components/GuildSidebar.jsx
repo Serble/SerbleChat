@@ -1,0 +1,436 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useApp } from '../context/AppContext.jsx';
+import {
+  getGuildChannels, createGuildChannel, deleteGuildChannel,
+  updateGuildChannel, updateGuild, deleteGuild,
+  createGuildInvite, getGuildInvites, deleteGuildInvite,
+} from '../api.js';
+
+// ─── Guild Settings Modal ─────────────────────────────────────────────────────
+
+function GuildSettingsModal({ guild, onClose, onSaved, onDeleted }) {
+  const [tab, setTab]         = useState('overview');
+  const [name, setName]       = useState(guild.name);
+  const [busy, setBusy]       = useState(false);
+  const [error, setError]     = useState(null);
+  const [invites, setInvites] = useState([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [creating, setCreating]     = useState(false);
+  const [copied, setCopied]         = useState(null);
+  const backdropRef = useRef(null);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (tab !== 'invites') return;
+    setInvLoading(true);
+    getGuildInvites(guild.id)
+      .then(setInvites)
+      .catch(console.error)
+      .finally(() => setInvLoading(false));
+  }, [tab, guild.id]);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!name.trim() || name.trim() === guild.name) { onClose(); return; }
+    setBusy(true); setError(null);
+    try { await updateGuild(guild.id, name.trim()); onSaved(name.trim()); onClose(); }
+    catch (err) { setError(err.message); setBusy(false); }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${guild.name}"? This cannot be undone.`)) return;
+    setBusy(true);
+    try { await deleteGuild(guild.id); onDeleted(); }
+    catch (err) { setError(err.message); setBusy(false); }
+  }
+
+  async function handleCreateInvite() {
+    setCreating(true);
+    try { const inv = await createGuildInvite(guild.id); setInvites(p => [...p, inv]); }
+    catch (err) { console.error(err); }
+    finally { setCreating(false); }
+  }
+
+  async function handleDeleteInvite(inviteId) {
+    try { await deleteGuildInvite(inviteId); setInvites(p => p.filter(i => i.id !== inviteId)); }
+    catch (err) { console.error(err); }
+  }
+
+  function copyLink(inv) {
+    navigator.clipboard.writeText(`${window.location.origin}/invite/${inv.id}`);
+    setCopied(inv.id);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  const tabStyle = active => ({
+    background: active ? '#404249' : 'transparent', border: 'none',
+    padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
+    fontSize: '0.875rem', fontWeight: 600, color: active ? '#f2f3f5' : '#72767d',
+    transition: 'background 0.1s, color 0.1s',
+  });
+
+  return (
+    <div
+      ref={backdropRef}
+      onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+    >
+      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: 460, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#f2f3f5' }}>Guild Settings</div>
+          <button onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0.25rem', padding: '0.75rem 1.5rem 0', flexShrink: 0 }}>
+          <button style={tabStyle(tab === 'overview')} onClick={() => setTab('overview')}>Overview</button>
+          <button style={tabStyle(tab === 'invites')} onClick={() => setTab('invites')}>Invites</button>
+        </div>
+
+        {/* Content */}
+        <div style={{ overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* Overview */}
+          {tab === 'overview' && (
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>Guild Name</label>
+                <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64}
+                  style={{ width: '100%', background: '#1e1f22', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.65rem 0.75rem', color: '#f2f3f5', fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box' }}
+                  onFocus={e => e.target.style.borderColor = '#7c3aed'}
+                  onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+              </div>
+              {error && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{error}</div>}
+              <button type="submit" disabled={busy || !name.trim()}
+                style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
+                onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>Save Changes</button>
+              <div style={{ borderTop: '1px solid #3b3d43', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f23f43', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
+                <button type="button" onClick={handleDelete} disabled={busy}
+                  style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.5rem 1rem', color: '#f23f43', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                  onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>Delete Guild</button>
+              </div>
+            </form>
+          )}
+
+          {/* Invites */}
+          {tab === 'invites' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={handleCreateInvite} disabled={creating}
+                style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.55rem 1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1, alignSelf: 'flex-start', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (!creating) e.currentTarget.style.background = '#6d28d9'; }}
+                onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>
+                {creating ? 'Creating…' : '+ Create Invite'}
+              </button>
+
+              {invLoading && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Loading…</div>}
+              {!invLoading && invites.length === 0 && (
+                <div style={{ color: '#4f5660', fontSize: '0.85rem' }}>No active invites. Create one above.</div>
+              )}
+
+              {invites.map(inv => {
+                const link = `${window.location.origin}/invite/${inv.id}`;
+                return (
+                  <div key={inv.id} style={{ background: '#1e1f22', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#72767d', marginBottom: '0.15rem' }}>Invite #{inv.id}</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#b5bac1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</div>
+                    </div>
+                    <button onClick={() => copyLink(inv)}
+                      style={{ background: copied === inv.id ? '#23a55a' : '#383a40', border: 'none', borderRadius: '5px', padding: '0.35rem 0.65rem', color: '#fff', fontSize: '0.78rem', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', fontWeight: 600 }}>
+                      {copied === inv.id ? '✓ Copied' : 'Copy'}
+                    </button>
+                    <button onClick={() => handleDeleteInvite(inv.id)} title="Delete invite"
+                      style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem', borderRadius: '4px', flexShrink: 0, lineHeight: 1 }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#f23f43'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🗑</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick-invite popup (for non-owners) ─────────────────────────────────────
+
+function InvitePopup({ guildId, onClose }) {
+  const [invite, setInvite] = useState(null);
+  const [busy, setBusy]     = useState(true);
+  const [copied, setCopied] = useState(false);
+  const backdropRef = useRef(null);
+
+  useEffect(() => {
+    createGuildInvite(guildId)
+      .then(setInvite)
+      .catch(console.error)
+      .finally(() => setBusy(false));
+  }, [guildId]);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const link = invite ? `${window.location.origin}/invite/${invite.id}` : '';
+
+  function copyLink() {
+    if (!link) return;
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div ref={backdropRef} onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f2f3f5' }}>🔗 Invite People</div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+        </div>
+        {busy && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Creating invite link…</div>}
+        {!busy && invite && (
+          <>
+            <div style={{ fontSize: '0.82rem', color: '#72767d' }}>Share this link with people you want to invite:</div>
+            <div style={{ background: '#1e1f22', borderRadius: '6px', padding: '0.65rem 0.75rem', fontFamily: 'monospace', fontSize: '0.82rem', color: '#b5bac1', wordBreak: 'break-all' }}>{link}</div>
+            <button onClick={copyLink}
+              style={{ background: copied ? '#23a55a' : '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
+              {copied ? '✓ Copied to Clipboard!' : 'Copy Invite Link'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Channel Row ──────────────────────────────────────────────────────────────
+
+function ChannelRow({ ch, isOwner, active, onNavigate, onRename, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(ch.name);
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  function startEdit(e) { e.stopPropagation(); setEditName(ch.name); setEditing(true); }
+
+  async function submitEdit(e) {
+    e?.preventDefault();
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditing(false); return; }
+    setEditing(false);
+    if (trimmed !== ch.name) await onRename(trimmed);
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={submitEdit} style={{ padding: '0.15rem 0.5rem' }}>
+        <input ref={inputRef} value={editName} onChange={e => setEditName(e.target.value)}
+          onBlur={submitEdit}
+          onKeyDown={e => { if (e.key === 'Escape') setEditing(false); }}
+          maxLength={64}
+          style={{ width: '100%', background: '#1e1f22', border: '1px solid #5865f2', borderRadius: '4px', padding: '0.35rem 0.5rem', color: '#f2f3f5', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+      </form>
+    );
+  }
+
+  return (
+    <button
+      onClick={onNavigate}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.35rem',
+        padding: '0.35rem 0.5rem', borderRadius: '6px', width: '100%',
+        background: active ? '#404249' : hovered ? '#35363c' : 'transparent',
+        border: 'none', cursor: 'pointer', textAlign: 'left',
+        color: active ? '#f2f3f5' : hovered ? '#dbdee1' : '#949ba4',
+        fontSize: '0.875rem', fontWeight: active ? 600 : 400,
+        transition: 'background 0.1s, color 0.1s',
+      }}
+    >
+      <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '1rem', flexShrink: 0, lineHeight: 1 }}>#</span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+      {isOwner && hovered && (
+        <span style={{ display: 'flex', gap: '0.1rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+          <span title="Rename" onClick={startEdit}
+            style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.78rem', padding: '0.15rem 0.2rem', borderRadius: '3px', lineHeight: 1 }}
+            onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✏</span>
+          <span title="Delete" onClick={e => { e.stopPropagation(); onDelete(); }}
+            style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.78rem', padding: '0.15rem 0.2rem', borderRadius: '3px', lineHeight: 1 }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f23f43'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🗑</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── Main GuildSidebar ────────────────────────────────────────────────────────
+
+export default function GuildSidebar({ guildId }) {
+  const { guilds, currentUser, refreshGuilds, guildChannelEvent } = useApp();
+  const [channels, setChannels]           = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [showSettings, setShowSettings]   = useState(false);
+  const [showInvite, setShowInvite]       = useState(false);
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [newChName, setNewChName]         = useState('');
+  const [addBusy, setAddBusy]             = useState(false);
+  const addInputRef = useRef(null);
+  const nav = useNavigate();
+  const loc = useLocation();
+
+  const guild = guilds.find(g => String(g.id) === String(guildId));
+  const isOwner = guild?.ownerId === currentUser?.id;
+  const currentChannelId = loc.pathname.match(/\/channel\/(\d+)/)?.[1];
+
+  async function loadChannels() {
+    if (!guildId) return;
+    setLoading(true);
+    try { setChannels((await getGuildChannels(guildId)) ?? []); }
+    catch (e) { console.error('loadChannels failed:', e); setChannels([]); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => {
+    setChannels([]); setAddingChannel(false); setNewChName(''); setShowSettings(false);
+    loadChannels();
+  }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (addingChannel) addInputRef.current?.focus(); }, [addingChannel]);
+
+  // React to SignalR guild channel events
+  useEffect(() => {
+    if (!guildChannelEvent) return;
+    if (guildChannelEvent.type === 'NewChannel' && String(guildChannelEvent.guildId) === String(guildId)) {
+      loadChannels();
+    } else if (guildChannelEvent.type === 'ChannelDeleted') {
+      setChannels(p => p.filter(c => String(c.id) !== String(guildChannelEvent.channelId)));
+    }
+  }, [guildChannelEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleAddChannel(e) {
+    e?.preventDefault();
+    const name = newChName.trim();
+    if (!name) { setAddingChannel(false); return; }
+    setAddBusy(true);
+    try {
+      const ch = await createGuildChannel(guildId, name);
+      setChannels(p => [...p, ch]);
+      setNewChName(''); setAddingChannel(false);
+      nav(`/app/channel/${ch.id}`);
+    } catch (err) { console.error('createGuildChannel failed:', err); }
+    finally { setAddBusy(false); }
+  }
+
+  async function handleRenameChannel(ch, newName) {
+    try {
+      await updateGuildChannel(guildId, ch.id, newName);
+      setChannels(p => p.map(c => c.id === ch.id ? { ...c, name: newName } : c));
+    } catch (err) { console.error('updateGuildChannel failed:', err); }
+  }
+
+  async function handleDeleteChannel(ch) {
+    if (!confirm(`Delete #${ch.name}? This cannot be undone.`)) return;
+    try {
+      await deleteGuildChannel(guildId, ch.id);
+      setChannels(p => p.filter(c => c.id !== ch.id));
+      if (String(currentChannelId) === String(ch.id)) nav(`/app/guild/${guildId}`, { replace: true });
+    } catch (err) { console.error('deleteGuildChannel failed:', err); }
+  }
+
+  return (
+    <div style={{ width: 240, background: '#2b2d31', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #111213' }}>
+      {/* Guild header */}
+      <div style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 0.75rem 0 1rem', borderBottom: '1px solid #1e1f22', flexShrink: 0, gap: '0.25rem' }}>
+        <span style={{ flex: 1, fontWeight: 700, color: '#f2f3f5', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {guild?.name ?? '…'}
+        </span>
+        {/* Invite button — visible to all members */}
+        <button title="Create Invite" onClick={() => setShowInvite(true)}
+          style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '0.9rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
+          onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+          onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🔗</button>
+        {isOwner && (
+          <button title="Guild Settings" onClick={() => setShowSettings(true)}
+            style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>⚙</button>
+        )}
+      </div>
+
+      {/* Channel list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.5rem 0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.25rem', marginBottom: '0.2rem' }}>
+          <span style={{ flex: 1, fontSize: '0.68rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none' }}>Text Channels</span>
+          {isOwner && (
+            <button title="Create Channel" onClick={() => setAddingChannel(true)}
+              style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.1rem', borderRadius: '4px', transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
+              onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>＋</button>
+          )}
+        </div>
+
+        {loading && <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem' }}>Loading…</div>}
+        {!loading && channels.length === 0 && !addingChannel && (
+          <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem', lineHeight: 1.5 }}>
+            No channels yet.{isOwner ? ' Use ＋ to add one.' : ''}
+          </div>
+        )}
+
+        {channels.map(ch => (
+          <ChannelRow key={ch.id} ch={ch} isOwner={isOwner}
+            active={String(currentChannelId) === String(ch.id)}
+            onNavigate={() => nav(`/app/channel/${ch.id}`)}
+            onRename={n => handleRenameChannel(ch, n)}
+            onDelete={() => handleDeleteChannel(ch)} />
+        ))}
+
+        {addingChannel && (
+          <form onSubmit={handleAddChannel} style={{ margin: '0.25rem 0', padding: '0.15rem 0.5rem' }}>
+            <input ref={addInputRef} value={newChName} onChange={e => setNewChName(e.target.value)}
+              placeholder="new-channel" maxLength={64} disabled={addBusy}
+              onKeyDown={e => { if (e.key === 'Escape') { setAddingChannel(false); setNewChName(''); } }}
+              onBlur={() => setTimeout(() => { if (!addBusy) { setAddingChannel(false); setNewChName(''); } }, 150)}
+              style={{ width: '100%', background: '#1e1f22', border: '1px solid #5865f2', borderRadius: '4px', padding: '0.4rem 0.5rem', color: '#f2f3f5', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+            <div style={{ fontSize: '0.72rem', color: '#5865f2', marginTop: '0.2rem', paddingLeft: '0.1rem' }}>Press Enter to create · Esc to cancel</div>
+          </form>
+        )}
+      </div>
+
+      {showSettings && guild && (
+        <GuildSettingsModal guild={guild}
+          onClose={() => setShowSettings(false)}
+          onSaved={() => refreshGuilds()}
+          onDeleted={() => { refreshGuilds(); nav('/app/friends', { replace: true }); }} />
+      )}
+
+      {showInvite && (
+        <InvitePopup guildId={guildId} onClose={() => setShowInvite(false)} />
+      )}
+    </div>
+  );
+}

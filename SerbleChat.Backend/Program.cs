@@ -80,6 +80,7 @@ builder.Services.AddScoped<IChannelRepo, ChannelRepo>();
 builder.Services.AddScoped<IDmChannelRepo, DmChannelRepo>();
 builder.Services.AddScoped<IMessageRepo, MessageRepo>();
 builder.Services.AddScoped<IGroupChatRepo, GroupChatRepo>();
+builder.Services.AddScoped<IGuildRepo, GuildRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();

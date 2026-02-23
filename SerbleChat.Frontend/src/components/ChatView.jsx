@@ -5,6 +5,52 @@ import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroup
 import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import InviteCard from './InviteCard.jsx';
+
+// Regex that matches invite links anywhere in a message.
+// Intentionally origin-agnostic so that links shared from a different
+// hostname/port (or after a Vite port reassignment on reload) still work.
+const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/(\d+)/g;
+
+/** Extract unique invite IDs from a message string */
+function extractInviteIds(content) {
+  const ids = [];
+  const seen = new Set();
+  let m;
+  const re = INVITE_RE();
+  while ((m = re.exec(content)) !== null) {
+    if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
+  }
+  return ids;
+}
+
+// Markdown component overrides styled for the dark chat theme
+const mdComponents = {
+  p:          ({ children }) => <span style={{ display: 'block', margin: 0 }}>{children}</span>,
+  a:          ({ href, children }) => {
+    // Render invite links as plain text — the InviteCard below the message handles them
+    if (href && INVITE_RE().test(href)) {
+      return <span style={{ color: '#7c9ef8' }}>{children}</span>;
+    }
+    return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#7c9ef8', textDecoration: 'underline' }}>{children}</a>;
+  },
+  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: '#f2f3f5' }}>{children}</strong>,
+  em:         ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+  del:        ({ children }) => <del style={{ textDecoration: 'line-through', opacity: 0.7 }}>{children}</del>,
+  code:       ({ inline, children }) => inline
+    ? <code style={{ background: '#2b2d31', borderRadius: 3, padding: '0.1em 0.35em', fontFamily: 'monospace', fontSize: '0.85em', color: '#e3e5e8' }}>{children}</code>
+    : <code>{children}</code>,
+  pre:        ({ children }) => <pre style={{ background: '#2b2d31', borderRadius: 6, padding: '0.6rem 0.8rem', overflowX: 'auto', margin: '0.3rem 0', fontSize: '0.85em', fontFamily: 'monospace', color: '#e3e5e8' }}>{children}</pre>,
+  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid #4f5660', paddingLeft: '0.6rem', margin: '0.2rem 0', color: '#b5bac1' }}>{children}</blockquote>,
+  ul:         ({ children }) => <ul style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ul>,
+  ol:         ({ children }) => <ol style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ol>,
+  li:         ({ children }) => <li style={{ margin: '0.1rem 0' }}>{children}</li>,
+  h1:         ({ children }) => <strong style={{ fontSize: '1.1em', display: 'block' }}>{children}</strong>,
+  h2:         ({ children }) => <strong style={{ fontSize: '1.05em', display: 'block' }}>{children}</strong>,
+  h3:         ({ children }) => <strong style={{ fontSize: '1em', display: 'block' }}>{children}</strong>,
+};
 
 function Avatar({ name, size = 40 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -74,7 +120,10 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
           {ts}
         </span>
         <span style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1 }}>
-          {msg.content}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+          {extractInviteIds(msg.content).map(id => (
+            <InviteCard key={id} inviteId={id} />
+          ))}
         </span>
       </div>
     );
@@ -104,7 +153,10 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
           <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : '#4f5660' }}>{ts}</span>
         </div>
         <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-          {msg.content}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+          {extractInviteIds(msg.content).map(id => (
+            <InviteCard key={id} inviteId={id} />
+          ))}
         </div>
       </div>
     </div>
@@ -114,7 +166,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId } = useApp();
   const [input, setInput]           = useState('');
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -142,6 +194,7 @@ export default function ChatView() {
 
   // Derive group chat info
   const isGroupChannel = channel?.type === 2;
+  const isGuildChannel = channel?.type === 0;
   const groupChat = isGroupChannel
     ? groupChats.find(g => String(g.channelId) === String(channelId))
     : null;
@@ -222,7 +275,7 @@ export default function ChatView() {
       console.error('Delete failed:', err);
       // Re-fetch to restore if delete failed — simplest recovery
       getMessages(msg.channelId, 50, 0)
-        .then(msgs => setMessages(p => ({ ...p, [String(msg.channelId)]: msgs })))
+        .then(msgs => setMessages(p => ({ ...p, [String(msg.channelId)]: [...msgs].reverse() })))
         .catch(console.error);
     }
   }
@@ -237,8 +290,10 @@ export default function ChatView() {
       getChannel(channelId),
       getMessages(channelId, 50, 0),
     ]).then(([ch, msgs]) => {
+      // Keep the correct sidebar active based on the channel type
+      setActiveGuildId(ch.type === 0 ? String(ch.guildId) : null);
       setChannel(ch);
-      setMessages(p => ({ ...p, [String(channelId)]: msgs }));
+      setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
     }).catch(e => {
       console.error(e);
@@ -264,6 +319,14 @@ export default function ChatView() {
   useEffect(() => {
     inputRef.current?.focus();
   }, [channelId]);
+
+  // Auto-resize textarea as content grows/shrinks
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 192) + 'px'; // 192px ≈ 12rem
+  }, [input]);
 
   async function handleSend(e) {
     e.preventDefault();
@@ -354,10 +417,12 @@ export default function ChatView() {
             </div>
           )}
 
-          {/* Members toggle */}
-          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>
-            👥
-          </HeaderBtn>
+          {/* Members toggle — not shown for guild channels */}
+          {!isGuildChannel && (
+            <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>
+              👥
+            </HeaderBtn>
+          )}
         </div>
 
         {/* Messages area */}
@@ -390,13 +455,18 @@ export default function ChatView() {
           <div ref={bottomRef} style={{ height: 8 }} />
         </div>
 
-        {/* Message input */}
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
           <form onSubmit={handleSend}>
-            <div style={{ display: 'flex', alignItems: 'center', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
-              <input
+            <div style={{ display: 'flex', alignItems: 'flex-end', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
+              <textarea
                 ref={inputRef}
-                style={{ flex: 1, background: 'transparent', border: 'none', color: '#dbdee1', fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none' }}
+                rows={1}
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', color: '#dbdee1',
+                  fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
+                  resize: 'none', overflow: 'hidden', lineHeight: 1.5,
+                  maxHeight: '12rem', overflowY: 'auto', fontFamily: 'inherit',
+                }}
                 placeholder={`Message ${channelDisplayName}`}
                 value={input}
                 onChange={e => setInput(e.target.value)}
@@ -405,7 +475,7 @@ export default function ChatView() {
               />
               {input.trim() && (
                 <button type="submit"
-                  style={{ background: '#7c3aed', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', lineHeight: 1, transition: 'background 0.15s' }}
+                  style={{ background: '#7c3aed', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
                   onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
                   onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}
                 >↵</button>

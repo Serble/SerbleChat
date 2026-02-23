@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LandingPage  from './pages/LandingPage.jsx';
 import CallbackPage from './pages/CallbackPage.jsx';
 import AppShell     from './pages/AppShell.jsx';
+import InvitePage   from './pages/InvitePage.jsx';
 import { AppProvider } from './context/AppContext.jsx';
 
 function ProtectedRoute({ children }) {
@@ -12,9 +13,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/"         element={<LandingPage />} />
-        <Route path="/callback" element={<CallbackPage />} />
-        <Route path="/app/*"    element={
+        <Route path="/"                element={<LandingPage />} />
+        <Route path="/callback"        element={<CallbackPage />} />
+        <Route path="/invite/:inviteId" element={<InvitePage />} />
+        <Route path="/app/*"           element={
           <ProtectedRoute>
             <AppProvider>
               <AppShell />
