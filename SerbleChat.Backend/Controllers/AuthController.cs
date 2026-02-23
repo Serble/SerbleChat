@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -51,6 +52,20 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
     [Authorize]
     [HttpGet]
     public ActionResult Get() {
+        // we now know the token is valid
+        // let's also make sure the user is in the db
+        // because if they're not then the db was dropped or something
+        // so they need to reauth
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        ChatUser? user = users.GetUserById(userId).Result;
+        if (user == null) {
+            return Unauthorized();
+        }
+        
         return Ok();
     }
 }

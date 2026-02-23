@@ -51,7 +51,11 @@ builder.Services.AddSignalR();
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts => {
+        opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.DictionaryKeyPolicy  = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowAll", policy => {
         // Cors enforces that allow origin isn't * for SignalR with creds.
@@ -81,6 +85,7 @@ builder.Services.AddScoped<IDmChannelRepo, DmChannelRepo>();
 builder.Services.AddScoped<IMessageRepo, MessageRepo>();
 builder.Services.AddScoped<IGroupChatRepo, GroupChatRepo>();
 builder.Services.AddScoped<IGuildRepo, GuildRepo>();
+builder.Services.AddScoped<IRoleRepo, RoleRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();

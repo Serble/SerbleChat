@@ -92,9 +92,8 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick }) {
+function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor }) {
   const [author, setAuthor] = useState(null);
-  const hue = msg.authorId ? (msg.authorId.charCodeAt(0) * 37 + msg.authorId.charCodeAt(msg.authorId.length - 1) * 17) % 360 : 200;
 
   // Group consecutive messages from the same author
   const compact = prevMsg && prevMsg.authorId === msg.authorId &&
@@ -103,6 +102,9 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
   useEffect(() => {
     resolveUser(msg.authorId).then(setAuthor);
   }, [msg.authorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve color: use role color if in guild, otherwise seed from username
+  const nameColor = getColor(msg.authorId, author?.username);
 
   const ts = msg._pending
     ? 'Sending…'
@@ -146,7 +148,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
           <span
             onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
-            style={{ fontWeight: 600, color: `hsl(${hue},60%,72%)`, fontSize: '0.9rem', cursor: msg._pending ? 'default' : 'pointer' }}
+            style={{ fontWeight: 600, color: nameColor, fontSize: '0.9rem', cursor: msg._pending ? 'default' : 'pointer' }}
           >
             {author?.username ?? msg.authorId.slice(0, 10)}
           </span>
@@ -166,7 +168,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent } = useApp();
   const [input, setInput]           = useState('');
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -201,6 +203,13 @@ export default function ChatView() {
   const isOwner = groupChat?.ownerId === currentUser?.id;
   const existingMemberIds = new Set(); // populated lazily by MemberList, used by AddMembersModal
 
+  // Permission checks for guild channels
+  // PermissionState: 0 = Allow, 1 = Deny, 2 = Inherit
+  const myGuildPerms  = isGuildChannel ? getMyPerms(channel?.guildId) : null;
+  const isAdmin       = myGuildPerms?.administrator === 0;
+  const canSend       = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.sendMessages === 0;
+  const canManageMsgs = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.manageMessages === 0;
+
   // React to channel-level SignalR events
   useEffect(() => {
     if (!channelEvent) return;
@@ -212,6 +221,14 @@ export default function ChatView() {
       }
     }
   }, [channelEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh member colors when roles are updated in this guild
+  useEffect(() => {
+    if (!rolesUpdatedEvent || !isGuildChannel || !channel?.guildId) return;
+    if (String(rolesUpdatedEvent.guildId) === String(channel.guildId)) {
+      loadGuildMemberColors(channel.guildId, channelId);
+    }
+  }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLeave() {
     if (leaveBusy) return;
@@ -292,6 +309,11 @@ export default function ChatView() {
     ]).then(([ch, msgs]) => {
       // Keep the correct sidebar active based on the channel type
       setActiveGuildId(ch.type === 0 ? String(ch.guildId) : null);
+      // Load permissions and member colors for guild channels
+      if (ch.type === 0 && ch.guildId) {
+        loadGuildPermissions(ch.guildId);
+        loadGuildMemberColors(ch.guildId, channelId);
+      }
       setChannel(ch);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
@@ -450,12 +472,14 @@ export default function ChatView() {
               currentUserId={currentUser?.id}
               onContextMenu={handleContextMenu}
               onUserClick={handleUserClick}
+              getColor={(userId, username) => getMemberColor(isGuildChannel ? channel?.guildId : null, userId, username)}
             />
           ))}
           <div ref={bottomRef} style={{ height: 8 }} />
         </div>
 
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
+          {canSend ? (
           <form onSubmit={handleSend}>
             <div style={{ display: 'flex', alignItems: 'flex-end', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
               <textarea
@@ -482,12 +506,17 @@ export default function ChatView() {
               )}
             </div>
           </form>
+          ) : (
+            <div style={{ background: '#2b2d31', borderRadius: '8px', padding: '0.75rem 1rem', color: '#72767d', fontSize: '0.875rem', textAlign: 'center' }}>
+              🔒 You don't have permission to send messages here.
+            </div>
+          )}
         </div>
 
         {/* Context menu */}
         {ctxMenu && (
           <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 150 }}>
-            {ctxMenu.msg.authorId === currentUser?.id ? (
+            {ctxMenu.msg.authorId === currentUser?.id || canManageMsgs ? (
               <button onClick={handleDelete}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', color: '#f23f43', fontSize: '0.875rem', fontWeight: 500, borderRadius: '4px', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(242,63,67,0.15)'}
@@ -501,7 +530,13 @@ export default function ChatView() {
 
         {/* User popout */}
         {popout && (
-          <UserPopout userId={popout.userId} username={popout.username} anchorRect={popout.anchorRect} onClose={() => setPopout(null)} />
+          <UserPopout
+            userId={popout.userId}
+            username={popout.username}
+            anchorRect={popout.anchorRect}
+            onClose={() => setPopout(null)}
+            guildId={isGuildChannel ? channel?.guildId : null}
+          />
         )}
       </div>
 
@@ -509,6 +544,7 @@ export default function ChatView() {
       {showMembers && channel && (
         <MemberList
           channelId={channelId}
+          guildId={isGuildChannel ? channel.guildId : null}
           ownerId={groupChat?.ownerId ?? null}
           refreshTick={memberRefreshTick}
         />

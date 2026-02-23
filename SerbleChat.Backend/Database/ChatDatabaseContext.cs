@@ -15,6 +15,8 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<GuildMember> GuildMembers { get; set; } = null!;
     public DbSet<GuildChannel> GuildChannels { get; set; } = null!;
     public DbSet<GuildInvite> GuildInvites { get; set; } = null!;
+    public DbSet<Role> Roles { get; set; } = null!;
+    public DbSet<UserRoleAssignment> UserRoleAssignments { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<GuildChannel>()
@@ -23,6 +25,10 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
 
         modelBuilder.Entity<GroupChatMember>()
             .HasIndex(e => new { e.GroupChatId, e.UserId })
+            .IsUnique();
+        
+        modelBuilder.Entity<UserRoleAssignment>()
+            .HasIndex(e => new { e.UserId, e.RoleId })
             .IsUnique();
     }
 }

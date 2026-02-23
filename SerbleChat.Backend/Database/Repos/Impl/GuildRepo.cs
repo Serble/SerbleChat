@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Schemas;
+using StackExchange.Redis;
+using Role = SerbleChat.Backend.Database.Structs.Role;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
-public class GuildRepo(ChatDatabaseContext context) : IGuildRepo {
+public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis) : IGuildRepo {
     
     public async Task<Guild?> GetGuild(int id) {
         return await context.Guilds.FindAsync(id);
@@ -92,6 +95,51 @@ public class GuildRepo(ChatDatabaseContext context) : IGuildRepo {
             .Select(c => c.GuildId)
             .Join(context.GuildMembers, guildId => guildId, m => m.GuildId, (guildId, m) => m.UserNavigation)
             .ToArrayAsync();
+    }
+    
+    public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId) {
+        // Get the guild for this channel
+        int guildId = await context.GuildChannels
+            .Where(c => c.ChannelId == channelId)
+            .Select(c => c.GuildId)
+            .FirstOrDefaultAsync();
+
+        // All guild members (includes those with no roles)
+        ChatUser[] allMembers = await context.GuildMembers
+            .Where(m => m.GuildId == guildId)
+            .Select(m => m.UserNavigation)
+            .ToArrayAsync();
+
+        // Their role assignments (left join via in-memory grouping)
+        var roleAssignments = await context.UserRoleAssignments
+            .Where(a => context.Roles.Any(r => r.GuildId == guildId && r.Id == a.RoleId))
+            .Join(context.Roles.Where(r => r.GuildId == guildId),
+                a => a.RoleId, r => r.Id,
+                (a, r) => new { a.UserId, Role = r })
+            .ToArrayAsync();
+
+        Dictionary<string, List<Role>> rolesByUser = roleAssignments
+            .GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Role)
+                .OrderByDescending(r => r.Priority)
+                .ToList());
+
+        List<GuildMemberResponse> members = [];
+        foreach (ChatUser user in allMembers) {
+            string colour = "#ffffff";
+            if (rolesByUser.TryGetValue(user.Id, out List<Role>? roles)) {
+                foreach (Role role in roles) {
+                    if (!string.IsNullOrWhiteSpace(role.Color)) {
+                        colour = role.Color;
+                        break;
+                    }
+                }
+            }
+            bool online = redis.GetDatabase().StringGet($"status:{user.Id}").HasValue;
+            members.Add(new GuildMemberResponse(PublicUserResponse.FromChatUser(user, online), colour));
+        }
+
+        return members.ToArray();
     }
 
     public Task CreateInvite(GuildInvite invite) {

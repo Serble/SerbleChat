@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getChannelMembers } from '../api.js';
+import { getChannelMembers, getGuildChannelMembersDetails } from '../api.js';
 import UserPopout from './UserPopout.jsx';
+import { useApp } from '../context/AppContext.jsx';
 
 function Avatar({ name, size = 32 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -21,30 +22,53 @@ function Avatar({ name, size = 32 }) {
 /**
  * Props:
  *  channelId   number | string
- *  ownerId     string | null   (group owner, or null for DMs)
- *  refreshTick number          (increment to force a reload)
+ *  guildId     number | string | null   (pass for guild channels)
+ *  ownerId     string | null            (group owner, or null for DMs/guilds)
+ *  refreshTick number                   (increment to force a reload)
  */
-export default function MemberList({ channelId, ownerId, refreshTick }) {
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [popout,  setPopout]  = useState(null);
+export default function MemberList({ channelId, guildId, ownerId, refreshTick }) {
+  const [members, setMembers]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [popout,  setPopout]    = useState(null);
+  const [localTick, setLocalTick] = useState(0);
+
+  const { rolesUpdatedEvent } = useApp();
+  const isGuild = !!guildId;
+
+  // When roles are updated for this guild, bump the local tick to re-fetch
+  useEffect(() => {
+    if (!rolesUpdatedEvent || !guildId) return;
+    if (String(rolesUpdatedEvent.guildId) === String(guildId)) {
+      setLocalTick(t => t + 1);
+    }
+  }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!channelId) return;
     setLoading(true);
-    getChannelMembers(channelId)
+    const req = isGuild
+      ? getGuildChannelMembersDetails(guildId, channelId)
+      : getChannelMembers(channelId);
+    req
       .then(setMembers)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [channelId, refreshTick]);
+  }, [channelId, guildId, refreshTick, localTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Normalise to { id, username, isOnline, color? } regardless of source
+  const normalised = members.map(m =>
+    isGuild
+      ? { id: m.user.id, username: m.user.username, isOnline: m.user.isOnline, color: m.color }
+      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null }
+  );
 
   function handleClick(e, member) {
     const rect = e.currentTarget.getBoundingClientRect();
     setPopout({ userId: member.id, username: member.username, anchorRect: rect });
   }
 
-  const online  = members.filter(m => m.isOnline);
-  const offline = members.filter(m => !m.isOnline);
+  const online  = normalised.filter(m => m.isOnline);
+  const offline = normalised.filter(m => !m.isOnline);
 
   return (
     <div style={{
@@ -57,7 +81,7 @@ export default function MemberList({ channelId, ownerId, refreshTick }) {
         padding: '0 1rem', borderBottom: '1px solid #1e1f22', flexShrink: 0,
       }}>
         <span style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.875rem' }}>
-          Members — {members.length}
+          Members — {normalised.length}
         </span>
       </div>
 
@@ -91,6 +115,7 @@ export default function MemberList({ channelId, ownerId, refreshTick }) {
           username={popout.username}
           anchorRect={popout.anchorRect}
           onClose={() => setPopout(null)}
+          guildId={isGuild ? guildId : null}
         />
       )}
     </div>
@@ -100,6 +125,10 @@ export default function MemberList({ channelId, ownerId, refreshTick }) {
 function MemberRow({ member, ownerId, onClick }) {
   const [hovered, setHovered] = useState(false);
   const isOwner = ownerId && member.id === ownerId;
+  // Use role color if present and not empty/white-ish
+  const nameColor = member.color && member.color !== '#ffffff' && member.color !== ''
+    ? member.color
+    : (hovered ? '#f2f3f5' : '#dbdee1');
 
   return (
     <button
@@ -115,7 +144,6 @@ function MemberRow({ member, ownerId, onClick }) {
         opacity: member.isOnline ? 1 : 0.45,
       }}
     >
-      {/* Avatar with online dot */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <Avatar name={member.username} size={32} />
         <div style={{
@@ -126,7 +154,7 @@ function MemberRow({ member, ownerId, onClick }) {
         }} />
       </div>
       <span style={{
-        flex: 1, color: hovered ? '#f2f3f5' : '#dbdee1',
+        flex: 1, color: nameColor,
         fontSize: '0.875rem', fontWeight: 500,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         transition: 'color 0.1s',

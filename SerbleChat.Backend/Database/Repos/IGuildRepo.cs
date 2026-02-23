@@ -1,4 +1,5 @@
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Schemas;
 
 namespace SerbleChat.Backend.Database.Repos;
 
@@ -19,6 +20,7 @@ public interface IGuildRepo {
     Task<GuildChannel[]> GetGuildChannels(int guildId);
     Task<Channel[]> GetGuildChannelsAsChannels(int guildId);
     Task<ChatUser[]> GetGuildChannelMembers(int channelId);
+    Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId);
     
     Task CreateInvite(GuildInvite invite);
     Task<GuildInvite?> GetInvite(int id);

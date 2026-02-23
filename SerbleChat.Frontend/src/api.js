@@ -213,12 +213,14 @@ export async function deleteGuild(id) {
   return handle(res);
 }
 
-/** PATCH /guild/:id  – rename a guild (owner only) */
-export async function updateGuild(id, name) {
+/** PATCH /guild/:id  – update guild (name and/or defaultPermissions) */
+export async function updateGuild(id, patch) {
+  // Accept either (id, nameString) for legacy callers or (id, {name, defaultPermissions})
+  const body = typeof patch === 'string' ? { name: patch } : patch;
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
   return handle(res);
 }
@@ -258,8 +260,86 @@ export async function updateGuildChannel(guildId, channelId, name) {
   return handle(res);
 }
 
-// ── Guild Invites ─────────────────────────────────────────────────────────────
+/** GET /guild/:guildId/my-permissions – get the current user's resolved permissions */
+export async function getMyGuildPermissions(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/my-permissions`, { headers: authHeaders() });
+  return handle(res);
+}
 
+/** GET /guild/:guildId/members – list members with role colours */
+export async function getGuildMembers(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/channel/:channelId/members – guild member list with role colours */
+export async function getGuildChannelMembersDetails(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/members`, { headers: authHeaders() });
+  return handle(res);
+}
+
+// ── Guild Roles ───────────────────────────────────────────────────────────────
+
+/** GET /guild/:guildId/roles */
+export async function getGuildRoles(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/roles`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/roles */
+export async function createGuildRole(guildId, { name, color = '', displaySeparately = false, mentionable = true, permissions = null }) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/roles`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color, displaySeparately, mentionable, permissions }),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:guildId/roles/:roleId */
+export async function updateGuildRole(guildId, roleId, patch) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/roles/:roleId */
+export async function deleteGuildRole(guildId, roleId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/members/:userId/roles */
+export async function getUserGuildRoles(guildId, userId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}/roles`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/members/:userId/roles/:roleId */
+export async function addUserGuildRole(guildId, userId, roleId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/members/:userId/roles/:roleId */
+export async function removeUserGuildRole(guildId, userId, roleId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}/roles/${encodeURIComponent(roleId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+// ── Guild Invites ─────────────────────────────────────────────────────────────
 /** POST /guild/:guildId/invite  – create an invite; returns GuildInvite */
 export async function createGuildInvite(guildId) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/invite`, {

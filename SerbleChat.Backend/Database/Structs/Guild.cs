@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using SerbleChat.Backend.Schemas;
 
 namespace SerbleChat.Backend.Database.Structs;
 
@@ -16,6 +17,8 @@ public class Guild {
     [ForeignKey(nameof(OwnerNavigation))]
     [StringLength(64)]
     public string OwnerId { get; set; } = null!;
+    
+    public GuildPermissions DefaultPermissions { get; set; } = null!;
     
     // Navigation Properties
     [JsonIgnore]

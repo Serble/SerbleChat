@@ -53,3 +53,16 @@
 }
 ```
 
+`RolesUpdated`:
+```json
+{
+    "guildId": int
+}
+```
+
+`UserUpdated`:
+```json
+{
+    "id": "string"
+}
+```

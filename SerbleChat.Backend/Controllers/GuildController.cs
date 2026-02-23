@@ -12,7 +12,8 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("guild")]
 [Authorize]
-public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubContext<ChatHub> updates) : ControllerBase {
+public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo roles, 
+    IHubContext<ChatHub> updates) : ControllerBase {
 
     [HttpGet]
     public async Task<ActionResult<Guild[]>> GetMyGuilds() {
@@ -43,7 +44,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
 
         Guild guild = new() {
             Name = request.Name,
-            OwnerId = userId
+            OwnerId = userId,
+            CreatedAt = DateTime.UtcNow,
+            DefaultPermissions = GuildPermissions.Default
         };
         await guilds.CreateGuild(guild);
 
@@ -82,7 +85,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Guild not found");
         }
         
-        if (guild.OwnerId != userId) {
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        if (!perms.Administrator.ToBool()) {
             return Forbid();
         }
         
@@ -102,16 +106,47 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Guild not found");
         }
         
-        if (guild.OwnerId != userId) {
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
         
         if (!string.IsNullOrEmpty(request.Name)) {
             guild.Name = request.Name;
         }
+
+        if (request.DefaultPermissions != null) {
+            guild.DefaultPermissions = request.DefaultPermissions;
+        }
         
         await guilds.UpdateGuild(guild);
         return Ok();
+    }
+
+    [HttpGet("{id:int}/my-permissions")]
+    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(int id) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+        Guild? guild = await guilds.GetGuild(id);
+        if (guild == null) return NotFound("Guild not found");
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        return Ok(perms);
+    }
+
+    [HttpGet("{guildId:int}/members")]
+    public async Task<ActionResult<GuildMemberResponse[]>> GetGuildMembers(int guildId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) return NotFound("Guild not found");
+        if (!await guilds.IsGuildMember(guildId, userId)) return Forbid();
+        // Re-use channel-based details but for any channel in this guild
+        Channel[]? guildChannels = await guilds.GetGuildChannelsAsChannels(guildId);
+        if (guildChannels.Length == 0) {
+            // No channels — just return empty member list with no colour info
+            return Ok(Array.Empty<GuildMemberResponse>());
+        }
+        return Ok(await guilds.GetGuildChannelMembersDetails(guildChannels[0].Id));
     }
 
     // CHANNEL ENDPOINTS
@@ -143,7 +178,10 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Guild not found");
         }
         
-        // TODO: Permissions
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
         
         Channel channel = new() {
             CreatedAt = DateTime.UtcNow,
@@ -186,7 +224,10 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Channel not found in this guild");
         }
         
-        // TODO: Permissions
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
         
         await channels.DeleteChannel(channelId);
         await guilds.DeleteGuildChannel(channelId);
@@ -214,6 +255,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
         if (guildChannel == null || guildChannel.GuildId != guildId) {
             return NotFound("Channel not found in this guild");
         }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
 
         Channel channel = guildChannel.ChannelNavigation;
         if (!string.IsNullOrEmpty(request.Name)) {
@@ -227,7 +273,35 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
         await channels.UpdateChannel(channel);
         return Ok();
     }
-    
+
+    /// <summary>
+    /// Get members of channel.
+    /// This is different from <see cref="ChannelController.GetChannelMembers"/> because
+    /// it gets guild member information, not just regular user information.
+    /// </summary>
+    /// <param name="guildId"></param>
+    /// <param name="channelId"></param>
+    /// <returns></returns>
+    [HttpGet("{guildId:int}/channel/{channelId:int}/members")]
+    public async Task<ActionResult<GuildMemberResponse[]>> GetChannelMembers(int guildId, int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+        
+        return Ok(await guilds.GetGuildChannelMembersDetails(channelId));
+    }
+
     // INVITES
 
     [HttpPost("{guildId:int}/invite")]
@@ -240,6 +314,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
         Guild? guild = await guilds.GetGuild(guildId);
         if (guild == null) {
             return NotFound("Guild not found");
+        }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.CreateInvites.ToBool())) {
+            return Forbid();
         }
         
         GuildInvite invite = new() {
@@ -266,7 +345,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Guild not found");
         }
         
-        if (guild.OwnerId != userId) {
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, invite.GuildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
         
@@ -286,7 +366,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
             return NotFound("Guild not found");
         }
         
-        if (guild.OwnerId != userId) {
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
         
@@ -317,5 +398,213 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IHubConte
         
         await guilds.AddGuildMember(guild.Id, userId);
         return Ok(guild);
+    }
+    
+    // ROLES
+
+    [HttpGet("{guildId:int}/roles")]
+    public async Task<ActionResult<Role[]>> GetRoles(int guildId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        return Ok(await roles.GetGuildRoles(guildId));
+    }
+
+    [HttpPost("{guildId:int}/roles")]
+    public async Task<ActionResult<Role>> CreateRole(int guildId, RoleCreateRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
+            return Forbid();
+        }
+        
+        Role role = new() {
+            GuildId = guildId,
+            Name = request.Name,
+            Permissions = request.Permissions ?? new GuildPermissions(),
+            Color = request.Color ?? "",
+            DisplaySeparately = request.DisplaySeparately,
+            Mentionable = request.Mentionable
+        };
+        await roles.CreateRole(role);
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
+        return Ok(role);
+    }
+
+    [HttpDelete("{guildId:int}/roles/{roleId:int}")]
+    public async Task<ActionResult> DeleteRole(int guildId, int roleId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        Role? role = await roles.GetRole(roleId);
+        if (role == null || role.GuildId != guildId) {
+            return NotFound("Role not found in this guild");
+        }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
+            return Forbid();
+        }
+        
+        await roles.DeleteRole(roleId);
+        
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
+        return Ok();
+    }
+
+    [HttpPatch("{guildId:int}/roles/{roleId:int}")]
+    public async Task<ActionResult> UpdateRole(int guildId, int roleId, RoleUpdateRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        Role? role = await roles.GetRole(roleId);
+        if (role == null || role.GuildId != guildId) {
+            return NotFound("Role not found in this guild");
+        }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
+            return Forbid();
+        }
+        
+        if (!string.IsNullOrEmpty(request.Name)) {
+            role.Name = request.Name;
+        }
+        
+        if (request.Color != null) {  // can be empty string to reset to default colour
+            role.Color = request.Color;
+        }
+        
+        if (request.DisplaySeparately.HasValue) {
+            role.DisplaySeparately = request.DisplaySeparately.Value;
+        }
+        
+        if (request.Mentionable.HasValue) {
+            role.Mentionable = request.Mentionable.Value;
+        }
+        
+        if (request.Permissions != null) {
+            role.Permissions = request.Permissions;
+        }
+        
+        await roles.UpdateRole(role);
+        
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
+        return Ok();
+    }
+
+    [HttpPost("{guildId:int}/members/{userId}/roles/{roleId:int}")]
+    public async Task<ActionResult> AddRoleToUser(int guildId, int roleId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        Role? role = await roles.GetRole(roleId);
+        if (role == null || role.GuildId != guildId) {
+            return NotFound("Role not found in this guild");
+        }
+        
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(requesterId, guildId);
+        if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
+            return Forbid();
+        }
+        
+        await roles.AddUserRole(roleId, userId);
+        await updates.Clients.User(userId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
+        await updates.Clients.Group("guild-" + guildId).SendAsync("UserUpdated", new {
+            Id = userId
+        });
+        return Ok();
+    }
+
+    [HttpGet("{guildId:int}/members/{userId}/roles")]
+    public async Task<ActionResult<Role[]>> GetUserRoles(int guildId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        return Ok(await roles.GetUserRolesInGuild(userId, guildId));
+    }
+
+    [HttpDelete("{guildId:int}/members/{userId}/roles/{roleId:int}")]
+    public async Task<ActionResult> RemoveRoleFromUser(int guildId, int roleId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        Role? role = await roles.GetRole(roleId);
+        if (role == null || role.GuildId != guildId) {
+            return NotFound("Role not found in this guild");
+        }
+
+        GuildPermissions perms = await roles.GetUserPermissionsInGuild(requesterId, guildId);
+        if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
+            return Forbid();
+        }
+        
+        await roles.RemoveUserRole(roleId, userId);
+        await updates.Clients.User(userId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
+        await updates.Clients.Group("guild-" + guildId).SendAsync("UserUpdated", new {
+            Id = userId
+        });
+        return Ok();
     }
 }

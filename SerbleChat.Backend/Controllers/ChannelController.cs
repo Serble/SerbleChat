@@ -13,7 +13,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("channel")]
 [Authorize]
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
-    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds) : ControllerBase {
+    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IRoleRepo roles) : ControllerBase {
 
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
         switch (channel.Type) {
@@ -47,6 +47,15 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Forbid();
         }
 
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel != null) {
+            // guild permission check
+            GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildChannel.GuildId);
+            if (!(perms.SendMessages.ToBool() || perms.Administrator.ToBool())) {
+                return Forbid();
+            }
+        }
+
         Message msg = new() {
             AuthorId = userId,
             ChannelId = channel.Id,
@@ -71,8 +80,18 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
 
         if (message.AuthorId != userId) {
-            return Forbid();
-        }
+            GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+            if (guildChannel != null) {
+                // guild permission check
+                GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildChannel.GuildId);
+                if (!(perms.ManageMessages.ToBool() || perms.Administrator.ToBool())) {
+                    return Forbid();
+                }
+            }
+            else {  // if it's not a guild channel, only the author can delete
+                return Forbid();
+            }
+        }  // the author can always delete their own message, even without manage messages perms
         
         await msgs.DeleteMessage(messageId);
         await updates.Clients.Group($"channel-{channelId}").SendAsync("DeleteMessage", new {
