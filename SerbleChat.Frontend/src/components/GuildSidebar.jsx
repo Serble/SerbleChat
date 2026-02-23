@@ -206,8 +206,12 @@ function InvitePopup({ guildId, onClose }) {
   const [busy, setBusy]     = useState(true);
   const [copied, setCopied] = useState(false);
   const backdropRef = useRef(null);
+  // Prevent double POST in React StrictMode (effect fires twice in dev)
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     createGuildInvite(guildId)
       .then(setInvite)
       .catch(console.error)
