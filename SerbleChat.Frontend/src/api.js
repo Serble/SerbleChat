@@ -103,6 +103,16 @@ export async function getChannel(channelId) {
   return handle(res);
 }
 
+/** POST /channel/:channelId/voice  – get a LiveKit token for a channel */
+export async function getChannelVoiceToken(channelId) {
+  let res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/voice`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  
+  return handle(res);
+}
+
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 /** GET /channel/:channelId/messages?limit&offset  – list messages */

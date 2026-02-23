@@ -1,7 +1,10 @@
 using System.Security.Claims;
+using Livekit.Server.Sdk.Dotnet;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
+using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
@@ -13,7 +16,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("channel")]
 [Authorize]
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
-    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IRoleRepo roles) : ControllerBase {
+    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IRoleRepo roles, IOptions<LiveKitSettings> liveKitSettings) : ControllerBase {
 
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
         switch (channel.Type) {
@@ -292,7 +295,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         return Ok();
     }
 
-    [HttpPost("group")] // TEST: does this return channel information??
+    [HttpPost("group")]
     public async Task<ActionResult<GroupChat>> CreateGroupChat([FromBody] CreateGroupChatBody body) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
@@ -365,5 +368,42 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         
         List<DmChannel> dmChannels = await dms.GetDmChannels(userId);
         return Ok(dmChannels);
+    }
+
+    [HttpPost("{channelId:int}/voice")]
+    public async Task<ActionResult<LiveKitTokenResponse>> GetVoiceToken(int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound();
+        }
+        
+        if (!await UserHasAccessToChannel(userId, channel)) {
+            return Forbid();
+        }
+        
+        if (!channel.VoiceCapable) {
+            return BadRequest();
+        }
+        
+        if (channel.Type == ChannelType.Guild) {
+            GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, channel.GuildId!.Value);
+            if (!(perms.JoinVoice.ToBool() || perms.Administrator.ToBool())) {
+                return Forbid();
+            }
+        }
+        
+        AccessToken token = new AccessToken(liveKitSettings.Value.Key, liveKitSettings.Value.Secret)
+            .WithIdentity(userId)
+            .WithGrants(new VideoGrants {
+                RoomJoin = true,
+                Room = $"channel:{channelId}"
+            });
+        
+        return Ok(new LiveKitTokenResponse { Token = token.ToJwt() });
     }
 }

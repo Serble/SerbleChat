@@ -16,9 +16,11 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOptions<SerbleApiSettings>().Bind(builder.Configuration.GetSection("SerbleApi"));
 builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
+builder.Services.AddOptions<LiveKitSettings>().Bind(builder.Configuration.GetSection("LiveKit"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
 ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
+LiveKitSettings liveKitSettings = builder.Configuration.GetSection("LiveKit").Get<LiveKitSettings>() ?? throw new Exception("LiveKit settings not found");
 
 builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
