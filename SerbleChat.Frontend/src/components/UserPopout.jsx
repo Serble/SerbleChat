@@ -41,10 +41,9 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const dropRef = useRef(null);
   const popoutRef = useRef(null);
 
-  const { getMyPerms, currentUser } = useApp();
+  const { getMyPerms } = useApp();
   const myPerms        = guildId ? getMyPerms(guildId) : null;
   const canManageRoles = !!myPerms && (myPerms.administrator === 0 || myPerms.manageRoles === 0);
-  const isSelf         = currentUser?.id === userId;
 
   // Fetch user profile
   useEffect(() => {
@@ -94,7 +93,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
         setUserRoleIds(p => new Set([...p, roleId]));
       }
     } catch (e) { console.error(e); }
-    finally { setRolesBusy(p => ({ ...p, roleId: false })); }
+    finally { setRolesBusy(p => ({ ...p, [roleId]: false })); }
   }
 
   // Positioning
@@ -181,8 +180,8 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
               </div>
             )}
 
-            {/* ── Manage roles dropdown (ManageRoles only, not self) ── */}
-            {canManageRoles && !isSelf && guildRoles.length > 0 && (
+            {/* ── Manage roles dropdown (ManageRoles / admin only) ── */}
+            {canManageRoles && guildRoles.length > 0 && (
               <div style={{ position: 'relative', marginTop: '0.35rem' }} ref={dropRef}>
                 <button
                   onClick={() => setDropOpen(v => !v)}

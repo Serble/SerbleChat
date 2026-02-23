@@ -13,6 +13,4 @@ public interface IRoleRepo {
     public Task<Role[]> GetUserRolesInGuild(string userId, int guildId);
     public Task AddUserRole(int roleId, string userId);
     public Task RemoveUserRole(int roleId, string userId);
-    
-    public Task<GuildPermissions> GetUserPermissionsInGuild(string userId, int guildId);
 }

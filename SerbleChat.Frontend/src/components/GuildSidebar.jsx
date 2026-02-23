@@ -9,6 +9,7 @@ import {
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
+import ChannelPermsTab from './ChannelPermsTab.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -260,38 +261,119 @@ function InvitePopup({ guildId, onClose }) {
   );
 }
 
+// ─── Channel Settings Modal ───────────────────────────────────────────────────
+
+function ChannelSettingsModal({ guildId, channel, canManage, onClose, onRenamed, onDeleted }) {
+  const [tab, setTab]       = useState('overview');
+  const [name, setName]     = useState(channel.name);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState(null);
+  const backdropRef         = useRef(null);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function handleRename(e) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === channel.name) { onClose(); return; }
+    setBusy(true); setErr(null);
+    try {
+      await updateGuildChannel(guildId, channel.id, trimmed);
+      onRenamed(trimmed);
+      onClose();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete #${channel.name}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await deleteGuildChannel(guildId, channel.id);
+      onDeleted();
+      onClose();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  const tabStyle = active => ({
+    background: active ? '#404249' : 'transparent', border: 'none',
+    padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
+    fontSize: '0.875rem', fontWeight: 600, color: active ? '#f2f3f5' : '#72767d',
+    transition: 'background 0.1s, color 0.1s', whiteSpace: 'nowrap',
+  });
+
+  return (
+    <div
+      ref={backdropRef}
+      onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+    >
+      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: tab === 'permissions' ? 560 : 420, maxHeight: '85vh', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'max-width 0.15s' }}>
+        {/* Header */}
+        <div style={{ padding: '1.1rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#f2f3f5' }}>Channel Settings</div>
+            <div style={{ fontSize: '0.75rem', color: '#72767d', marginTop: '0.1rem' }}># {channel.name}</div>
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0.25rem', padding: '0.75rem 1.5rem 0', flexShrink: 0 }}>
+          <button style={tabStyle(tab === 'overview')} onClick={() => setTab('overview')}>Overview</button>
+          <button style={tabStyle(tab === 'permissions')} onClick={() => setTab('permissions')}>Permissions</button>
+        </div>
+
+        {/* Content */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {tab === 'overview' && (
+            <form onSubmit={handleRename} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={labelStyle}>Channel Name</label>
+                <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = '#7c3aed'}
+                  onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+              </div>
+              {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{err}</div>}
+              {canManage && (
+                <button type="submit" disabled={busy || !name.trim()}
+                  style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+                  onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>Save Changes</button>
+              )}
+              {canManage && (
+                <div style={{ borderTop: '1px solid #3b3d43', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f23f43', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
+                  <button type="button" onClick={handleDelete} disabled={busy}
+                    style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.5rem 1rem', color: '#f23f43', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>Delete Channel</button>
+                </div>
+              )}
+            </form>
+          )}
+
+          {tab === 'permissions' && (
+            <ChannelPermsTab guildId={guildId} channelId={channel.id} canManage={canManage} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
-function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete,
+function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
                        onDragStart, onDragEnter, onDragEnd, isDragOver }) {
   const [hovered, setHovered] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(ch.name);
-  const inputRef = useRef(null);
-
-  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
-
-  function startEdit(e) { e.stopPropagation(); setEditName(ch.name); setEditing(true); }
-
-  async function submitEdit(e) {
-    e?.preventDefault();
-    const trimmed = editName.trim();
-    if (!trimmed) { setEditing(false); return; }
-    setEditing(false);
-    if (trimmed !== ch.name) await onRename(trimmed);
-  }
-
-  if (editing) {
-    return (
-      <form onSubmit={submitEdit} style={{ padding: '0.15rem 0.5rem' }}>
-        <input ref={inputRef} value={editName} onChange={e => setEditName(e.target.value)}
-          onBlur={submitEdit}
-          onKeyDown={e => { if (e.key === 'Escape') setEditing(false); }}
-          maxLength={64}
-          style={{ width: '100%', background: '#1e1f22', border: '1px solid #5865f2', borderRadius: '4px', padding: '0.35rem 0.5rem', color: '#f2f3f5', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
-      </form>
-    );
-  }
 
   return (
     <div
@@ -312,7 +394,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete,
         cursor: canManage ? 'grab' : 'default',
       }}
     >
-      {/* Drag handle — only visible to managers on hover */}
+      {/* Drag handle */}
       {canManage && (
         <span style={{
           color: hovered ? '#4f5660' : 'transparent',
@@ -339,18 +421,15 @@ function ChannelRow({ ch, canManage, active, onNavigate, onRename, onDelete,
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
       </button>
 
-      {/* Edit / delete buttons */}
+      {/* Settings icon — only visible to managers on hover */}
       {canManage && hovered && (
-        <span style={{ display: 'flex', gap: '0.1rem', flexShrink: 0 }}>
-          <span title="Rename" onClick={startEdit}
-            style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.78rem', padding: '0.15rem 0.2rem', borderRadius: '3px', lineHeight: 1 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✏</span>
-          <span title="Delete" onClick={e => { e.stopPropagation(); onDelete(); }}
-            style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.78rem', padding: '0.15rem 0.2rem', borderRadius: '3px', lineHeight: 1 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#f23f43'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>🗑</span>
-        </span>
+        <span
+          title="Channel Settings"
+          onClick={e => { e.stopPropagation(); onSettings(); }}
+          style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, flexShrink: 0, transition: 'color 0.1s' }}
+          onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
+          onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+        >⚙</span>
       )}
     </div>
   );
@@ -367,6 +446,7 @@ export default function GuildSidebar({ guildId }) {
   const [addingChannel, setAddingChannel] = useState(false);
   const [newChName, setNewChName]         = useState('');
   const [addBusy, setAddBusy]             = useState(false);
+  const [channelSettings, setChannelSettings] = useState(null); // channel object or null
   // Drag-to-reorder state
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const dragIndexRef = useRef(null); // index being dragged
@@ -427,22 +507,6 @@ export default function GuildSidebar({ guildId }) {
       nav(`/app/channel/${ch.id}`);
     } catch (err) { console.error('createGuildChannel failed:', err); }
     finally { setAddBusy(false); }
-  }
-
-  async function handleRenameChannel(ch, newName) {
-    try {
-      await updateGuildChannel(guildId, ch.id, newName);
-      setChannels(p => p.map(c => c.id === ch.id ? { ...c, name: newName } : c));
-    } catch (err) { console.error('updateGuildChannel failed:', err); }
-  }
-
-  async function handleDeleteChannel(ch) {
-    if (!confirm(`Delete #${ch.name}? This cannot be undone.`)) return;
-    try {
-      await deleteGuildChannel(guildId, ch.id);
-      setChannels(p => p.filter(c => c.id !== ch.id));
-      if (String(currentChannelId) === String(ch.id)) nav(`/app/guild/${guildId}`, { replace: true });
-    } catch (err) { console.error('deleteGuildChannel failed:', err); }
   }
 
   async function handleReorder(fromIndex, toIndex) {
@@ -511,8 +575,7 @@ export default function GuildSidebar({ guildId }) {
           <ChannelRow key={ch.id} ch={ch} canManage={canManageChannels}
             active={String(currentChannelId) === String(ch.id)}
             onNavigate={() => nav(`/app/channel/${ch.id}`)}
-            onRename={n => handleRenameChannel(ch, n)}
-            onDelete={() => handleDeleteChannel(ch)}
+            onSettings={() => setChannelSettings(ch)}
             isDragOver={dragOverIndex === i}
             onDragStart={() => { dragIndexRef.current = i; }}
             onDragEnter={() => setDragOverIndex(i)}
@@ -550,6 +613,24 @@ export default function GuildSidebar({ guildId }) {
 
       {showInvite && (
         <InvitePopup guildId={guildId} onClose={() => setShowInvite(false)} />
+      )}
+
+      {channelSettings && (
+        <ChannelSettingsModal
+          guildId={guildId}
+          channel={channelSettings}
+          canManage={canManageChannels}
+          onClose={() => setChannelSettings(null)}
+          onRenamed={newName => {
+            setChannels(p => p.map(c => c.id === channelSettings.id ? { ...c, name: newName } : c));
+            setChannelSettings(prev => ({ ...prev, name: newName }));
+          }}
+          onDeleted={() => {
+            setChannels(p => p.filter(c => c.id !== channelSettings.id));
+            if (String(currentChannelId) === String(channelSettings.id)) nav(`/app/guild/${guildId}`, { replace: true });
+            setChannelSettings(null);
+          }}
+        />
       )}
     </div>
   );

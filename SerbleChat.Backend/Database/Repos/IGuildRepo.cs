@@ -22,8 +22,16 @@ public interface IGuildRepo {
     Task<ChatUser[]> GetGuildChannelMembers(int channelId);
     Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId);
     
+    Task<ChannelPermissionOverride[]> GetChannelPermissionOverrides(int channelId);
+    Task<ChannelPermissionOverride?> GetChannelPermissionOverride(int id);
+    Task CreateChannelPermissionOverride(ChannelPermissionOverride permissionOverride);
+    Task DeleteChannelPermissionOverride(int id);
+    Task UpdateChannelPermissionOverride(ChannelPermissionOverride permissionOverride);
+    
     Task CreateInvite(GuildInvite invite);
     Task<GuildInvite?> GetInvite(int id);
     Task DeleteInvite(int id);
     Task<GuildInvite[]> GetGuildInvites(int guildId);
+    
+    public Task<GuildPermissions> GetUserPermissions(string userId, int guildId, int channelId = -1);
 }

@@ -3,7 +3,7 @@ import * as signalR from '@microsoft/signalr';
 import {
   getMyAccount, getFriends, getDmChannels,
   getGroupChats, getGroupChat, getAccountById, getMyGuilds,
-  getMyGuildPermissions, verifyAuth, getGuildChannelMembersDetails,
+  getMyGuildPermissions, getMyChannelPermissions, verifyAuth, getGuildChannelMembersDetails,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -30,10 +30,14 @@ export function AppProvider({ children }) {
   // guildId (string) -> GuildPermissions object from server
   const [guildPermissions, setGuildPermissions] = useState({});
   const guildPermissionsRef = useRef({});
+  // channelId (string) -> GuildPermissions (resolved including channel overrides)
+  const [channelPermissions, setChannelPermissions] = useState({});
   // guildId (string) -> { userId -> hex color string }
   const [guildMemberColors, setGuildMemberColors] = useState({});
   // last RolesUpdated event payload { guildId } — MemberList watches this
   const [rolesUpdatedEvent, setRolesUpdatedEvent] = useState(null);
+  // last UserUpdated event payload { userId } — MemberList / ChatView watches this
+  const [userUpdatedEvent, setUserUpdatedEvent] = useState(null);
 
   const hubRef       = useRef(null);
   const userCacheRef = useRef({});
@@ -115,6 +119,22 @@ export function AppProvider({ children }) {
 
   function getMyPerms(guildId) {
     return guildPermissions[String(guildId)] ?? null;
+  }
+
+  async function loadChannelPermissions(guildId, channelId) {
+    const key = String(channelId);
+    try {
+      const perms = await getMyChannelPermissions(guildId, channelId);
+      setChannelPermissions(p => ({ ...p, [key]: perms }));
+      return perms;
+    } catch (e) {
+      console.error('loadChannelPermissions failed:', e);
+      return null;
+    }
+  }
+
+  function getMyChannelPerms(channelId) {
+    return channelPermissions[String(channelId)] ?? null;
   }
 
   /** Fetch member-color data for a guild channel and store it. */
@@ -251,6 +271,11 @@ export function AppProvider({ children }) {
       setRolesUpdatedEvent({ guildId, ts: Date.now() });
     });
 
+    conn.on('UserUpdated', ({ id }) => {
+      // A guild member's roles changed — refresh member colors/list
+      setUserUpdatedEvent({ userId: id, ts: Date.now() });
+    });
+
     conn.on('NewChannel', async (channel) => {      // channel.type: 0=Guild, 1=DM, 2=Group
       if (channel?.type === 0) {
         // Guild channel created — notify guild sidebar to reload its channel list
@@ -316,8 +341,10 @@ export function AppProvider({ children }) {
       reconnectHub,
       activeGuildId, setActiveGuildId,
       guildPermissions, loadGuildPermissions, getMyPerms,
+      channelPermissions, loadChannelPermissions, getMyChannelPerms,
       guildMemberColors, loadGuildMemberColors, getMemberColor,
       rolesUpdatedEvent,
+      userUpdatedEvent,
     }}>
       {children}
     </Ctx.Provider>

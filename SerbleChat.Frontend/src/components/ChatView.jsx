@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
-import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat } from '../api.js';
+import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
+         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InviteCard from './InviteCard.jsx';
+import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -92,7 +94,7 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor }) {
+function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData }) {
   const [author, setAuthor] = useState(null);
 
   // Group consecutive messages from the same author
@@ -122,7 +124,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
           {ts}
         </span>
         <span style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1 }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+          <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
           {extractInviteIds(msg.content).map(id => (
             <InviteCard key={id} inviteId={id} />
           ))}
@@ -155,7 +157,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
           <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : '#4f5660' }}>{ts}</span>
         </div>
         <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+          <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
           {extractInviteIds(msg.content).map(id => (
             <InviteCard key={id} inviteId={id} />
           ))}
@@ -168,7 +170,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms } = useApp();
   const [input, setInput]           = useState('');
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -181,6 +183,10 @@ export default function ChatView() {
   const [memberRefreshTick, setMemberRefreshTick] = useState(0);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [leaveBusy, setLeaveBusy]   = useState(false);
+  // Mention autocomplete
+  const [mentionData, setMentionData]   = useState({ members: [], channels: [], roles: [] });
+  const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
+  const [pickerIndex, setPickerIndex]   = useState(0);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -205,7 +211,8 @@ export default function ChatView() {
 
   // Permission checks for guild channels
   // PermissionState: 0 = Allow, 1 = Deny, 2 = Inherit
-  const myGuildPerms  = isGuildChannel ? getMyPerms(channel?.guildId) : null;
+  // Prefer channel-level resolved perms (includes overrides); fall back to guild-level perms
+  const myGuildPerms  = isGuildChannel ? (getMyChannelPerms(channelId) ?? getMyPerms(channel?.guildId)) : null;
   const isAdmin       = myGuildPerms?.administrator === 0;
   const canSend       = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.sendMessages === 0;
   const canManageMsgs = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.manageMessages === 0;
@@ -229,6 +236,12 @@ export default function ChatView() {
       loadGuildMemberColors(channel.guildId, channelId);
     }
   }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh member colors when a specific user's roles change (UserUpdated)
+  useEffect(() => {
+    if (!userUpdatedEvent || !isGuildChannel || !channel?.guildId) return;
+    loadGuildMemberColors(channel.guildId, channelId);
+  }, [userUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLeave() {
     if (leaveBusy) return;
@@ -302,6 +315,8 @@ export default function ChatView() {
     setChannel(null);
     setOtherUser(null);
     setInput('');
+    setMentionPicker(null);
+    setMentionData({ members: [], channels: [], roles: [] });
 
     Promise.all([
       getChannel(channelId),
@@ -312,7 +327,29 @@ export default function ChatView() {
       // Load permissions and member colors for guild channels
       if (ch.type === 0 && ch.guildId) {
         loadGuildPermissions(ch.guildId);
+        loadChannelPermissions(ch.guildId, channelId);
         loadGuildMemberColors(ch.guildId, channelId);
+        // Load mention autocomplete data
+        Promise.all([
+          getGuildMembers(ch.guildId),
+          getGuildRoles(ch.guildId),
+          getGuildChannels(ch.guildId),
+        ]).then(([members, roles, channels]) => {
+          setMentionData({
+            members:  (members  ?? []).map(m => ({ id: m.user?.id ?? m.id, username: m.user?.username ?? m.username, color: m.color ?? null })),
+            channels: (channels ?? []).map(c => ({ id: String(c.id), name: c.name })),
+            roles:    (roles    ?? []).map(r => ({ id: String(r.id), name: r.name, color: r.color || null })),
+          });
+        }).catch(console.error);
+      } else {
+        // DM / group: load channel members for user-mention autocomplete
+        getChannelMembers(channelId).then(members => {
+          setMentionData({
+            members:  (members ?? []).map(m => ({ id: m.id, username: m.username, color: null })),
+            channels: [],
+            roles:    [],
+          });
+        }).catch(console.error);
       }
       setChannel(ch);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
@@ -350,6 +387,61 @@ export default function ChatView() {
     el.style.height = Math.min(el.scrollHeight, 192) + 'px'; // 192px ≈ 12rem
   }, [input]);
 
+  // ── Mention autocomplete ────────────────────────────────────────────────────
+
+  function detectMention(text, cursorPos) {
+    const before = text.slice(0, cursorPos);
+    const atIdx  = before.lastIndexOf('@');
+    if (atIdx === -1) { setMentionPicker(null); return; }
+    const query = before.slice(atIdx + 1);
+    // Cancel if there's a space/newline between @ and cursor
+    if (/[\s\n]/.test(query)) { setMentionPicker(null); return; }
+    setMentionPicker({ query, atIndex: atIdx });
+    setPickerIndex(0);
+  }
+
+  const pickerSuggestions = useMemo(() => {
+    if (!mentionPicker) return [];
+    const q = mentionPicker.query.toLowerCase();
+    const score = (label) => label.toLowerCase().startsWith(q) ? 0 : 1;
+    const users = mentionData.members
+      .filter(m => !q || m.username.toLowerCase().includes(q))
+      .sort((a, b) => score(a.username) - score(b.username))
+      .slice(0, 5)
+      .map(m => ({ type: 'user', id: m.id, label: m.username, color: m.color }));
+    const channels = mentionData.channels
+      .filter(c => !q || c.name.toLowerCase().includes(q))
+      .sort((a, b) => score(a.name) - score(b.name))
+      .slice(0, 3)
+      .map(c => ({ type: 'channel', id: c.id, label: c.name, color: null }));
+    const roles = mentionData.roles
+      .filter(r => !q || r.name.toLowerCase().includes(q))
+      .sort((a, b) => score(a.name) - score(b.name))
+      .slice(0, 3)
+      .map(r => ({ type: 'role', id: r.id, label: r.name, color: r.color }));
+    return [...users, ...channels, ...roles];
+  }, [mentionPicker, mentionData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function insertMention(suggestion) {
+    if (!mentionPicker) return;
+    const { atIndex, query } = mentionPicker;
+    const before  = input.slice(0, atIndex);
+    const after   = input.slice(atIndex + 1 + query.length);
+    const token   = `<@${suggestion.type}:${suggestion.id}> `;
+    const next    = before + token + after;
+    setInput(next);
+    setMentionPicker(null);
+    // Restore focus and place cursor after the inserted token
+    requestAnimationFrame(() => {
+      if (!inputRef.current) return;
+      inputRef.current.focus();
+      const pos = before.length + token.length;
+      inputRef.current.setSelectionRange(pos, pos);
+    });
+  }
+
+  // ── Message send ─────────────────────────────────────────────────────────────
+
   async function handleSend(e) {
     e.preventDefault();
     const text = input.trim();
@@ -384,6 +476,15 @@ export default function ChatView() {
   }
 
   function handleKeyDown(e) {
+    // Mention picker keyboard navigation takes priority
+    if (mentionPicker && pickerSuggestions.length > 0) {
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setPickerIndex(i => Math.max(0, i - 1)); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIndex(i => Math.min(pickerSuggestions.length - 1, i + 1)); return; }
+      if (e.key === 'Tab' || (e.key === 'Enter' && pickerSuggestions.length > 0)) {
+        e.preventDefault(); insertMention(pickerSuggestions[pickerIndex]); return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); setMentionPicker(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend(e);
@@ -473,6 +574,7 @@ export default function ChatView() {
               onContextMenu={handleContextMenu}
               onUserClick={handleUserClick}
               getColor={(userId, username) => getMemberColor(isGuildChannel ? channel?.guildId : null, userId, username)}
+              mentionData={mentionData}
             />
           ))}
           <div ref={bottomRef} style={{ height: 8 }} />
@@ -480,7 +582,16 @@ export default function ChatView() {
 
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
           {canSend ? (
-          <form onSubmit={handleSend}>
+          <form onSubmit={handleSend} style={{ position: 'relative' }}>
+            {/* Mention autocomplete picker */}
+            {mentionPicker && (
+              <MentionPicker
+                suggestions={pickerSuggestions}
+                selectedIndex={pickerIndex}
+                onSelect={insertMention}
+                onHoverIndex={setPickerIndex}
+              />
+            )}
             <div style={{ display: 'flex', alignItems: 'flex-end', background: '#383a40', borderRadius: '8px', padding: '0 0.75rem' }}>
               <textarea
                 ref={inputRef}
@@ -493,8 +604,15 @@ export default function ChatView() {
                 }}
                 placeholder={`Message ${channelDisplayName}`}
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={e => { setInput(e.target.value); detectMention(e.target.value, e.target.selectionStart); }}
                 onKeyDown={handleKeyDown}
+                onKeyUp={e => {
+                  // Re-check when cursor moves through arrow keys
+                  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                    detectMention(input, e.target.selectionStart);
+                  }
+                }}
+                onClick={e => detectMention(input, e.target.selectionStart)}
                 maxLength={2000}
               />
               {input.trim() && (

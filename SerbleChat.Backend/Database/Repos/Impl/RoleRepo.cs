@@ -48,31 +48,4 @@ public class RoleRepo(ChatDatabaseContext context) : IRoleRepo {
             .Where(a => a.RoleId == roleId && a.UserId == userId)
             .ExecuteDeleteAsync();
     }
-
-    public async Task<GuildPermissions> GetUserPermissionsInGuild(string userId, int guildId) {
-        Guild guild = (await context.Guilds.FindAsync(guildId))!;
-
-        if (guild.OwnerId == userId) {
-            return GuildPermissions.OwnerPermissions;
-        }
-        
-        GuildPermissions?[] permissions = await context.Roles
-            .AsNoTracking()
-            .Where(r => r.GuildId == guildId)
-            .GroupJoin(context.UserRoleAssignments.Where(a => a.UserId == userId),
-                r => r.Id,
-                a => a.RoleId,
-                (r, a) => new { Role = r, HasRole = a.Any() })
-            .OrderByDescending(x => x.Role.Priority)
-            .Select(x => x.HasRole ? x.Role.Permissions : null)
-            .ToArrayAsync();
-
-        GuildPermissions current = guild.DefaultPermissions;
-
-        for (int i = permissions.Length - 1; i >= 0; i--) {
-            current = current.ApplyOverrides(permissions[i]);
-        }
-        
-        return current;
-    }
 }

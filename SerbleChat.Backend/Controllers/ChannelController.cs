@@ -15,16 +15,43 @@ namespace SerbleChat.Backend.Controllers;
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IRoleRepo roles) : ControllerBase {
 
-    private async Task<bool> UserHasAccessToChannel(string userId, Channel channel) {
+    private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
         switch (channel.Type) {
             case ChannelType.Group:
                 return await groups.IsMemberInChat(channel.Id, userId);
+            
             case ChannelType.Dm: {
                 DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
-                return dmChannel != null && (dmChannel.User1Id == userId || dmChannel.User2Id == userId);
+                if (dmChannel == null) {
+                    return false;
+                }
+
+                if (!(dmChannel.User1Id == userId || dmChannel.User2Id == userId)) {
+                    return false;
+                }
+                
+                return true;
             }
-            case ChannelType.Guild:
-                return channel.GuildId.HasValue && await guilds.IsGuildMember(channel.GuildId.Value, userId);
+
+            case ChannelType.Guild: {
+                if (!channel.GuildId.HasValue) {
+                    return false;
+                }
+
+                if (!await guilds.IsGuildMember(channel.GuildId.Value, userId)) {
+                    return false;
+                }
+
+                if (sendMessages) {
+                    GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId.Value, channel.Id);
+                    if (!perms.HasPerm(p => p.SendMessages)) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
             default:
                 return false;
         }
@@ -43,14 +70,14 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel)) {
+        if (!await UserHasAccessToChannel(userId, channel, true)) {
             return Forbid();
         }
 
         GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
         if (guildChannel != null) {
             // guild permission check
-            GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildChannel.GuildId);
+            GuildPermissions perms = await guilds.GetUserPermissions(userId, guildChannel.GuildId, channelId);
             if (!(perms.SendMessages.ToBool() || perms.Administrator.ToBool())) {
                 return Forbid();
             }
@@ -83,7 +110,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
             if (guildChannel != null) {
                 // guild permission check
-                GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildChannel.GuildId);
+                GuildPermissions perms = await guilds.GetUserPermissions(userId, guildChannel.GuildId, channelId);
                 if (!(perms.ManageMessages.ToBool() || perms.Administrator.ToBool())) {
                     return Forbid();
                 }
@@ -114,7 +141,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel)) {
+        if (!await UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
     
@@ -135,7 +162,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel)) {
+        if (!await UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
         
@@ -155,7 +182,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel)) {
+        if (!await UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
 

@@ -387,3 +387,46 @@ export async function acceptGuildInvite(inviteId) {
   });
   return handle(res);
 }
+
+// ── Channel Permission Overrides ──────────────────────────────────────────────
+
+/** GET /guild/:guildId/channel/:channelId/my-permissions – resolved perms for this specific channel */
+export async function getMyChannelPermissions(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/my-permissions`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/channel/:channelId/permission-overrides – list all overrides */
+export async function getChannelPermissionOverrides(guildId, channelId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/channel/:channelId/permission-overrides – create an override */
+export async function createChannelPermissionOverride(guildId, channelId, { userId, roleId, permissions }) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, roleId, permissions }),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:guildId/channel/:channelId/permission-overrides/:overrideId – update permissions */
+export async function updateChannelPermissionOverride(guildId, channelId, overrideId, permissions) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides/${encodeURIComponent(overrideId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permissions }),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/channel/:channelId/permission-overrides/:overrideId */
+export async function deleteChannelPermissionOverride(guildId, channelId, overrideId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}/permission-overrides/${encodeURIComponent(overrideId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}

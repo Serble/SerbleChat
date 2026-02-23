@@ -85,7 +85,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, id);
         if (!perms.Administrator.ToBool()) {
             return Forbid();
         }
@@ -106,7 +106,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, id);
         if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
@@ -129,7 +129,17 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         if (userId == null) return Unauthorized();
         Guild? guild = await guilds.GetGuild(id);
         if (guild == null) return NotFound("Guild not found");
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, id);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, id);
+        return Ok(perms);
+    }
+    
+    [HttpGet("{id:int}/channel/{channelId:int}/my-permissions")]
+    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(int id, int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+        Guild? guild = await guilds.GetGuild(id);
+        if (guild == null) return NotFound("Guild not found");
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, id, channelId);
         return Ok(perms);
     }
 
@@ -178,7 +188,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
             return Forbid();
         }
@@ -224,7 +234,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Channel not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
         if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
             return Forbid();
         }
@@ -256,7 +266,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Channel not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
         if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
             return Forbid();
         }
@@ -291,7 +301,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Channel not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
         if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
             return Forbid();
         }
@@ -350,6 +360,128 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(await guilds.GetGuildChannelMembersDetails(channelId));
     }
 
+    [HttpGet("{guildId:int}/channel/{channelId:int}/permission-overrides")]
+    public async Task<ActionResult<ChannelPermissionOverride[]>> GetChannelPermissionOverrides(int guildId,
+        int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+
+        return await guilds.GetChannelPermissionOverrides(channelId);
+    }
+
+    [HttpDelete("{guildId:int}/channel/{channelId:int}/permission-overrides/{overrideId:int}")]
+    public async Task<ActionResult> DeleteChannelPermissionOverride(int guildId, int channelId, int overrideId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+        
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
+        
+        await guilds.DeleteChannelPermissionOverride(overrideId);
+        return Ok();
+    }
+
+    [HttpPost("{guildId:int}/channel/{channelId:int}/permission-overrides")]
+    public async Task<ActionResult> CreateChannelPermissionOverride(int guildId, int channelId,
+        ChannelPermissionOverrideCreateRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+        
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
+
+        if (request.RoleId == null && request.UserId == null) {
+            return BadRequest("Must specify either RoleId or UserId");
+        }
+
+        if (request is { RoleId: not null, UserId: not null }) {
+            return BadRequest("Cannot specify both RoleId and UserId");
+        }
+        
+        ChannelPermissionOverride permissionOverride = new() {
+            ChannelId = channelId,
+            RoleId = request.RoleId,
+            UserId = request.UserId,
+            Permissions = request.Permissions
+        };
+        
+        await guilds.CreateChannelPermissionOverride(permissionOverride);
+        return Ok();
+    }
+    
+    [HttpPatch("{guildId:int}/channel/{channelId:int}/permission-overrides/{overrideId:int}")]
+    public async Task<ActionResult> UpdateChannelPermissionOverride(int guildId, int channelId, int overrideId,
+        ChannelPermissionOverrideModifyRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        GuildChannel? guildChannel = await guilds.GetGuildChannel(channelId);
+        if (guildChannel == null || guildChannel.GuildId != guildId) {
+            return NotFound("Channel not found in this guild");
+        }
+        
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId, channelId);
+        if (!(perms.Administrator.ToBool() || perms.ManageChannels.ToBool())) {
+            return Forbid();
+        }
+
+        ChannelPermissionOverride? permissionOverride = await guilds.GetChannelPermissionOverride(channelId);
+        if (permissionOverride == null) {
+            return NotFound("Permission override not found");
+        }
+
+        permissionOverride.Permissions = request.Permissions;
+        await guilds.UpdateChannelPermissionOverride(permissionOverride);
+        return Ok();
+    }
+
     // INVITES
 
     [HttpPost("{guildId:int}/invite")]
@@ -364,7 +496,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.Administrator.ToBool() || perms.CreateInvites.ToBool())) {
             return Forbid();
         }
@@ -393,7 +525,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, invite.GuildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, invite.GuildId);
         if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
@@ -414,7 +546,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.Administrator.ToBool() || perms.ManageGuild.ToBool())) {
             return Forbid();
         }
@@ -477,7 +609,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
 
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
         }
@@ -514,7 +646,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Role not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
         }
@@ -544,7 +676,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Role not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(userId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
         }
@@ -594,7 +726,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Role not found in this guild");
         }
         
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(requesterId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
         }
@@ -641,7 +773,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Role not found in this guild");
         }
 
-        GuildPermissions perms = await roles.GetUserPermissionsInGuild(requesterId, guildId);
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
         }

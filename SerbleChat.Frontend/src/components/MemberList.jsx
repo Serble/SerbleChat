@@ -32,7 +32,7 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
   const [popout,  setPopout]    = useState(null);
   const [localTick, setLocalTick] = useState(0);
 
-  const { rolesUpdatedEvent } = useApp();
+  const { rolesUpdatedEvent, userUpdatedEvent } = useApp();
   const isGuild = !!guildId;
 
   // When roles are updated for this guild, bump the local tick to re-fetch
@@ -42,6 +42,12 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
       setLocalTick(t => t + 1);
     }
   }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When any guild member's roles change (UserUpdated), re-fetch the member list
+  useEffect(() => {
+    if (!userUpdatedEvent || !guildId) return;
+    setLocalTick(t => t + 1);
+  }, [userUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!channelId) return;

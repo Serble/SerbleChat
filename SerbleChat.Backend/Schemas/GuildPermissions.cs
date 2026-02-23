@@ -18,7 +18,8 @@ public record GuildPermissions(
     PermissionState MuteMembers = PermissionState.Inherit,
     PermissionState DeafenMembers = PermissionState.Inherit,
     PermissionState MoveMembers = PermissionState.Inherit,
-    PermissionState VideoStream = PermissionState.Inherit
+    PermissionState VideoStream = PermissionState.Inherit,
+    PermissionState ViewChannel = PermissionState.Inherit
 ) {
     public static readonly GuildPermissions Default = new() {
         Administrator = PermissionState.Deny,
@@ -35,27 +36,16 @@ public record GuildPermissions(
         MuteMembers = PermissionState.Deny,
         DeafenMembers = PermissionState.Deny,
         MoveMembers = PermissionState.Deny,
-        VideoStream = PermissionState.Allow
+        VideoStream = PermissionState.Allow,
+        ViewChannel = PermissionState.Allow
     };
 
     /// <summary>All permissions granted — returned for guild owners.</summary>
     public static readonly GuildPermissions OwnerPermissions = new(
-        Administrator: PermissionState.Allow,
-        ManageGuild: PermissionState.Allow,
-        ManageRoles: PermissionState.Allow,
-        ManageChannels: PermissionState.Allow,
-        KickMembers: PermissionState.Allow,
-        BanMembers: PermissionState.Allow,
-        CreateInvites: PermissionState.Allow,
-        SendMessages: PermissionState.Allow,
-        ManageMessages: PermissionState.Allow,
-        JoinVoice: PermissionState.Allow,
-        Speak: PermissionState.Allow,
-        MuteMembers: PermissionState.Allow,
-        DeafenMembers: PermissionState.Allow,
-        MoveMembers: PermissionState.Allow,
-        VideoStream: PermissionState.Allow
+        Administrator: PermissionState.Allow
     );
+    
+    public static readonly GuildPermissions Inherit = new();
 
     public GuildPermissions ApplyOverrides(GuildPermissions? overrides) {
         if (overrides == null) return this;
@@ -74,8 +64,13 @@ public record GuildPermissions(
             MuteMembers:      overrides.MuteMembers      != PermissionState.Inherit ? overrides.MuteMembers      : MuteMembers,
             DeafenMembers:    overrides.DeafenMembers    != PermissionState.Inherit ? overrides.DeafenMembers    : DeafenMembers,
             MoveMembers:      overrides.MoveMembers      != PermissionState.Inherit ? overrides.MoveMembers      : MoveMembers,
-            VideoStream:      overrides.VideoStream      != PermissionState.Inherit ? overrides.VideoStream      : VideoStream
+            VideoStream:      overrides.VideoStream      != PermissionState.Inherit ? overrides.VideoStream      : VideoStream,
+            ViewChannel:      overrides.ViewChannel      != PermissionState.Inherit ? overrides.ViewChannel      : ViewChannel
         );
+    }
+
+    public bool HasPerm(Func<GuildPermissions, PermissionState> selector) {
+        return Administrator.ToBool() || selector(this).ToBool();
     }
 }
 

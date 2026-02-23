@@ -17,6 +17,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<GuildInvite> GuildInvites { get; set; } = null!;
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<UserRoleAssignment> UserRoleAssignments { get; set; } = null!;
+    public DbSet<ChannelPermissionOverride> ChannelPermissionOverrides { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<GroupChatMember>()
