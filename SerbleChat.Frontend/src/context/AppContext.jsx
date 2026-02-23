@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as signalR from '@microsoft/signalr';
 import {
   getMyAccount, getFriends, getDmChannels,
@@ -16,7 +16,6 @@ export function AppProvider({ children }) {
   const [dmChannels,  setDmChannels]    = useState([]);
   const [groupChats,  setGroupChats]    = useState([]);
   const [guilds,      setGuilds]        = useState([]);
-  const [userCache,   setUserCache]     = useState({});
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
   const [toasts,        setToasts]        = useState([]);
@@ -157,7 +156,7 @@ export function AppProvider({ children }) {
    *   a hue derived from their username.
    * - Outside a guild: always derives a hue from their username.
    */
-  function getMemberColor(guildId, userId, username) {
+  const getMemberColor = useCallback((guildId, userId, username) => {
     if (guildId) {
       const map = guildMemberColors[String(guildId)];
       const roleColor = map?.[userId];
@@ -167,21 +166,21 @@ export function AppProvider({ children }) {
     const seed = username || userId || 'x';
     const hue  = (seed.charCodeAt(0) * 37 + seed.charCodeAt(seed.length - 1) * 17) % 360;
     return `hsl(${hue},60%,72%)`;
-  }
+  }, [guildMemberColors]);
 
-  async function resolveUser(id) {
+  // Stable reference — uses ref for cache so no state update is needed
+  const resolveUser = useCallback(async (id) => {
     if (userCacheRef.current[id]) return userCacheRef.current[id];
     try {
       const u = await getAccountById(id);
       userCacheRef.current[id] = u;
-      setUserCache(p => ({ ...p, [id]: u }));
       return u;
     } catch {
       const fb = { id, username: id.slice(0, 8) + '…' };
       userCacheRef.current[id] = fb;
       return fb;
     }
-  }
+  }, []); // deps: empty — only uses a ref and a module-level import
 
   async function reconnectHub() {
     try { await hubRef.current?.stop(); } catch { /* ignore */ }
@@ -326,7 +325,7 @@ export function AppProvider({ children }) {
       dmChannels, setDmChannels,
       groupChats, setGroupChats,
       guilds,     setGuilds,
-      userCache, isConnected,
+      isConnected,
       messages,  setMessages,
       toasts, addToast, removeToast,
       channelEvent,

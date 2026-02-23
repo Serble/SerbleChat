@@ -5,7 +5,7 @@ import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
   updateGuildChannel, updateGuild, deleteGuild,
   createGuildInvite, getGuildInvites, deleteGuildInvite,
-  reorderGuildChannel,
+  reorderGuildChannel, FRONTEND_URL,
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
@@ -82,7 +82,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
   }
 
   function copyLink(inv) {
-    navigator.clipboard.writeText(`${window.location.origin}/invite/${inv.id}`);
+    navigator.clipboard.writeText(`${FRONTEND_URL}/invite/${inv.id}`);
     setCopied(inv.id);
     setTimeout(() => setCopied(null), 2000);
   }
@@ -163,7 +163,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
               {invLoading && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Loading…</div>}
               {!invLoading && invites.length === 0 && <div style={{ color: '#4f5660', fontSize: '0.85rem' }}>No active invites. Create one above.</div>}
               {invites.map(inv => {
-                const link = `${window.location.origin}/invite/${inv.id}`;
+                const link = `${FRONTEND_URL}/invite/${inv.id}`;
                 return (
                   <div key={inv.id} style={{ background: '#1e1f22', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -226,7 +226,7 @@ function InvitePopup({ guildId, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const link = invite ? `${window.location.origin}/invite/${invite.id}` : '';
+  const link = invite ? `${FRONTEND_URL}/invite/${invite.id}` : '';
 
   function copyLink() {
     if (!link) return;
@@ -261,14 +261,121 @@ function InvitePopup({ guildId, onClose }) {
   );
 }
 
+// ─── Create Channel Modal ─────────────────────────────────────────────────────
+
+function CreateChannelModal({ guildId, onClose, onCreate }) {
+  const [name, setName]               = useState('');
+  const [voiceCapable, setVoiceCapable] = useState(false);
+  const [busy, setBusy]               = useState(false);
+  const [err, setErr]                 = useState(null);
+  const backdropRef                   = useRef(null);
+  const inputRef                      = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setBusy(true); setErr(null);
+    try {
+      const ch = await createGuildChannel(guildId, trimmed, voiceCapable);
+      onCreate(ch);
+      onClose();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  return (
+    <div
+      ref={backdropRef}
+      onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+    >
+      <div style={{ background: '#313338', borderRadius: '12px', width: '100%', maxWidth: 420, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f2f3f5' }}>Create Channel</div>
+          <button onClick={onClose}
+            style={{ background: 'transparent', border: 'none', color: '#72767d', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>✕</button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: '1.25rem 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+          <div>
+            <label style={labelStyle}>Channel Name</label>
+            <input ref={inputRef} value={name} onChange={e => setName(e.target.value)} maxLength={64}
+              placeholder="new-channel"
+              style={inputStyle}
+              onFocus={e => e.target.style.borderColor = '#7c3aed'}
+              onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+          </div>
+
+          {/* Voice capable toggle */}
+          <div
+            onClick={() => setVoiceCapable(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: '#2b2d31', borderRadius: '8px', cursor: 'pointer', userSelect: 'none', border: '1px solid #3b3d43' }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>Voice Channel</div>
+              <div style={{ fontSize: '0.72rem', color: '#72767d', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
+            </div>
+            <Toggle on={voiceCapable} />
+          </div>
+
+          {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{err}</div>}
+
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+            <button type="button" onClick={onClose} disabled={busy}
+              style={{ background: 'transparent', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.55rem 1rem', color: '#b5bac1', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'border-color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#72767d'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#3b3d43'}>Cancel</button>
+            <button type="submit" disabled={busy || !name.trim()}
+              style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.55rem 1.1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
+              onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = '#6d28d9'; }}
+              onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}>
+              {busy ? 'Creating…' : 'Create Channel'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Toggle switch ────────────────────────────────────────────────────────────
+
+function Toggle({ on }) {
+  return (
+    <div style={{
+      width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+      background: on ? '#7c3aed' : '#4f5660',
+      position: 'relative', transition: 'background 0.2s',
+    }}>
+      <div style={{
+        position: 'absolute', top: 3, left: on ? 21 : 3,
+        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+      }} />
+    </div>
+  );
+}
+
 // ─── Channel Settings Modal ───────────────────────────────────────────────────
 
-function ChannelSettingsModal({ guildId, channel, canManage, onClose, onRenamed, onDeleted }) {
-  const [tab, setTab]       = useState('overview');
-  const [name, setName]     = useState(channel.name);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState(null);
-  const backdropRef         = useRef(null);
+function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated, onDeleted }) {
+  const [tab, setTab]               = useState('overview');
+  const [name, setName]             = useState(channel.name);
+  const [voiceCapable, setVoiceCapable] = useState(channel.voiceCapable ?? false);
+  const [busy, setBusy]             = useState(false);
+  const [err, setErr]               = useState(null);
+  const backdropRef                 = useRef(null);
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -276,14 +383,17 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onRenamed,
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function handleRename(e) {
+  async function handleSave(e) {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed || trimmed === channel.name) { onClose(); return; }
+    if (!trimmed) return;
+    const nameChanged  = trimmed !== channel.name;
+    const voiceChanged = voiceCapable !== (channel.voiceCapable ?? false);
+    if (!nameChanged && !voiceChanged) { onClose(); return; }
     setBusy(true); setErr(null);
     try {
-      await updateGuildChannel(guildId, channel.id, trimmed);
-      onRenamed(trimmed);
+      await updateGuildChannel(guildId, channel.id, { name: trimmed, voiceCapable });
+      onUpdated({ ...channel, name: trimmed, voiceCapable });
       onClose();
     } catch (e) { setErr(e.message); setBusy(false); }
   }
@@ -333,7 +443,7 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onRenamed,
         {/* Content */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {tab === 'overview' && (
-            <form onSubmit={handleRename} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={labelStyle}>Channel Name</label>
                 <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64}
@@ -341,6 +451,19 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onRenamed,
                   onFocus={e => e.target.style.borderColor = '#7c3aed'}
                   onBlur={e => e.target.style.borderColor = '#3b3d43'} />
               </div>
+
+              {/* Voice capable toggle */}
+              <div
+                onClick={() => canManage && setVoiceCapable(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.85rem', background: '#2b2d31', borderRadius: '8px', cursor: canManage ? 'pointer' : 'default', userSelect: 'none', border: '1px solid #3b3d43', opacity: canManage ? 1 : 0.5 }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>Voice Channel</div>
+                  <div style={{ fontSize: '0.72rem', color: '#72767d', marginTop: '0.1rem' }}>Enable voice &amp; video capabilities</div>
+                </div>
+                <Toggle on={voiceCapable} />
+              </div>
+
               {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#f23f43', fontSize: '0.83rem' }}>{err}</div>}
               {canManage && (
                 <button type="submit" disabled={busy || !name.trim()}
@@ -417,7 +540,9 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
           minWidth: 0,
         }}
       >
-        <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '1rem', flexShrink: 0, lineHeight: 1 }}>#</span>
+        <span style={{ color: hovered || active ? '#72767d' : '#4f5660', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
+          {ch.voiceCapable ? '🔊' : '#'}
+        </span>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
       </button>
 
@@ -443,14 +568,11 @@ export default function GuildSidebar({ guildId }) {
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
   const [showInvite, setShowInvite]       = useState(false);
-  const [addingChannel, setAddingChannel] = useState(false);
-  const [newChName, setNewChName]         = useState('');
-  const [addBusy, setAddBusy]             = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [channelSettings, setChannelSettings] = useState(null); // channel object or null
   // Drag-to-reorder state
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const dragIndexRef = useRef(null); // index being dragged
-  const addInputRef = useRef(null);
   const nav = useNavigate();
   const loc = useLocation();
 
@@ -479,11 +601,9 @@ export default function GuildSidebar({ guildId }) {
   }
 
   useEffect(() => {
-    setChannels([]); setAddingChannel(false); setNewChName(''); setShowSettings(false);
+    setChannels([]); setShowSettings(false);
     loadChannels();
   }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { if (addingChannel) addInputRef.current?.focus(); }, [addingChannel]);
 
   // React to SignalR guild channel events
   useEffect(() => {
@@ -494,20 +614,6 @@ export default function GuildSidebar({ guildId }) {
       setChannels(p => p.filter(c => String(c.id) !== String(guildChannelEvent.channelId)));
     }
   }, [guildChannelEvent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleAddChannel(e) {
-    e?.preventDefault();
-    const name = newChName.trim();
-    if (!name) { setAddingChannel(false); return; }
-    setAddBusy(true);
-    try {
-      const ch = await createGuildChannel(guildId, name);
-      setChannels(p => [...p, ch]);
-      setNewChName(''); setAddingChannel(false);
-      nav(`/app/channel/${ch.id}`);
-    } catch (err) { console.error('createGuildChannel failed:', err); }
-    finally { setAddBusy(false); }
-  }
 
   async function handleReorder(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
@@ -557,7 +663,7 @@ export default function GuildSidebar({ guildId }) {
         <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.25rem', marginBottom: '0.2rem' }}>
           <span style={{ flex: 1, fontSize: '0.68rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none' }}>Text Channels</span>
           {canManageChannels && (
-            <button title="Create Channel" onClick={() => setAddingChannel(true)}
+            <button title="Create Channel" onClick={() => setShowCreateChannel(true)}
               style={{ background: 'transparent', border: 'none', color: '#72767d', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.1rem', borderRadius: '4px', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
               onMouseLeave={e => e.currentTarget.style.color = '#72767d'}>＋</button>
@@ -565,7 +671,7 @@ export default function GuildSidebar({ guildId }) {
         </div>
 
         {loading && <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem' }}>Loading…</div>}
-        {!loading && channels.length === 0 && !addingChannel && (
+        {!loading && channels.length === 0 && (
           <div style={{ color: '#4f5660', fontSize: '0.82rem', padding: '0.4rem 0.5rem', lineHeight: 1.5 }}>
             No channels yet.{canManageChannels ? ' Use ＋ to add one.' : ''}
           </div>
@@ -588,17 +694,6 @@ export default function GuildSidebar({ guildId }) {
             }}
           />
         ))}
-
-        {addingChannel && (
-          <form onSubmit={handleAddChannel} style={{ margin: '0.25rem 0', padding: '0.15rem 0.5rem' }}>
-            <input ref={addInputRef} value={newChName} onChange={e => setNewChName(e.target.value)}
-              placeholder="new-channel" maxLength={64} disabled={addBusy}
-              onKeyDown={e => { if (e.key === 'Escape') { setAddingChannel(false); setNewChName(''); } }}
-              onBlur={() => setTimeout(() => { if (!addBusy) { setAddingChannel(false); setNewChName(''); } }, 150)}
-              style={{ width: '100%', background: '#1e1f22', border: '1px solid #5865f2', borderRadius: '4px', padding: '0.4rem 0.5rem', color: '#f2f3f5', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
-            <div style={{ fontSize: '0.72rem', color: '#5865f2', marginTop: '0.2rem', paddingLeft: '0.1rem' }}>Press Enter to create · Esc to cancel</div>
-          </form>
-        )}
       </div>
 
       {showSettings && guild && (
@@ -615,15 +710,26 @@ export default function GuildSidebar({ guildId }) {
         <InvitePopup guildId={guildId} onClose={() => setShowInvite(false)} />
       )}
 
+      {showCreateChannel && (
+        <CreateChannelModal
+          guildId={guildId}
+          onClose={() => setShowCreateChannel(false)}
+          onCreate={ch => {
+            setChannels(p => [...p, ch]);
+            nav(`/app/channel/${ch.id}`);
+          }}
+        />
+      )}
+
       {channelSettings && (
         <ChannelSettingsModal
           guildId={guildId}
           channel={channelSettings}
           canManage={canManageChannels}
           onClose={() => setChannelSettings(null)}
-          onRenamed={newName => {
-            setChannels(p => p.map(c => c.id === channelSettings.id ? { ...c, name: newName } : c));
-            setChannelSettings(prev => ({ ...prev, name: newName }));
+          onUpdated={updated => {
+            setChannels(p => p.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+            setChannelSettings(null);
           }}
           onDeleted={() => {
             setChannels(p => p.filter(c => c.id !== channelSettings.id));

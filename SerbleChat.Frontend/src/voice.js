@@ -41,7 +41,7 @@ export async function joinChannel(channelId) {
         }
     });
 
-    await room.connect("ws://localhost:7880", token);
+    await room.connect(import.meta.env.VITE_LIVEKIT_URL, token);
 
     // Publish microphone
     session.micTrack = await createLocalAudioTrack({

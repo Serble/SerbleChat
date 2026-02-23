@@ -1,10 +1,72 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 
 /** Matches <@user:id>, <@channel:id>, <@role:id> */
 export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
+
+// Module-level constant — avoids creating a new array on every render,
+// which would force react-markdown to rebuild its unified processor each time.
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+
+// Messages with more than this many lines get a collapsed view with a "Show more"
+// button. Full markdown is always rendered — we only clip it visually with CSS
+// max-height so nothing is ever truncated.
+const COLLAPSE_LINE_LIMIT = 28;
+const COLLAPSED_MAX_HEIGHT = `${COLLAPSE_LINE_LIMIT * 1.5}em`; // matches lineHeight 1.5
+
+/**
+ * Markdown collapses multiple consecutive blank lines into one paragraph break.
+ * Preserve extra blank lines, but cap at 8 extras to prevent thousands of
+ * empty paragraphs being generated from messages that are mostly newlines.
+ */
+function preserveBlankLines(content) {
+  return content.replace(/\n{3,}/g, match => {
+    const extra = match.length - 2;
+    return '\n\n' + '\u200B\n\n'.repeat(extra);
+  });
+}
+
+// ─── Error boundary ───────────────────────────────────────────────────────────
+
+/**
+ * Catches any synchronous error thrown during the remark → HAST → JSX
+ * pipeline (including call-stack overflows on malformed/huge content) and
+ * falls back to plain pre-wrapped text so the rest of the chat stays intact.
+ */
+class MarkdownErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { crashed: false }; }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(err) { console.warn('[MarkdownErrorBoundary] caught error:', err?.message); }
+  render() {
+    if (this.state.crashed) {
+      return (
+        <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {this.props.fallback}
+        </span>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Always renders through ReactMarkdown (error boundary catches any crash).
+ * Never truncates content — the collapsing is handled at the MentionText level.
+ */
+function SafeMarkdown({ content, components }) {
+  if (!content) return null;
+  const safe = preserveBlankLines(content);
+  return (
+    <MarkdownErrorBoundary key={content} fallback={content}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
+        {safe}
+      </ReactMarkdown>
+    </MarkdownErrorBoundary>
+  );
+}
 
 // ─── MentionChip ──────────────────────────────────────────────────────────────
 
@@ -69,45 +131,89 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
 
 /**
  * Renders a message string, replacing <@type:id> tokens with MentionChips and
- * passing remaining text through ReactMarkdown.
+ * passing remaining text through SafeMarkdown.
+ *
+ * Long messages (raw content > COLLAPSE_THRESHOLD chars) are shown collapsed
+ * with a "Show more" button — the full markdown is always rendered, only
+ * clipped via CSS so nothing is ever truncated or lost.
+ *
+ * Wrapped in React.memo so it only re-renders when its own props change.
  */
-export function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick }) {
+export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Parse mention tokens once per unique content string.
+  const parts = useMemo(() => {
+    if (!content) return [];
+    const re = new RegExp(MENTION_RE.source, 'g');
+    const result = [];
+    let last = 0, m;
+    while ((m = re.exec(content)) !== null) {
+      if (m.index > last) result.push({ kind: 'text', value: content.slice(last, m.index) });
+      result.push({ kind: 'mention', type: m[1], id: m[2] });
+      last = m.index + m[0].length;
+    }
+    if (last < content.length) result.push({ kind: 'text', value: content.slice(last) });
+    return result;
+  }, [content]);
+
   if (!content) return null;
-
-  const re = new RegExp(MENTION_RE.source, 'g');
-  const parts = [];
-  let last = 0, m;
-
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > last) parts.push({ kind: 'text', value: content.slice(last, m.index) });
-    parts.push({ kind: 'mention', type: m[1], id: m[2] });
-    last = m.index + m[0].length;
-  }
-  if (last < content.length) parts.push({ kind: 'text', value: content.slice(last) });
-
-  // Fast path: no mentions at all
   if (parts.length === 0) return null;
-  if (parts.length === 1 && parts[0].kind === 'text') {
-    return <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content}</ReactMarkdown>;
-  }
+
+  const isLong = (content.match(/\n/g)?.length ?? 0) >= COLLAPSE_LINE_LIMIT;
+
+  const body = parts.length === 1 && parts[0].kind === 'text'
+    ? <SafeMarkdown content={content} components={mdComponents} />
+    : (
+      <>
+        {parts.map((p, i) =>
+          p.kind === 'text'
+            ? <SafeMarkdown key={i} content={p.value} components={mdComponents} />
+            : <MentionChip
+                key={i}
+                type={p.type}
+                id={p.id}
+                mentionData={mentionData}
+                resolveUser={resolveUser}
+                onUserClick={onUserClick}
+              />
+        )}
+      </>
+    );
+
+  if (!isLong) return body;
 
   return (
-    <>
-      {parts.map((p, i) =>
-        p.kind === 'text'
-          ? <ReactMarkdown key={i} remarkPlugins={[remarkGfm]} components={mdComponents}>{p.value}</ReactMarkdown>
-          : <MentionChip
-              key={i}
-              type={p.type}
-              id={p.id}
-              mentionData={mentionData}
-              resolveUser={resolveUser}
-              onUserClick={onUserClick}
-            />
-      )}
-    </>
+    <div>
+      <div style={{
+        position: 'relative',
+        maxHeight: expanded ? 'none' : COLLAPSED_MAX_HEIGHT,
+        overflowY: expanded ? 'visible' : 'hidden',
+      }}>
+        {body}
+        {!expanded && (
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            height: '3rem',
+            background: 'linear-gradient(to bottom, transparent, #313338)',
+            pointerEvents: 'none',
+          }} />
+        )}
+      </div>
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          marginTop: '0.25rem',
+          background: 'none', border: 'none',
+          color: '#7c9ef8', fontSize: '0.8rem', fontWeight: 600,
+          cursor: 'pointer', padding: 0,
+        }}
+      >
+        {expanded ? '▲ Show less' : '▼ Show more'}
+      </button>
+    </div>
   );
-}
+});
 
 // ─── MentionPicker ────────────────────────────────────────────────────────────
 
@@ -150,7 +256,6 @@ export function MentionPicker({ suggestions, selectedIndex, onSelect, onHoverInd
             cursor: 'pointer', transition: 'background 0.08s',
           }}
         >
-          {/* Icon circle */}
           <span style={{
             width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -160,8 +265,6 @@ export function MentionPicker({ suggestions, selectedIndex, onSelect, onHoverInd
           }}>
             {TYPE_ICON[s.type]}
           </span>
-
-          {/* Label */}
           <span style={{
             fontWeight: 600, fontSize: '0.875rem', flex: 1,
             color: s.type === 'role' && s.color ? s.color : '#f2f3f5',
@@ -169,8 +272,6 @@ export function MentionPicker({ suggestions, selectedIndex, onSelect, onHoverInd
           }}>
             {s.label}
           </span>
-
-          {/* Type badge */}
           <span style={{ fontSize: '0.7rem', color: '#4f5660', flexShrink: 0 }}>
             {TYPE_LABEL[s.type]}
           </span>

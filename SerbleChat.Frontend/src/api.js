@@ -1,6 +1,7 @@
 // Serble OAuth settings
 export const CLIENT_ID = '1ebf51ca-9eae-46ad-aa98-b984c47ad94d';
 export const REDIRECT_URI = `${window.location.origin}/callback`;
+export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL?.replace(/\/$/, '') ?? window.location.origin;
 export const OAUTH_URL = 'https://serble.net/oauth/authorize';
 
 // Backend base URL – set VITE_API_BASE_URL in your .env file
@@ -247,11 +248,11 @@ export async function getGuildChannels(guildId) {
 }
 
 /** POST /guild/:guildId/channel  – create a channel in a guild; returns Channel */
-export async function createGuildChannel(guildId, name) {
+export async function createGuildChannel(guildId, name, voiceCapable = false) {
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, voiceCapable: false }),
+    body: JSON.stringify({ name, voiceCapable }),
   });
   return handle(res);
 }
@@ -265,12 +266,14 @@ export async function deleteGuildChannel(guildId, channelId) {
   return handle(res);
 }
 
-/** PATCH /guild/:guildId/channel/:channelId  – rename a channel */
-export async function updateGuildChannel(guildId, channelId, name) {
+/** PATCH /guild/:guildId/channel/:channelId  – update a channel (name and/or voiceCapable) */
+export async function updateGuildChannel(guildId, channelId, patch) {
+  // Accept either a plain string (legacy) or a { name?, voiceCapable? } object
+  const body = typeof patch === 'string' ? { name: patch } : patch;
   const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/channel/${encodeURIComponent(channelId)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
   return handle(res);
 }

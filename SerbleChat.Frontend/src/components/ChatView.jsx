@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
-         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers } from '../api.js';
+         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL } from '../api.js';
 import { joinChannel, leaveChannel, setMuted as applyVoiceMuted } from '../voice.js';
 import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import InviteCard from './InviteCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 
@@ -31,7 +32,7 @@ function extractInviteIds(content) {
 
 // Markdown component overrides styled for the dark chat theme
 const mdComponents = {
-  p:          ({ children }) => <span style={{ display: 'block', margin: 0 }}>{children}</span>,
+  p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
     // Render invite links as plain text — the InviteCard below the message handles them
     if (href && INVITE_RE().test(href)) {
@@ -54,6 +55,43 @@ const mdComponents = {
   h2:         ({ children }) => <strong style={{ fontSize: '1.05em', display: 'block' }}>{children}</strong>,
   h3:         ({ children }) => <strong style={{ fontSize: '1em', display: 'block' }}>{children}</strong>,
 };
+
+// Inject the highlight-flash keyframe once
+if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-style')) {
+  const s = document.createElement('style');
+  s.id = 'msg-highlight-style';
+  s.textContent = `@keyframes msgHighlight {
+    0%   { background: rgba(124,58,237,0.35); }
+    60%  { background: rgba(124,58,237,0.2); }
+    100% { background: transparent; }
+  }
+  .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
+  document.head.appendChild(s);
+}
+
+function CtxBtn({ icon, label, onClick, danger, copied }) {
+  const [hov, setHov] = useState(false);
+  const color  = copied ? '#23a55a' : danger ? '#f23f43' : '#dbdee1';
+  const hovBg  = copied ? 'rgba(35,165,90,0.12)' : danger ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.07)';
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.6rem',
+        width: '100%', padding: '0.45rem 0.75rem',
+        background: hov ? hovBg : 'transparent',
+        border: 'none', color, fontSize: '0.875rem', fontWeight: 500,
+        borderRadius: '4px', cursor: 'pointer', textAlign: 'left',
+        transition: 'background 0.1s, color 0.1s',
+      }}
+    >
+      <span style={{ width: '1.1em', textAlign: 'center', flexShrink: 0 }}>{copied ? '✓' : icon}</span>
+      {copied ? 'Copied!' : label}
+    </button>
+  );
+}
 
 function Avatar({ name, size = 40 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -95,7 +133,7 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, highlighted }) {
   const [author, setAuthor] = useState(null);
 
   // Group consecutive messages from the same author
@@ -105,6 +143,9 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
   useEffect(() => {
     resolveUser(msg.authorId).then(setAuthor);
   }, [msg.authorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Memoize invite ID extraction — only re-runs when message content changes
+  const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
 
   // Resolve color: use role color if in guild, otherwise seed from username
   const nameColor = getColor(msg.authorId, author?.username);
@@ -116,6 +157,8 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
   if (compact) {
     return (
       <div
+        data-msgid={msg.id}
+        className={highlighted ? 'msg-highlighted' : undefined}
         onContextMenu={e => onContextMenu(e, msg)}
         style={{ padding: '0.1rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
         onMouseEnter={e => e.currentTarget.style.background = '#2e3035'}
@@ -124,18 +167,20 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
         <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : '#4f5660', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
           {ts}
         </span>
-        <span style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1 }}>
+        <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
-          {extractInviteIds(msg.content).map(id => (
+          {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
           ))}
-        </span>
+        </div>
       </div>
     );
   }
 
   return (
     <div
+      data-msgid={msg.id}
+      className={highlighted ? 'msg-highlighted' : undefined}
       onContextMenu={e => onContextMenu(e, msg)}
       style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
       onMouseEnter={e => e.currentTarget.style.background = '#2e3035'}
@@ -147,7 +192,7 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
       >
         <Avatar name={author?.username} size={40} />
       </div>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
           <span
             onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
@@ -159,24 +204,27 @@ function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu
         </div>
         <div style={{ color: '#dbdee1', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
-          {extractInviteIds(msg.content).map(id => (
+          {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
           ))}
         </div>
       </div>
     </div>
   );
-}
+});
 
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms } = useApp();
   const [input, setInput]           = useState('');
+  const [highlightMsgId, setHighlightMsgId] = useState(null);
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [otherUser, setOtherUser]   = useState(null);
   const [ctxMenu, setCtxMenu]       = useState(null);
+  const [copiedCtx, setCopiedCtx]   = useState(null); // 'text' | 'link' | 'id' | null
   const [popout,  setPopout]        = useState(null);
   const [showMembers, setShowMembers] = useState(
     () => sessionStorage.getItem('memberPanelOpen') !== 'false'
@@ -222,6 +270,14 @@ export default function ChatView() {
   const isAdmin       = myGuildPerms?.administrator === 0;
   const canSend       = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.sendMessages === 0;
   const canManageMsgs = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.manageMessages === 0;
+
+  // Memoized so MessageBubble (which is React.memo'd) doesn't re-render just because
+  // the parent re-renders with an otherwise unchanged getColor inline lambda.
+  const guildIdForColor = isGuildChannel ? channel?.guildId : null;
+  const getColor = useCallback(
+    (userId, username) => getMemberColor(guildIdForColor, userId, username),
+    [getMemberColor, guildIdForColor] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // React to channel-level SignalR events
   useEffect(() => {
@@ -284,10 +340,11 @@ export default function ChatView() {
   const handleContextMenu = useCallback((e, msg) => {
     if (msg._pending) return;
     e.preventDefault();
-    // Clamp to viewport
-    const x = Math.min(e.clientX, window.innerWidth - 160);
-    const y = Math.min(e.clientY, window.innerHeight - 80);
+    // Clamp to viewport — menu is ~200px wide, ~160px tall
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY, window.innerHeight - 160);
     setCtxMenu({ x, y, msg });
+    setCopiedCtx(null);
   }, []);
 
   const handleUserClick = useCallback((e, userId, username) => {
@@ -375,10 +432,26 @@ export default function ChatView() {
     resolveUser(otherId).then(setOtherUser);
   }, [channel, dmChannels, currentUser, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages (skip when we're jumping to a specific message)
   useEffect(() => {
+    if (searchParams.get('message')) return;
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [channelMessages.length]);
+  }, [channelMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to and highlight a linked message once messages have loaded
+  useEffect(() => {
+    const targetId = searchParams.get('message');
+    if (!targetId || loading) return;
+    const el = document.querySelector(`[data-msgid="${targetId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightMsgId(String(targetId));
+    // Remove the ?message= param from the URL without navigating
+    setSearchParams(p => { p.delete('message'); return p; }, { replace: true });
+    // Clear the highlight after the animation finishes
+    const t = setTimeout(() => setHighlightMsgId(null), 2200);
+    return () => clearTimeout(t);
+  }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus input when channel changes
   useEffect(() => {
@@ -390,7 +463,7 @@ export default function ChatView() {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 192) + 'px'; // 192px ≈ 12rem
+    el.style.height = Math.min(el.scrollHeight, 320) + 'px'; // 320px ≈ 20rem
   }, [input]);
 
   // ── Mention autocomplete ────────────────────────────────────────────────────
@@ -670,8 +743,9 @@ export default function ChatView() {
               currentUserId={currentUser?.id}
               onContextMenu={handleContextMenu}
               onUserClick={handleUserClick}
-              getColor={(userId, username) => getMemberColor(isGuildChannel ? channel?.guildId : null, userId, username)}
+              getColor={getColor}
               mentionData={mentionData}
+              highlighted={highlightMsgId !== null && String(msg.id) === highlightMsgId}
             />
           ))}
           <div ref={bottomRef} style={{ height: 8 }} />
@@ -697,7 +771,7 @@ export default function ChatView() {
                   flex: 1, background: 'transparent', border: 'none', color: '#dbdee1',
                   fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
                   resize: 'none', overflow: 'hidden', lineHeight: 1.5,
-                  maxHeight: '12rem', overflowY: 'auto', fontFamily: 'inherit',
+                  maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
                 }}
                 placeholder={`Message ${channelDisplayName}`}
                 value={input}
@@ -710,7 +784,7 @@ export default function ChatView() {
                   }
                 }}
                 onClick={e => detectMention(input, e.target.selectionStart)}
-                maxLength={2000}
+                maxLength={16384}
               />
               {input.trim() && (
                 <button type="submit"
@@ -730,15 +804,34 @@ export default function ChatView() {
 
         {/* Context menu */}
         {ctxMenu && (
-          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 150 }}>
-            {ctxMenu.msg.authorId === currentUser?.id || canManageMsgs ? (
-              <button onClick={handleDelete}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', color: '#f23f43', fontSize: '0.875rem', fontWeight: 500, borderRadius: '4px', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(242,63,67,0.15)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >🗑 Delete Message</button>
-            ) : (
-              <div style={{ padding: '0.5rem 0.75rem', color: '#4f5660', fontSize: '0.8rem' }}>No actions available</div>
+          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: '#111214', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
+            <CtxBtn icon="📋" label="Copy Text"
+              copied={copiedCtx === 'text'}
+              onClick={() => {
+                navigator.clipboard.writeText(ctxMenu.msg.content);
+                setCopiedCtx('text');
+                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
+              }} />
+            <CtxBtn icon="🔗" label="Copy Message Link"
+              copied={copiedCtx === 'link'}
+              onClick={() => {
+                const url = `${FRONTEND_URL}/app/channel/${ctxMenu.msg.channelId}?message=${ctxMenu.msg.id}`;
+                navigator.clipboard.writeText(url);
+                setCopiedCtx('link');
+                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
+              }} />
+            <CtxBtn icon="🪪" label="Copy Message ID"
+              copied={copiedCtx === 'id'}
+              onClick={() => {
+                navigator.clipboard.writeText(String(ctxMenu.msg.id));
+                setCopiedCtx('id');
+                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
+              }} />
+            {(ctxMenu.msg.authorId === currentUser?.id || canManageMsgs) && (
+              <>
+                <div style={{ height: 1, background: '#3b3d43', margin: '0.25rem 0' }} />
+                <CtxBtn icon="🗑" label="Delete Message" danger onClick={handleDelete} />
+              </>
             )}
           </div>
         )}
