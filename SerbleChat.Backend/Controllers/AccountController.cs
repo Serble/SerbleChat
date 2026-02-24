@@ -105,4 +105,26 @@ public class AccountController(IUserRepo users, IConnectionMultiplexer redis) : 
         
         return Ok(response);
     }
+
+    [HttpGet("client-options")]
+    public async Task<ActionResult<string>> GetClientOptions() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        string options = await users.GetClientOptions(userId);
+        return Ok(options);
+    }
+    
+    [HttpPut("client-options")]
+    public async Task<ActionResult> SetClientOptions([FromBody] string options) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        await users.SetClientOptions(userId, options);
+        return Ok();
+    }
 }

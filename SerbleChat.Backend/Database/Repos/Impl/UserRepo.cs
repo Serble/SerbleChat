@@ -63,6 +63,20 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
             .ToArrayAsync();
     }
 
+    public async Task<string> GetClientOptions(string userId) {
+        return (await context.ClientOptions.FindAsync(userId) ?? new ClientOptionsData()).OptionsJson;
+    }
+
+    public async Task SetClientOptions(string userId, string options) {
+        int updated = await context.ClientOptions
+            .Where(o => o.UserId == userId)
+            .ExecuteUpdateAsync(u => u.SetProperty(o => o.OptionsJson, options));
+        if (updated == 0) {
+            context.ClientOptions.Add(new ClientOptionsData { UserId = userId, OptionsJson = options });
+            await context.SaveChangesAsync();
+        }
+    }
+
     public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
         if (user == null!) {
             throw new ArgumentNullException(nameof(user));

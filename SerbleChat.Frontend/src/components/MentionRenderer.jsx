@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 
 /** Matches <@user:id>, <@channel:id>, <@role:id> */
 export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
@@ -10,12 +11,6 @@ export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
 // Module-level constant — avoids creating a new array on every render,
 // which would force react-markdown to rebuild its unified processor each time.
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
-
-// Messages with more than this many lines get a collapsed view with a "Show more"
-// button. Full markdown is always rendered — we only clip it visually with CSS
-// max-height so nothing is ever truncated.
-const COLLAPSE_LINE_LIMIT = 28;
-const COLLAPSED_MAX_HEIGHT = `${COLLAPSE_LINE_LIMIT * 1.5}em`; // matches lineHeight 1.5
 
 /**
  * Markdown collapses multiple consecutive blank lines into one paragraph break.
@@ -141,6 +136,8 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
  */
 export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick }) {
   const [expanded, setExpanded] = useState(false);
+  const { messageLinesLimit } = useClientOptions() ?? { messageLinesLimit: 28 };
+  const collapsedMaxHeight = `${messageLinesLimit * 1.5}em`;
 
   // Parse mention tokens once per unique content string.
   const parts = useMemo(() => {
@@ -160,7 +157,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
   if (!content) return null;
   if (parts.length === 0) return null;
 
-  const isLong = (content.match(/\n/g)?.length ?? 0) >= COLLAPSE_LINE_LIMIT;
+  const isLong = (content.match(/\n/g)?.length ?? 0) >= messageLinesLimit;
 
   const body = parts.length === 1 && parts[0].kind === 'text'
     ? <SafeMarkdown content={content} components={mdComponents} />
@@ -187,7 +184,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
     <div>
       <div style={{
         position: 'relative',
-        maxHeight: expanded ? 'none' : COLLAPSED_MAX_HEIGHT,
+        maxHeight: expanded ? 'none' : collapsedMaxHeight,
         overflowY: expanded ? 'visible' : 'hidden',
       }}>
         {body}

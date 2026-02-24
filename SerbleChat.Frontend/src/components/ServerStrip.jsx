@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
-import ThemeEditorModal from './ThemeEditorModal.jsx';
+import SettingsModal from './SettingsModal.jsx';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
@@ -73,7 +73,7 @@ export default function ServerStrip() {
   const nav = useNavigate();
   const { guilds, refreshGuilds, activeGuildId, setActiveGuildId } = useApp();
   const [showCreate, setShowCreate] = useState(false);
-  const [showThemes, setShowThemes] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const onHome = !activeGuildId;
 
@@ -129,10 +129,10 @@ export default function ServerStrip() {
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Theme editor button */}
+      {/* Settings button */}
       <button
-        title="Themes"
-        onClick={() => setShowThemes(true)}
+        title="Settings"
+        onClick={() => setShowSettings(true)}
         style={{
           width: 48, height: 48, borderRadius: '50%',
           background: 'var(--bg-active)', border: 'none',
@@ -143,7 +143,7 @@ export default function ServerStrip() {
         }}
         onMouseEnter={e => { e.currentTarget.style.borderRadius = '30%'; e.currentTarget.style.background = 'var(--accent)'; }}
         onMouseLeave={e => { e.currentTarget.style.borderRadius = '50%'; e.currentTarget.style.background = 'var(--bg-active)'; }}
-      >🎨</button>
+      >⚙️</button>
 
       {showCreate && (
         <CreateGuildModal
@@ -152,7 +152,7 @@ export default function ServerStrip() {
         />
       )}
 
-      {showThemes && <ThemeEditorModal onClose={() => setShowThemes(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

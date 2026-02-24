@@ -92,16 +92,16 @@ export const BUILT_IN_THEMES = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const SS_THEMES_KEY = 'serble_custom_themes';
-const SS_ACTIVE_KEY = 'serble_active_theme';
+const LS_THEMES_KEY = 'serble_custom_themes';
+const LS_ACTIVE_KEY = 'serble_active_theme';
 
 function loadCustomThemes() {
-  try { return JSON.parse(sessionStorage.getItem(SS_THEMES_KEY) ?? '[]'); }
+  try { return JSON.parse(localStorage.getItem(LS_THEMES_KEY) ?? '[]'); }
   catch { return []; }
 }
 
 function saveCustomThemes(themes) {
-  sessionStorage.setItem(SS_THEMES_KEY, JSON.stringify(themes));
+  localStorage.setItem(LS_THEMES_KEY, JSON.stringify(themes));
 }
 
 function applyTheme(colors) {
@@ -129,7 +129,7 @@ const ThemeCtx = createContext(null);
 export function ThemeProvider({ children }) {
   const [customThemes, setCustomThemes] = useState(loadCustomThemes);
   const [activeId, setActiveId] = useState(
-    () => sessionStorage.getItem(SS_ACTIVE_KEY) ?? 'dark'
+    () => localStorage.getItem(LS_ACTIVE_KEY) ?? 'dark'
   );
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
@@ -142,7 +142,7 @@ export function ThemeProvider({ children }) {
   }, [activeTheme]);
 
   const activateTheme = useCallback((id) => {
-    sessionStorage.setItem(SS_ACTIVE_KEY, id);
+    localStorage.setItem(LS_ACTIVE_KEY, id);
     setActiveId(id);
   }, []);
 
@@ -174,10 +174,23 @@ export function ThemeProvider({ children }) {
     setActiveId(cur => cur === id ? 'dark' : cur);
   }, []);
 
+  /** Load state from an external source (e.g. backend client-options). */
+  const importState = useCallback(({ activeId: id, customThemes: themes } = {}) => {
+    if (Array.isArray(themes)) {
+      setCustomThemes(themes);
+      localStorage.setItem(LS_THEMES_KEY, JSON.stringify(themes));
+    }
+    if (id) {
+      localStorage.setItem(LS_ACTIVE_KEY, id);
+      setActiveId(id);
+    }
+  }, []);
+
   return (
     <ThemeCtx.Provider value={{
-      allThemes, activeTheme, activeId,
+      allThemes, activeTheme, activeId, customThemes,
       activateTheme, createTheme, updateTheme, deleteTheme,
+      importState,
     }}>
       {children}
     </ThemeCtx.Provider>

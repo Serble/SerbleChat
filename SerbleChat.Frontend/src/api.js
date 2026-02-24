@@ -114,6 +114,23 @@ export async function unblockUser(id) {
   return handle(res);
 }
 
+/** GET /account/client-options  – get client-side settings blob (returns a JSON string) */
+export async function getClientOptions() {
+  const res = await fetch(`${BASE}/account/client-options`, { headers: authHeaders() });
+  return handle(res); // returns a JS string (the serialized options JSON)
+}
+
+/** PUT /account/client-options  – save client-side settings blob */
+export async function setClientOptions(optionsJson) {
+  // The backend expects [FromBody] string, so the body must be a JSON-encoded string value
+  const res = await fetch(`${BASE}/account/client-options`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(optionsJson), // double-encode: JSON string of a JSON string
+  });
+  return handle(res);
+}
+
 // ── Channels ──────────────────────────────────────────────────────────────────
 
 /** GET /channel/dm  – list all my DM channels */

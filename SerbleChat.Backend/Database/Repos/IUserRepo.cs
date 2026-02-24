@@ -15,5 +15,8 @@ public interface IUserRepo {
     Task UnblockUser(string blockerId, string blockedId);
     Task<UserBlock[]> GetBlockedUsers(string userId);
     
+    Task<string> GetClientOptions(string userId);
+    Task SetClientOptions(string userId, string options);
+    
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
 }

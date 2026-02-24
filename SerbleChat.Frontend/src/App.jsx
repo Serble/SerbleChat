@@ -5,6 +5,7 @@ import AppShell     from './pages/AppShell.jsx';
 import InvitePage   from './pages/InvitePage.jsx';
 import { AppProvider } from './context/AppContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
+import { ClientOptionsProvider } from './context/ClientOptionsContext.jsx';
 
 function ProtectedRoute({ children }) {
   return localStorage.getItem('jwt') ? children : <Navigate to="/" replace />;
@@ -21,7 +22,9 @@ export default function App() {
           <Route path="/app/*"           element={
             <ProtectedRoute>
               <AppProvider>
-                <AppShell />
+                <ClientOptionsProvider>
+                  <AppShell />
+                </ClientOptionsProvider>
               </AppProvider>
             </ProtectedRoute>
           } />

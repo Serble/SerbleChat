@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import InviteCard from './InviteCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
+import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -66,6 +67,17 @@ if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-s
   }
   .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
   document.head.appendChild(s);
+}
+
+/**
+ * Parse a timestamp string from the server as UTC.
+ * The backend sends ISO-8601 strings without a timezone designator (e.g.
+ * "2026-02-24T14:30:00"), which JS Date parses as *local* time — wrong.
+ * Appending 'Z' forces UTC interpretation.
+ */
+function parseUtcDate(str) {
+  if (!str) return new Date(NaN);
+  return new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(str) ? str : str + 'Z');
 }
 
 function CtxBtn({ icon, label, onClick, danger, copied }) {
@@ -137,7 +149,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
 
   // Group consecutive messages from the same author
   const compact = prevMsg && prevMsg.authorId === msg.authorId &&
-    new Date(msg.createdAt) - new Date(prevMsg.createdAt) < 5 * 60 * 1000;
+    parseUtcDate(msg.createdAt) - parseUtcDate(prevMsg.createdAt) < 5 * 60 * 1000;
 
   useEffect(() => {
     resolveUser(msg.authorId).then(setAuthor);
@@ -151,7 +163,20 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
 
   const ts = msg._pending
     ? 'Sending…'
-    : new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    : parseUtcDate(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  // Full timestamp shown next to the username in non-compact rows (may include date if old)
+  const tsHeader = msg._pending
+    ? 'Sending…'
+    : (() => {
+        const d = parseUtcDate(msg.createdAt);
+        const now = new Date();
+        const isToday = d.toLocaleDateString() === now.toLocaleDateString();
+        return isToday
+          ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+            d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      })();
 
   if (compact) {
     return (
@@ -199,7 +224,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           >
             {author?.username ?? msg.authorId.slice(0, 10)}
           </span>
-          <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{ts}</span>
+          <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{tsHeader}</span>
         </div>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
@@ -339,6 +364,7 @@ export default function ChatView() {
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser } = useApp();
+  const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
   const [highlightMsgId, setHighlightMsgId] = useState(null);
@@ -415,7 +441,18 @@ export default function ChatView() {
     while (i < channelMessages.length) {
       const msg = channelMessages[i];
       if (!msg._pending && isBlocked(msg.authorId)) {
-        // Collect consecutive blocked messages from the same author
+        if (blockedMessageMode === 'hidden') {
+          // Skip entirely
+          i++;
+          continue;
+        }
+        if (blockedMessageMode === 'visible') {
+          // Show normally — no grouping
+          units.push({ type: 'normal', key: msg.id ?? `tmp-${i}`, msg, prevMsg: channelMessages[i - 1] ?? null });
+          i++;
+          continue;
+        }
+        // 'masked' (default): collect consecutive blocked messages from the same author
         const group = [msg];
         let j = i + 1;
         while (j < channelMessages.length) {
@@ -433,7 +470,7 @@ export default function ChatView() {
       }
     }
     return units;
-  }, [channelMessages, isBlocked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelMessages, isBlocked, blockedMessageMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // React to channel-level SignalR events
   useEffect(() => {
