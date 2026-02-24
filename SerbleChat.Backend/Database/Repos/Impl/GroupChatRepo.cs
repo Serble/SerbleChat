@@ -12,10 +12,22 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
             .ToListAsync();
     }
     
-    public Task<List<GroupChatMember>> GetGroupChats(string userId) {
-        return context.GroupChatMembers
+    public async Task<List<GroupChatMember>> GetGroupChats(string userId) {
+        List<GroupChatMember> dmChannels = await context.GroupChatMembers
             .Where(g => g.UserId == userId)
+            .Select(gcm => new {
+                Channel = gcm,
+                LastMessage = context.Messages
+                    .Where(m => m.ChannelId == gcm.GroupChatId)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .Select(m => m.CreatedAt)
+                    .FirstOrDefault()
+            })
+            .OrderByDescending(x => x.LastMessage)
+            .Select(x => x.Channel)
             .ToListAsync();
+        
+        return dmChannels;
     }
     
     public async Task<GroupChat?> GetGroupChat(int channelId) {

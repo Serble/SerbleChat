@@ -5,11 +5,30 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
     
-    public Task<List<DmChannel>> GetDmChannels(string userId) {
-        return context.DmChannels
+    /// <summary>
+    /// Get all DM channels the user is in and include the channel info.
+    /// Also order by the most recent message in the channel, so that the most recently active channels are first.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <returns></returns>
+    public async Task<List<DmChannel>> GetDmChannels(string userId) {
+        // Get DM channels with the time of their latest message
+        List<DmChannel> dmChannels = await context.DmChannels
             .Where(dm => dm.User1Id == userId || dm.User2Id == userId)
             .Include(dm => dm.ChannelNavigation)
+            .Select(dm => new {
+                Channel = dm,
+                LastMessage = context.Messages
+                    .Where(m => m.ChannelId == dm.ChannelId)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .Select(m => m.CreatedAt)
+                    .FirstOrDefault()
+            })
+            .OrderByDescending(x => x.LastMessage)
+            .Select(x => x.Channel)
             .ToListAsync();
+
+        return dmChannels;
     }
 
     public async Task<DmChannel?> GetDmChannel(string user1Id, string user2Id) {

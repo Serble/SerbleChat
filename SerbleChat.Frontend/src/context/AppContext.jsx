@@ -21,6 +21,7 @@ export function AppProvider({ children }) {
   const [blockedUserIds, setBlockedUserIds] = useState(new Set()); // Set<string>
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
+  const [channelLastActive, setChannelLastActive] = useState({}); // channelId (string) -> ms timestamp
   const [toasts,        setToasts]        = useState([]);
   const [channelEvent,  setChannelEvent]  = useState(null); // { type, channelId, data }
   const [guildChannelEvent, setGuildChannelEvent] = useState(null); // { type, channelId, guildId }
@@ -243,6 +244,8 @@ export function AppProvider({ children }) {
         }
         return { ...p, [key]: [...existing, msg] };
       });
+      // Bubble the channel to the top of the DM/group sidebar
+      setChannelLastActive(p => ({ ...p, [key]: Date.now() }));
     });
 
     conn.on('DeleteMessage', ({ id }) => {
@@ -353,6 +356,7 @@ export function AppProvider({ children }) {
       blockedUsers, isBlocked, blockUser: blockUserFn, unblockUser: unblockUserFn, refreshBlockedUsers,
       isConnected,
       messages,  setMessages,
+      channelLastActive,
       toasts, addToast, removeToast,
       channelEvent,
       guildChannelEvent,

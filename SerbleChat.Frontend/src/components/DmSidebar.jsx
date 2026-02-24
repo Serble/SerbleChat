@@ -130,7 +130,7 @@ function SectionHeader({ label }) {
 }
 
 export default function DmSidebar() {
-  const { currentUser, dmChannels, groupChats, isConnected, friends } = useApp();
+  const { currentUser, dmChannels, groupChats, isConnected, friends, channelLastActive } = useApp();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -141,6 +141,14 @@ export default function DmSidebar() {
   const pendingIncoming = friends.filter(
     f => f.pending && currentUser && f.user2Id === currentUser.id
   ).length;
+
+  // Sort by most recent activity (new message) first; fallback to original order (index)
+  const sortedDms = [...dmChannels].sort((a, b) =>
+    (channelLastActive[String(b.channelId)] ?? 0) - (channelLastActive[String(a.channelId)] ?? 0)
+  );
+  const sortedGroups = [...groupChats].sort((a, b) =>
+    (channelLastActive[String(b.channelId)] ?? 0) - (channelLastActive[String(a.channelId)] ?? 0)
+  );
 
   return (
     <div style={{
@@ -175,10 +183,10 @@ export default function DmSidebar() {
         />
 
         {/* DMs */}
-        {dmChannels.length > 0 && (
+        {sortedDms.length > 0 && (
           <>
             <SectionHeader label="Direct Messages" />
-            {dmChannels.map(dm => (
+            {sortedDms.map(dm => (
               <DmItem key={dm.channelId} dm={dm} currentChannelId={currentChannelId} />
             ))}
           </>
@@ -207,11 +215,11 @@ export default function DmSidebar() {
             ＋
           </button>
         </div>
-        {groupChats.map(gc => (
+        {sortedGroups.map(gc => (
           <GroupItem key={gc.channelId} chat={gc} currentChannelId={currentChannelId} />
         ))}
 
-        {dmChannels.length === 0 && groupChats.length === 0 && (
+        {sortedDms.length === 0 && sortedGroups.length === 0 && (
           <div style={{ padding: '1.25rem 0.5rem', color: 'var(--text-subtle)', fontSize: '0.82rem', lineHeight: 1.6 }}>
             No conversations yet.<br />Add friends to start chatting!
           </div>
