@@ -1,4 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Livekit.Server.Sdk.Dotnet;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,8 +17,9 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("channel")]
 [Authorize]
-public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
-    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings) : ControllerBase {
+public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
+    IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
+    IUnreadsRepo unreads) : ControllerBase {
 
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
         switch (channel.Type) {
@@ -101,6 +104,19 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         };
         await msgs.CreateMessage(msg);
         await updates.Clients.Group($"channel-{channel.Id}").SendAsync("NewMessage", msg);
+        
+        // add all the mentions
+        List<string> mentionedUserIds = [];
+        foreach (Match match in UserMentionsMatcher().Matches(body.Content)) {
+            mentionedUserIds.Add(match.Groups[1].Value);
+        }
+        
+        await updates.Clients.Users(mentionedUserIds).SendAsync("MentionedInMessage", new {
+            MessageId = msg.Id,
+            ChannelId = channel.Id
+        });
+        await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
+        
         return Ok();
     }
 
@@ -156,6 +172,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
     
         List<Message> messages = await msgs.GetMessages(channelId, limit, offset);
+        await unreads.MarkRead(userId, channelId, messages.FirstOrDefault()?.Id ?? 0);
         return Ok(messages);
     }
     
@@ -229,6 +246,55 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             default:
                 throw new InvalidOperationException("Unknown channel type");
         }
+    }
+
+    [HttpGet("{channelId:int}/unreads")]
+    public async Task<ActionResult<UnreadsResponse>> GetChannelUnreads(int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return Unauthorized("User not found in local database");
+        }
+    
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+        
+        // permission check
+        if (!await UserHasAccessToChannel(userId, channel, false)) {
+            return Forbid();
+        }
+
+        NotificationPreferences prefs = (await users.GetChannelNotificationPreferences(userId, channelId)).Preferences;
+        NotificationPreferences guildPrefs = channel.GuildId.HasValue
+            ? (await users.GetUserGuildNotificationPreferences(userId, channel.GuildId.Value)).Preferences
+            : NotificationPreferences.DefaultPreferences;
+        NotificationPreferences userDefaultPrefs = channel.Type switch {
+            ChannelType.Guild => user.DefaultGuildNotificationPreferences,
+            ChannelType.Dm => user.DefaultDmNotificationPreferences,
+            ChannelType.Group => user.DefaultGroupNotificationPreferences,
+            _ => NotificationPreferences.DefaultPreferences
+        };
+        
+        // apply them all
+        prefs = prefs.ApplyOverride(guildPrefs);
+        prefs = prefs.ApplyOverride(userDefaultPrefs);
+        
+        return prefs.Unreads switch {
+            NotificationPreference.AllMessages => Ok(new UnreadsResponse {
+                Count = await unreads.GetUnreadMessagesCount(userId, channelId)
+            }),
+            NotificationPreference.MentionsOnly => Ok(new UnreadsResponse {
+                Count = await unreads.GetUnreadMentionsCount(userId, channelId)
+            }),
+            NotificationPreference.Nothing => Ok(new UnreadsResponse { Count = 0 }),
+            _ => throw new ArgumentOutOfRangeException()
+        };
     }
 
     // ==============================
@@ -440,4 +506,38 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         
         return Ok(new LiveKitTokenResponse { Token = token.ToJwt() });
     }
+    
+    [HttpGet("{channelId:int}/notification-preferences")]
+    public async Task<ActionResult<NotificationPreferences>> GetNotificationPreferences(int channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) return NotFound("Channel not found");
+        if (!await UserHasAccessToChannel(userId, channel, false)) return Forbid();
+
+        UserChannelNotificationPreferences prefs = await users.GetChannelNotificationPreferences(userId, channelId);
+        return Ok(prefs.Preferences);
+    }
+
+    [HttpPut("{channelId:int}/notification-preferences")]
+    public async Task<ActionResult> SetNotificationPreferences(int channelId, [FromBody] SetNotificationPreferencesBody body) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized();
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) return NotFound("Channel not found");
+        if (!await UserHasAccessToChannel(userId, channel, false)) return Forbid();
+
+        UserChannelNotificationPreferences prefs = await users.GetChannelNotificationPreferences(userId, channelId);
+        prefs.UserId = userId;
+        prefs.ChannelId = channelId;
+        if (body.Notifications.HasValue) prefs.Preferences.Notifications = body.Notifications.Value;
+        if (body.Unreads.HasValue) prefs.Preferences.Unreads = body.Unreads.Value;
+        await users.SetChannelNotificationPreferences(userId, channelId, prefs);
+        return Ok();
+    }
+
+    [GeneratedRegex("<@user:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})>")]
+    private static partial Regex UserMentionsMatcher();
 }

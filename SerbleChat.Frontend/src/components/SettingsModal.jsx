@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme, THEME_PROPS } from '../context/ThemeContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { useApp } from '../context/AppContext.jsx';
 
 // ─── Theme editor helpers ─────────────────────────────────────────────────────
 
@@ -543,11 +544,190 @@ function ChatTab() {
   );
 }
 
+// ─── Notifications Tab ────────────────────────────────────────────────────────
+
+// NotificationPreference enum: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
+// For user defaults, Inherit is NOT valid (they are the bottom of the hierarchy).
+const NOTIF_PREF_OPTIONS = [
+  { value: 1, icon: '🔔', label: 'All Messages',  desc: 'Every new message' },
+  { value: 2, icon: '💬', label: 'Mentions Only', desc: 'Only when @mentioned' },
+  { value: 3, icon: '🔕', label: 'Nothing',       desc: 'Never notify' },
+];
+
+function NotifPrefPicker({ label, field, value, onChange }) {
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.55rem' }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        {NOTIF_PREF_OPTIONS.map(opt => {
+          const active = value === opt.value;
+          return (
+            <div
+              key={opt.value}
+              onClick={() => onChange(opt.value)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.85rem',
+                padding: '0.6rem 0.85rem', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                background: active ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = active ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)'; }}
+            >
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                border: `2px solid ${active ? 'var(--accent)' : 'var(--text-subtle)'}`,
+                background: active ? 'var(--accent)' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}>
+                {active && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+              </div>
+              <span style={{ fontSize: '1rem' }}>{opt.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: active ? 600 : 400, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                  {opt.label}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{opt.desc}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNotifChange, onUnreadsChange }) {
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em',
+        marginBottom: '0.3rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        {title}
+      </div>
+      {description && (
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', marginBottom: '0.85rem', lineHeight: 1.5 }}>
+          {description}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <NotifPrefPicker
+          label="🔔 Notifications"
+          field="notifications"
+          value={notifValue}
+          onChange={onNotifChange}
+        />
+        <NotifPrefPicker
+          label="🔴 Unread Badge"
+          field="unreads"
+          value={unreadsValue}
+          onChange={onUnreadsChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function NotificationsTab() {
+  const { currentUser, updateUserDefaultPrefs } = useApp();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  // Local draft state mirroring currentUser prefs
+  const [dmNotif,    setDmNotif]    = useState(currentUser?.defaultDmNotificationPreferences?.notifications    ?? 1);
+  const [dmUnreads,  setDmUnreads]  = useState(currentUser?.defaultDmNotificationPreferences?.unreads          ?? 1);
+  const [grpNotif,   setGrpNotif]   = useState(currentUser?.defaultGroupNotificationPreferences?.notifications ?? 2);
+  const [grpUnreads, setGrpUnreads] = useState(currentUser?.defaultGroupNotificationPreferences?.unreads       ?? 1);
+  const [gldNotif,   setGldNotif]   = useState(currentUser?.defaultGuildNotificationPreferences?.notifications ?? 2);
+  const [gldUnreads, setGldUnreads] = useState(currentUser?.defaultGuildNotificationPreferences?.unreads       ?? 1);
+
+  // Sync drafts if currentUser updates (e.g. after initial load)
+  useEffect(() => {
+    if (!currentUser) return;
+    setDmNotif(currentUser.defaultDmNotificationPreferences?.notifications    ?? 1);
+    setDmUnreads(currentUser.defaultDmNotificationPreferences?.unreads          ?? 1);
+    setGrpNotif(currentUser.defaultGroupNotificationPreferences?.notifications ?? 2);
+    setGrpUnreads(currentUser.defaultGroupNotificationPreferences?.unreads       ?? 1);
+    setGldNotif(currentUser.defaultGuildNotificationPreferences?.notifications ?? 2);
+    setGldUnreads(currentUser.defaultGuildNotificationPreferences?.unreads       ?? 1);
+  }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    await updateUserDefaultPrefs({
+      defaultDmNotificationPreferences:    { notifications: dmNotif,    unreads: dmUnreads },
+      defaultGroupNotificationPreferences: { notifications: grpNotif,   unreads: grpUnreads },
+      defaultGuildNotificationPreferences: { notifications: gldNotif,   unreads: gldUnreads },
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+        These are your <strong style={{ color: 'var(--text-secondary)' }}>default</strong> notification preferences.
+        They apply to all channels unless overridden at the guild or channel level.
+      </div>
+
+      <NotifPrefsSection
+        title="Direct Messages"
+        description="Applied to all DM conversations."
+        notifValue={dmNotif}
+        unreadsValue={dmUnreads}
+        onNotifChange={setDmNotif}
+        onUnreadsChange={setDmUnreads}
+      />
+
+      <NotifPrefsSection
+        title="Group Chats"
+        description="Applied to all group chats."
+        notifValue={grpNotif}
+        unreadsValue={grpUnreads}
+        onNotifChange={setGrpNotif}
+        onUnreadsChange={setGrpUnreads}
+      />
+
+      <NotifPrefsSection
+        title="Guilds / Servers"
+        description="Applied to all guild channels unless the guild or channel overrides it."
+        notifValue={gldNotif}
+        unreadsValue={gldUnreads}
+        onNotifChange={setGldNotif}
+        onUnreadsChange={setGldUnreads}
+      />
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          background: saved ? 'var(--success)' : 'var(--accent)',
+          border: 'none', borderRadius: 6, padding: '0.6rem 1.5rem',
+          color: '#fff', fontSize: '0.9rem', fontWeight: 600,
+          cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
+          transition: 'background 0.2s',
+        }}
+      >
+        {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Defaults'}
+      </button>
+    </div>
+  );
+}
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'appearance', icon: '🎨', label: 'Appearance', section: 'APP SETTINGS' },
-  { id: 'chat',       icon: '💬', label: 'Chat',       section: 'APP SETTINGS' },
+  { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
+  { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
+  { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
 ];
 
 const SECTIONS = [...new Set(TABS.map(t => t.section))];
@@ -628,8 +808,9 @@ export default function SettingsModal({ onClose }) {
 
           {/* Right: tab content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {activeTab === 'appearance' && <AppearanceTab />}
-            {activeTab === 'chat'       && <ChatTab />}
+            {activeTab === 'appearance'    && <AppearanceTab />}
+            {activeTab === 'chat'          && <ChatTab />}
+            {activeTab === 'notifications' && <NotificationsTab />}
           </div>
         </div>
       </div>

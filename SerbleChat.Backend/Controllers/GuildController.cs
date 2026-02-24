@@ -12,7 +12,7 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("guild")]
 [Authorize]
-public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo roles, 
+public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo roles, IUserRepo users,
     IHubContext<ChatHub> updates) : ControllerBase {
 
     [HttpGet]
@@ -785,6 +785,44 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         await updates.Clients.Group("guild-" + guildId).SendAsync("UserUpdated", new {
             Id = userId
         });
+        return Ok();
+    }
+    
+    // NOTIFICATION PREFERENCES
+    
+    [HttpGet("{guildId:int}/notification-preferences")]
+    public async Task<ActionResult<UserGuildNotificationPreferences>> GetGuildNotificationPreferences(int guildId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        return Ok(await users.GetUserGuildNotificationPreferences(userId, guildId));
+    }
+
+    [HttpPut("{guildId:int}/notification-preferences")]
+    public async Task<ActionResult> SetGuildNotificationPreferences(int guildId, [FromBody] NotificationPreferences preferences) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+        
+        UserGuildNotificationPreferences notifPrefs = new() {
+            GuildId = guildId,
+            UserId = userId,
+            Preferences = preferences
+        };
+        await users.SetUserGuildNotificationPreferences(userId, guildId, notifPrefs);
         return Ok();
     }
 }

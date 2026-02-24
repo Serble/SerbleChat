@@ -10,6 +10,7 @@ import {
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
 import ChannelPermsTab from './ChannelPermsTab.jsx';
+import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,114 @@ import ChannelPermsTab from './ChannelPermsTab.jsx';
 function allowed(perms, key) {
   if (!perms) return false;
   return perms.administrator === 0 || perms[key] === 0;
+}
+
+// ─── Guild Notifications Tab ──────────────────────────────────────────────────
+
+// NotificationPreference: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
+const GUILD_NOTIF_OPTIONS = [
+  { value: 0, icon: '↩', label: 'Inherit',       desc: 'Use your user default' },
+  { value: 1, icon: '🔔', label: 'All Messages',  desc: 'Every message in every channel' },
+  { value: 2, icon: '💬', label: 'Mentions Only', desc: 'Only when @mentioned' },
+  { value: 3, icon: '🔕', label: 'Nothing',       desc: 'Never' },
+];
+
+function GuildPrefPicker({ label, value, onChange }) {
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>{label}</div>
+      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        {GUILD_NOTIF_OPTIONS.map(opt => {
+          const active = value === opt.value;
+          return (
+            <button
+              key={opt.value}
+              title={opt.desc}
+              onClick={() => onChange(opt.value)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.3rem 0.65rem', borderRadius: 6,
+                border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                background: active ? 'rgba(124,58,237,0.12)' : 'transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                fontSize: '0.8rem', fontWeight: active ? 600 : 400,
+                cursor: 'pointer', transition: 'all 0.1s',
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span>{opt.icon}</span> <span>{opt.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GuildNotifTab({ guildId }) {
+  const { guildNotifPrefs, loadGuildNotifPrefs, updateGuildNotifPrefs } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [saved,   setSaved]   = useState(false);
+
+  const key = String(guildId);
+  const cached = guildNotifPrefs[key];
+
+  const [notif,   setNotif]   = useState(cached?.preferences?.notifications ?? 0);
+  const [unreads, setUnreads] = useState(cached?.preferences?.unreads       ?? 0);
+
+  useEffect(() => {
+    if (!cached) {
+      setLoading(true);
+      loadGuildNotifPrefs(guildId)
+        .then(data => {
+          if (data) {
+            setNotif(data.preferences?.notifications ?? 0);
+            setUnreads(data.preferences?.unreads     ?? 0);
+          }
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setNotif(cached.preferences?.notifications ?? 0);
+      setUnreads(cached.preferences?.unreads     ?? 0);
+    }
+  }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    await updateGuildNotifPrefs(guildId, { notifications: notif, unreads });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (loading) return <div style={{ padding: '1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading…</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', lineHeight: 1.6 }}>
+        Override notification settings for this server. Channels can further override these.
+        <br />Choose <strong style={{ color: 'var(--text-secondary)' }}>Inherit</strong> to use your user defaults.
+      </div>
+      <GuildPrefPicker label="🔔 Notifications" value={notif}   onChange={setNotif} />
+      <GuildPrefPicker label="🔴 Unread Badge"  value={unreads} onChange={setUnreads} />
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          background: saved ? 'var(--success)' : 'var(--accent)', border: 'none',
+          borderRadius: 6, padding: '0.55rem 1.25rem', color: '#fff',
+          fontSize: '0.875rem', fontWeight: 600,
+          cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
+          alignSelf: 'flex-start', transition: 'background 0.2s',
+        }}
+      >
+        {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save'}
+      </button>
+    </div>
+  );
 }
 
 // ─── Guild Settings Modal ─────────────────────────────────────────────────────
@@ -496,67 +605,95 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
 
 function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
                        onDragStart, onDragEnter, onDragEnd, isDragOver }) {
+  const { unreads } = useApp();
   const [hovered, setHovered] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y }
+  const unread = unreads[String(ch.id)] ?? 0;
+
+  function handleContextMenu(e) {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }
 
   return (
-    <div
-      draggable={canManage}
-      onDragStart={canManage ? onDragStart : undefined}
-      onDragEnter={canManage ? onDragEnter : undefined}
-      onDragEnd={canManage ? onDragEnd : undefined}
-      onDragOver={canManage ? e => e.preventDefault() : undefined}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.25rem',
-        padding: '0.1rem 0.25rem 0.1rem 0',
-        borderRadius: '6px',
-        background: isDragOver ? 'rgba(88,101,242,0.15)' : 'transparent',
-        borderTop: isDragOver ? '2px solid #5865f2' : '2px solid transparent',
-        transition: 'background 0.1s',
-        cursor: canManage ? 'grab' : 'default',
-      }}
-    >
-      {/* Drag handle */}
-      {canManage && (
-        <span style={{
-          color: hovered ? '#4f5660' : 'transparent',
-          fontSize: '0.75rem', lineHeight: 1, padding: '0 0.1rem',
-          flexShrink: 0, cursor: 'grab', userSelect: 'none',
-          transition: 'color 0.1s',
-        }}>⠿</span>
-      )}
-
-      <button
-        onClick={onNavigate}
+    <>
+      <div
+        draggable={canManage}
+        onDragStart={canManage ? onDragStart : undefined}
+        onDragEnter={canManage ? onDragEnter : undefined}
+        onDragEnd={canManage ? onDragEnd : undefined}
+        onDragOver={canManage ? e => e.preventDefault() : undefined}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: '0.35rem',
-          padding: '0.3rem 0.4rem', borderRadius: '5px', flex: 1,
-          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-          border: 'none', cursor: 'pointer', textAlign: 'left',
-          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-          fontSize: '0.875rem', fontWeight: active ? 600 : 400,
-          transition: 'background 0.1s, color 0.1s',
-          minWidth: 0,
+          display: 'flex', alignItems: 'center', gap: '0.25rem',
+          padding: '0.1rem 0.25rem 0.1rem 0',
+          borderRadius: '6px',
+          background: isDragOver ? 'rgba(88,101,242,0.15)' : 'transparent',
+          borderTop: isDragOver ? '2px solid #5865f2' : '2px solid transparent',
+          transition: 'background 0.1s',
+          cursor: canManage ? 'grab' : 'default',
         }}
       >
-        <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
-          {ch.voiceCapable ? '🔊' : '#'}
-        </span>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
-      </button>
+        {/* Drag handle */}
+        {canManage && (
+          <span style={{
+            color: hovered ? '#4f5660' : 'transparent',
+            fontSize: '0.75rem', lineHeight: 1, padding: '0 0.1rem',
+            flexShrink: 0, cursor: 'grab', userSelect: 'none',
+            transition: 'color 0.1s',
+          }}>⠿</span>
+        )}
 
-      {/* Settings icon — only visible to managers on hover */}
-      {canManage && hovered && (
-        <span
-          title="Channel Settings"
-          onClick={e => { e.stopPropagation(); onSettings(); }}
-          style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, flexShrink: 0, transition: 'color 0.1s' }}
-          onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
-          onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
-        >⚙</span>
+        <button
+          onClick={onNavigate}
+          onContextMenu={handleContextMenu}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem',
+            padding: '0.3rem 0.4rem', borderRadius: '5px', flex: 1,
+            background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
+            border: 'none', cursor: 'pointer', textAlign: 'left',
+            color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+            fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
+            transition: 'background 0.1s, color 0.1s',
+            minWidth: 0,
+          }}
+        >
+          <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
+            {ch.voiceCapable ? '🔊' : '#'}
+          </span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+          {unread > 0 && !active && (
+            <span style={{
+              background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
+              padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
+              minWidth: 18, textAlign: 'center', flexShrink: 0,
+            }}>
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </button>
+
+        {/* Settings icon — only visible to managers on hover */}
+        {canManage && hovered && (
+          <span
+            title="Channel Settings"
+            onClick={e => { e.stopPropagation(); onSettings(); }}
+            style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, flexShrink: 0, transition: 'color 0.1s' }}
+            onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
+            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+          >⚙</span>
+        )}
+      </div>
+      {ctxMenu && (
+        <ChannelNotifContextMenu
+          channelId={ch.id}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
       )}
-    </div>
+    </>
   );
 }
 

@@ -26,6 +26,7 @@ export function ClientOptionsProvider({ children }) {
   const themeRef           = useRef({ activeId: theme.activeId, customThemes: theme.customThemes });
   const pendingLoad   = useRef(true);   // skip saves until the initial load is done
   const saveTimerRef  = useRef(null);
+  const loadDoneRef   = useRef(false);  // guard against double-invoke
 
   // Keep theme ref in sync with context
   useEffect(() => {
@@ -40,6 +41,8 @@ export function ClientOptionsProvider({ children }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadFromBackend() {
+    if (loadDoneRef.current) return;
+    loadDoneRef.current = true;
     try {
       const raw = await getClientOptions();
       // The backend returns a JSON-encoded string → parse once to get the inner

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGroupModal from './CreateGroupModal.jsx';
+import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 
 function Avatar({ name, size = 32 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -54,9 +55,10 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
 }
 
 function DmItem({ dm, currentChannelId }) {
-  const { currentUser, resolveUser } = useApp();
+  const { currentUser, resolveUser, unreads } = useApp();
   const nav = useNavigate();
   const [otherUser, setOtherUser] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y }
 
   useEffect(() => {
     if (!currentUser) return;
@@ -67,52 +69,106 @@ function DmItem({ dm, currentChannelId }) {
   const active = String(currentChannelId) === String(dm.channelId);
   const name = otherUser?.username ?? '…';
   const [hovered, setHovered] = useState(false);
+  const unread = unreads[String(dm.channelId)] ?? 0;
+
+  function handleContextMenu(e) {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }
 
   return (
-    <button
-      onClick={() => nav(`/app/channel/${dm.channelId}`)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.6rem',
-        padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-        border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-        fontSize: '0.875rem', fontWeight: active ? 600 : 400,
-        transition: 'background 0.1s, color 0.1s',
-      }}
-    >
-      <Avatar name={name} size={28} />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-    </button>
+    <>
+      <button
+        onClick={() => nav(`/app/channel/${dm.channelId}`)}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.6rem',
+          padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
+          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+          fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
+          transition: 'background 0.1s, color 0.1s',
+        }}
+      >
+        <Avatar name={name} size={28} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
+        {unread > 0 && !active && (
+          <span style={{
+            background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
+            padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
+            minWidth: 18, textAlign: 'center', flexShrink: 0,
+          }}>
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+      {ctxMenu && (
+        <ChannelNotifContextMenu
+          channelId={dm.channelId}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </>
   );
 }
 
 function GroupItem({ chat, currentChannelId }) {
+  const { unreads } = useApp();
   const nav = useNavigate();
   const active = String(currentChannelId) === String(chat.channelId);
   const name = chat.channel?.name ?? `Group ${chat.channelId}`;
   const [hovered, setHovered] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const unread = unreads[String(chat.channelId)] ?? 0;
+
+  function handleContextMenu(e) {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }
 
   return (
-    <button
-      onClick={() => nav(`/app/channel/${chat.channelId}`)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.6rem',
-        padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-        border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-        fontSize: '0.875rem', fontWeight: active ? 600 : 400,
-        transition: 'background 0.1s, color 0.1s',
-      }}
-    >
-      <Avatar name={name} size={28} />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-    </button>
+    <>
+      <button
+        onClick={() => nav(`/app/channel/${chat.channelId}`)}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.6rem',
+          padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
+          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+          fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
+          transition: 'background 0.1s, color 0.1s',
+        }}
+      >
+        <Avatar name={name} size={28} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
+        {unread > 0 && !active && (
+          <span style={{
+            background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
+            padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
+            minWidth: 18, textAlign: 'center', flexShrink: 0,
+          }}>
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+      {ctxMenu && (
+        <ChannelNotifContextMenu
+          channelId={chat.channelId}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+    </>
   );
 }
 

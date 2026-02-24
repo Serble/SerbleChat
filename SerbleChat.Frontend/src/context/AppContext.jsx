@@ -5,6 +5,8 @@ import {
   getGroupChats, getGroupChat, getAccountById, getMyGuilds,
   getMyGuildPermissions, getMyChannelPermissions, verifyAuth, getGuildChannelMembersDetails,
   getBlockedUsers, blockUser as blockUserApi, unblockUser as unblockUserApi,
+  getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
+  patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -42,9 +44,40 @@ export function AppProvider({ children }) {
   // last UserUpdated event payload { userId } — MemberList / ChatView watches this
   const [userUpdatedEvent, setUserUpdatedEvent] = useState(null);
 
-  const hubRef       = useRef(null);
-  const userCacheRef = useRef({});
-  const heartbeatRef = useRef(null);
+  const hubRef          = useRef(null);
+  const userCacheRef    = useRef({});
+  const heartbeatRef    = useRef(null);
+  const initDoneRef     = useRef(false); // guard against double-invoke
+  // Always-current ref to currentUser so SignalR closures never see stale state
+  const currentUserRef  = useRef(null);
+  // channelId (string) → { type: 0|1|2, guildId: number|null }
+  // type: 0=Guild, 1=DM, 2=Group — mirrors the ChannelType enum
+  const channelMetaRef  = useRef({});
+  // Unread counts: channelId (string) -> number
+  const [unreads, setUnreads] = useState({});
+  // Notification prefs cache: channelId (string) -> { notifications: 0|1|2|3, unreads: 0|1|2|3 }
+  const [notifPrefs, setNotifPrefs] = useState({});
+  // Guild notification prefs cache: guildId (string) -> { preferences: { notifications, unreads } }
+  const [guildNotifPrefs, setGuildNotifPrefs] = useState({});
+  // Refs so SignalR handlers (closures) always see latest values without stale state
+  const activeChannelIdRef = useRef(null);
+  const notifPrefsRef = useRef({});
+  const guildNotifPrefsRef = useRef({});
+
+  // Keep refs in sync with state so SignalR handlers always read the latest values
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+  useEffect(() => {
+    dmChannels.forEach(dm => {
+      channelMetaRef.current[String(dm.channelId)] = { type: 1, guildId: null };
+    });
+  }, [dmChannels]);
+
+  useEffect(() => {
+    groupChats.forEach(gc => {
+      channelMetaRef.current[String(gc.channelId)] = { type: 2, guildId: null };
+    });
+  }, [groupChats]);
 
   function addToast({ title, body, type = 'info', duration = 5000 }) {
     const id = `${Date.now()}_${Math.random()}`;
@@ -66,6 +99,8 @@ export function AppProvider({ children }) {
   }, []);
 
   async function init() {
+    if (initDoneRef.current) return;
+    initDoneRef.current = true;
     // Verify the stored JWT is still valid before loading anything.
     try {
       await verifyAuth();
@@ -85,6 +120,13 @@ export function AppProvider({ children }) {
       await reloadGroups();
       await reloadGuilds();
       await refreshBlockedUsers();
+      // Load initial unread counts (already filtered by per-channel prefs server-side)
+      try {
+        const counts = await getUnreads();
+        const stringKeyed = {};
+        for (const [k, v] of Object.entries(counts ?? {})) stringKeyed[String(k)] = v;
+        setUnreads(stringKeyed);
+      } catch (e) { console.warn('getUnreads failed:', e); }
       connectHub();
     } catch (e) {
       console.error('AppContext init failed:', e);
@@ -111,6 +153,135 @@ export function AppProvider({ children }) {
   }
 
   const isBlocked = useCallback((id) => blockedUserIds.has(String(id)), [blockedUserIds]);
+
+  /** Call when the user navigates to a channel. Clears unread count for that channel. */
+  function setActiveChannelId(id) {
+    const key = id ? String(id) : null;
+    activeChannelIdRef.current = key;
+    if (key) markChannelRead(key);
+  }
+
+  /** Register channel type/guildId so the unread resolver knows the hierarchy. */
+  function registerChannelMeta(channelId, meta) {
+    channelMetaRef.current[String(channelId)] = meta;
+  }
+
+  /**
+   * Resolve the effective "unreads" preference for a channel by walking the
+   * hierarchy: channel → guild (if guild channel) → user defaults.
+   * Returns: 1=AllMessages, 2=MentionsOnly, 3=Nothing
+   * Enum: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
+   */
+  function resolveEffectiveUnreadsMode(channelKey) {
+    // 1. Channel-level override
+    const channelUnreads = notifPrefsRef.current[channelKey]?.unreads ?? 0;
+    if (channelUnreads !== 0) return channelUnreads;
+
+    const meta = channelMetaRef.current[channelKey];
+
+    // 2. Guild-level override (only for guild channels, type=0)
+    if (meta?.type === 0 && meta?.guildId) {
+      const guildUnreads = guildNotifPrefsRef.current[String(meta.guildId)]?.preferences?.unreads ?? 0;
+      if (guildUnreads !== 0) return guildUnreads;
+    }
+
+    // 3. User defaults — based on channel type
+    const user = currentUserRef.current;
+    if (meta?.type === 0) { // Guild
+      const d = user?.defaultGuildNotificationPreferences?.unreads;
+      if (d !== undefined && d !== 0) return d;
+      return 1; // server default: AllMessages
+    } else if (meta?.type === 1) { // DM
+      const d = user?.defaultDmNotificationPreferences?.unreads;
+      if (d !== undefined && d !== 0) return d;
+      return 1; // server default: AllMessages
+    } else if (meta?.type === 2) { // Group
+      const d = user?.defaultGroupNotificationPreferences?.unreads;
+      if (d !== undefined && d !== 0) return d;
+      return 1; // server default: AllMessages
+    }
+
+    // 4. Channel type unknown yet — assume AllMessages
+    return 1;
+  }
+  function markChannelRead(channelId) {
+    const key = String(channelId);
+    setUnreads(p => {
+      if (!p[key]) return p;
+      const next = { ...p };
+      delete next[key];
+      return next;
+    });
+  }
+
+  /** Fetch & cache per-channel notification preferences. */
+  async function loadChannelNotifPrefs(channelId) {
+    const key = String(channelId);
+    try {
+      const prefs = await getChannelNotifPrefs(key);
+      notifPrefsRef.current[key] = prefs;
+      setNotifPrefs(p => ({ ...p, [key]: prefs }));
+      return prefs;
+    } catch (e) {
+      console.error('loadChannelNotifPrefs failed:', e);
+      return null;
+    }
+  }
+
+  /** Persist updated notification preferences and update local cache. */
+  async function updateChannelNotifPrefs(channelId, patch) {
+    const key = String(channelId);
+    try {
+      await setChannelNotifPrefs(key, patch);
+      const updated = { ...(notifPrefsRef.current[key] ?? { notifications: 0, unreads: 0 }), ...patch };
+      notifPrefsRef.current[key] = updated;
+      setNotifPrefs(p => ({ ...p, [key]: updated }));
+      return updated;
+    } catch (e) {
+      console.error('updateChannelNotifPrefs failed:', e);
+      return null;
+    }
+  }
+
+  /** Fetch & cache per-guild notification preferences. */
+  async function loadGuildNotifPrefs(guildId) {
+    const key = String(guildId);
+    try {
+      const data = await getGuildNotifPrefs(key);
+      guildNotifPrefsRef.current[key] = data;
+      setGuildNotifPrefs(p => ({ ...p, [key]: data }));
+      return data;
+    } catch (e) {
+      console.error('loadGuildNotifPrefs failed:', e);
+      return null;
+    }
+  }
+
+  /** Persist updated guild-level notification preferences. */
+  async function updateGuildNotifPrefs(guildId, preferences) {
+    const key = String(guildId);
+    try {
+      await setGuildNotifPrefsApi(key, preferences);
+      // GET returns { ..., preferences: { notifications, unreads } } — mirror that shape in cache
+      const updated = { ...(guildNotifPrefsRef.current[key] ?? {}), preferences };
+      guildNotifPrefsRef.current[key] = updated;
+      setGuildNotifPrefs(p => ({ ...p, [key]: updated }));
+      return updated;
+    } catch (e) {
+      console.error('updateGuildNotifPrefs failed:', e);
+      return null;
+    }
+  }
+
+  /** PATCH /account – update user-level default notification preferences. */
+  async function updateUserDefaultPrefs(patch) {
+    try {
+      await patchAccount(patch);
+      setCurrentUser(p => p ? { ...p, ...patch } : p);
+    } catch (e) {
+      console.error('updateUserDefaultPrefs failed:', e);
+    }
+  }
 
   async function reloadGroups() {
     try {
@@ -246,6 +417,25 @@ export function AppProvider({ children }) {
       });
       // Bubble the channel to the top of the DM/group sidebar
       setChannelLastActive(p => ({ ...p, [key]: Date.now() }));
+      // Unread tracking: only when not currently viewing this channel
+      if (key !== activeChannelIdRef.current) {
+        const mode = resolveEffectiveUnreadsMode(key);
+        if (mode === 1) { // AllMessages
+          setUnreads(p => ({ ...p, [key]: (p[key] ?? 0) + 1 }));
+        }
+        // MentionsOnly (2) — incremented by MentionedInMessage event
+        // Nothing (3) — never increment
+      }
+    });
+
+    conn.on('MentionedInMessage', ({ ChannelId }) => {
+      const key = String(ChannelId);
+      if (key !== activeChannelIdRef.current) {
+        const mode = resolveEffectiveUnreadsMode(key);
+        if (mode === 2) { // MentionsOnly
+          setUnreads(p => ({ ...p, [key]: (p[key] ?? 0) + 1 }));
+        }
+      }
     });
 
     conn.on('DeleteMessage', ({ id }) => {
@@ -374,6 +564,18 @@ export function AppProvider({ children }) {
       guildMemberColors, loadGuildMemberColors, getMemberColor,
       rolesUpdatedEvent,
       userUpdatedEvent,
+      // Unread counts & notification preferences
+      unreads,
+      markChannelRead,
+      setActiveChannelId,
+      registerChannelMeta,
+      notifPrefs,
+      loadChannelNotifPrefs,
+      updateChannelNotifPrefs,
+      guildNotifPrefs,
+      loadGuildNotifPrefs,
+      updateGuildNotifPrefs,
+      updateUserDefaultPrefs,
     }}>
       {children}
     </Ctx.Provider>

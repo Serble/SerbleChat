@@ -77,6 +77,54 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
+    public async Task<UserChannelNotificationPreferences> GetChannelNotificationPreferences(string userId, int channelId) {
+        return await context.UserChannelNotificationPreferences
+            .FirstOrDefaultAsync(p => p.UserId == userId && p.ChannelId == channelId)
+            ?? new UserChannelNotificationPreferences { UserId = userId, ChannelId = channelId };
+    }
+
+    public Task<Dictionary<int, UserChannelNotificationPreferences>> GetAllChannelNotificationPreferences(string userId) {
+        return context.UserChannelNotificationPreferences
+            .Where(p => p.UserId == userId)
+            .ToDictionaryAsync(p => p.ChannelId);
+    }
+
+    public async Task<UserGuildNotificationPreferences> GetUserGuildNotificationPreferences(string userId, int guildId) {
+        return await context.UserGuildNotificationPreferences
+            .FirstOrDefaultAsync(p => p.UserId == userId && p.GuildId == guildId)
+            ?? new UserGuildNotificationPreferences { UserId = userId };
+    }
+
+    public Task<Dictionary<int, UserGuildNotificationPreferences>> GetAllUserGuildNotificationPreferences(string userId) {
+        return context.UserGuildNotificationPreferences
+            .Where(p => p.UserId == userId)
+            .ToDictionaryAsync(p => p.GuildId);
+    }
+
+    public async Task SetChannelNotificationPreferences(string userId, int channelId, UserChannelNotificationPreferences preferences) {
+        int updated = await context.UserChannelNotificationPreferences
+            .Where(p => p.UserId == userId && p.ChannelId == channelId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(p => p.Preferences.Notifications, preferences.Preferences.Notifications)
+                .SetProperty(p => p.Preferences.Unreads, preferences.Preferences.Unreads));
+        if (updated == 0) {
+            context.UserChannelNotificationPreferences.Add(preferences);
+            await context.SaveChangesAsync();
+        }
+    }
+
+    public async Task SetUserGuildNotificationPreferences(string userId, int guildId, UserGuildNotificationPreferences preferences) {
+        int updated = await context.UserGuildNotificationPreferences
+            .Where(p => p.UserId == userId && p.GuildId == guildId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(p => p.Preferences.Notifications, preferences.Preferences.Notifications)
+                .SetProperty(p => p.Preferences.Unreads, preferences.Preferences.Unreads));
+        if (updated == 0) {
+            context.UserGuildNotificationPreferences.Add(preferences);
+            await context.SaveChangesAsync();
+        }
+    }
+
     public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
         if (user == null!) {
             throw new ArgumentNullException(nameof(user));

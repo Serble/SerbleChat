@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { updateGuild } from '../api.js';
 
 const PERM_KEYS = [
@@ -25,28 +25,45 @@ function stateColor(s) { return s === 0 ? '#23a55a' : s === 1 ? '#f23f43' : '#72
 
 export default function DefaultPermsTab({ guild, onSaved }) {
   const [perms, setPerms] = useState(guild.defaultPermissions ?? {});
-  const [busy, setBusy]   = useState(false);
-  const [err, setErr]     = useState(null);
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [err, setErr]       = useState(null);
+  const timerRef            = useRef(null);
+  const latestPermsRef      = useRef(perms);
 
-  // Sync when guild changes (e.g. after external save)
+  // Sync when guild changes
   useEffect(() => { setPerms(guild.defaultPermissions ?? {}); }, [guild.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSave() {
-    setBusy(true); setErr(null);
-    try {
-      await updateGuild(guild.id, { defaultPermissions: perms });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      if (onSaved) onSaved(perms);
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  }
+  // Auto-save whenever perms change (skip the initial mount value)
+  const isMounted = useRef(false);
+  useEffect(() => {
+    if (!isMounted.current) { isMounted.current = true; return; }
+    latestPermsRef.current = perms;
+    clearTimeout(timerRef.current);
+    setStatus('saving');
+    timerRef.current = setTimeout(async () => {
+      try {
+        await updateGuild(guild.id, { defaultPermissions: latestPermsRef.current });
+        setErr(null);
+        setStatus('saved');
+        if (onSaved) onSaved(latestPermsRef.current);
+        setTimeout(() => setStatus(null), 2000);
+      } catch (e) {
+        setErr(e.message);
+        setStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(timerRef.current);
+  }, [perms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ fontSize: '0.82rem', color: '#72767d', lineHeight: 1.5 }}>
-        Default permissions apply to all members that don't have a role overriding them.
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ fontSize: '0.82rem', color: '#72767d', lineHeight: 1.5, flex: 1 }}>
+          Default permissions apply to all members that don't have a role overriding them.
+        </div>
+        {status === 'saving' && <span style={{ fontSize: '0.72rem', color: '#72767d', flexShrink: 0 }}>Saving…</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.72rem', color: '#23a55a', flexShrink: 0 }}>✓ Saved</span>}
+        {status === 'error'  && <span style={{ fontSize: '0.72rem', color: '#f23f43', flexShrink: 0 }} title={err}>✗ Error</span>}
       </div>
 
       {PERM_KEYS.map(({ key, label, desc }) => {
@@ -69,18 +86,6 @@ export default function DefaultPermsTab({ guild, onSaved }) {
           </div>
         );
       })}
-
-      {err && <div style={{ color: '#f23f43', fontSize: '0.82rem' }}>{err}</div>}
-
-      <button onClick={handleSave} disabled={busy}
-        style={{
-          background: saved ? '#23a55a' : '#7c3aed', border: 'none', borderRadius: '6px',
-          padding: '0.6rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600,
-          cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
-          transition: 'background 0.2s', marginTop: '0.25rem',
-        }}>
-        {busy ? 'Saving…' : saved ? '✓ Saved' : 'Save Default Permissions'}
-      </button>
     </div>
   );
 }

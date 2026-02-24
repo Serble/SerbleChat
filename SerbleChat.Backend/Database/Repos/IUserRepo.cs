@@ -18,5 +18,12 @@ public interface IUserRepo {
     Task<string> GetClientOptions(string userId);
     Task SetClientOptions(string userId, string options);
     
+    Task<UserChannelNotificationPreferences> GetChannelNotificationPreferences(string userId, int channelId);
+    Task<Dictionary<int, UserChannelNotificationPreferences>> GetAllChannelNotificationPreferences(string userId);
+    Task<UserGuildNotificationPreferences> GetUserGuildNotificationPreferences(string userId, int guildId);
+    Task<Dictionary<int, UserGuildNotificationPreferences>> GetAllUserGuildNotificationPreferences(string userId);
+    Task SetChannelNotificationPreferences(string userId, int channelId, UserChannelNotificationPreferences preferences);
+    Task SetUserGuildNotificationPreferences(string userId, int guildId, UserGuildNotificationPreferences preferences);
+    
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
 }

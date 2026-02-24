@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import {
   getChannelPermissionOverrides,
@@ -72,10 +72,13 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
   const { resolveUser, loadChannelPermissions } = useApp();
   const [expanded, setExpanded]   = useState(false);
   const [perms, setPerms]         = useState(override.permissions ?? {});
-  const [busy, setBusy]           = useState(false);
+  const [delBusy, setDelBusy]     = useState(false);
+  const [status, setStatus]       = useState(null); // null | 'saving' | 'saved' | 'error'
   const [err, setErr]             = useState(null);
-  const [saved, setSaved]         = useState(false);
   const [label, setLabel]         = useState(null);
+  const timerRef                  = useRef(null);
+  const latestPermsRef            = useRef(perms);
+  const isMounted                 = useRef(false);
 
   // Resolve display label
   useEffect(() => {
@@ -87,26 +90,36 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
     }
   }, [override.roleId, override.userId, roles]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSave() {
-    setBusy(true); setErr(null);
-    try {
-      await updateChannelPermissionOverride(guildId, channelId, override.id, perms);
-      await loadChannelPermissions(guildId, channelId);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      onSaved({ ...override, permissions: perms });
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  }
+  // Auto-save whenever perms change (skip initial mount)
+  useEffect(() => {
+    if (!isMounted.current) { isMounted.current = true; return; }
+    latestPermsRef.current = perms;
+    clearTimeout(timerRef.current);
+    setStatus('saving');
+    timerRef.current = setTimeout(async () => {
+      try {
+        await updateChannelPermissionOverride(guildId, channelId, override.id, latestPermsRef.current);
+        await loadChannelPermissions(guildId, channelId);
+        setErr(null);
+        setStatus('saved');
+        onSaved({ ...override, permissions: latestPermsRef.current });
+        setTimeout(() => setStatus(null), 2000);
+      } catch (e) {
+        setErr(e.message);
+        setStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(timerRef.current);
+  }, [perms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDelete() {
     if (!confirm(`Delete this permission override for ${label?.name ?? '…'}?`)) return;
-    setBusy(true);
+    setDelBusy(true);
     try {
       await deleteChannelPermissionOverride(guildId, channelId, override.id);
       await loadChannelPermissions(guildId, channelId);
       onDeleted(override.id);
-    } catch (e) { setErr(e.message); setBusy(false); }
+    } catch (e) { setErr(e.message); setDelBusy(false); }
   }
 
   return (
@@ -127,27 +140,26 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
         <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>
           {label?.name ?? 'Loading…'}
         </span>
-        <span style={{ fontSize: '0.75rem', color: '#72767d', flexShrink: 0 }}>
-          {expanded ? '▲ collapse' : '▼ expand'}
+        {status === 'saving' && <span style={{ fontSize: '0.68rem', color: '#72767d' }}>Saving…</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.68rem', color: '#23a55a' }}>✓ Saved</span>}
+        {status === 'error'  && <span style={{ fontSize: '0.68rem', color: '#f23f43' }} title={err}>✗ Error</span>}
+        <span style={{ fontSize: '0.75rem', color: '#72767d', flexShrink: 0, marginLeft: '0.25rem' }}>
+          {expanded ? '▲' : '▼'}
         </span>
       </div>
 
       {/* Expanded content */}
       {expanded && (
         <div style={{ padding: '0.75rem 0.85rem', borderTop: '1px solid #3b3d43', background: '#1e1f22' }}>
-          <PermissionsEditor perms={perms} onChange={setPerms} disabled={!canManage || busy} />
+          <PermissionsEditor perms={perms} onChange={setPerms} disabled={!canManage || delBusy} />
           {err && <div style={{ color: '#f23f43', fontSize: '0.8rem', marginTop: '0.5rem' }}>{err}</div>}
           {canManage && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={handleDelete} disabled={busy}
-                style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.35rem 0.75rem', color: '#f23f43', fontSize: '0.8rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+              <button onClick={handleDelete} disabled={delBusy}
+                style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.35rem 0.75rem', color: '#f23f43', fontSize: '0.8rem', fontWeight: 600, cursor: delBusy ? 'default' : 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { if (!delBusy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>
                 Delete Override
-              </button>
-              <button onClick={handleSave} disabled={busy}
-                style={{ background: saved ? '#23a55a' : '#7c3aed', border: 'none', borderRadius: '6px', padding: '0.35rem 0.9rem', color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, transition: 'background 0.2s' }}>
-                {busy ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
               </button>
             </div>
           )}

@@ -20,8 +20,18 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<ChannelPermissionOverride> ChannelPermissionOverrides { get; set; } = null!;
     public DbSet<UserBlock> UserBlocks { get; set; } = null!;
     public DbSet<ClientOptionsData> ClientOptions { get; set; } = null!;
+    public DbSet<UserChannelNotificationPreferences> UserChannelNotificationPreferences { get; set; } = null!;
+    public DbSet<UserGuildNotificationPreferences> UserGuildNotificationPreferences { get; set; } = null!;
+    public DbSet<MessageMention> MessageMentions { get; set; } = null!;
+    public DbSet<ChannelRead> ChannelReads { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
+        modelBuilder.Entity<Message>()
+            .HasIndex(e => e.ChannelId);
+
+        modelBuilder.Entity<Message>()
+            .HasIndex(e => e.CreatedAt);
+        
         modelBuilder.Entity<GroupChatMember>()
             .HasIndex(e => new { e.GroupChatId, e.UserId })
             .IsUnique();
@@ -32,6 +42,21 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
         
         modelBuilder.Entity<UserBlock>()
             .HasIndex(e => new { e.UserId, e.BlockedUserId })
+            .IsUnique();
+        
+        modelBuilder.Entity<UserChannelNotificationPreferences>()
+            .HasIndex(e => new { e.UserId, e.ChannelId })
+            .IsUnique();
+        
+        modelBuilder.Entity<UserGuildNotificationPreferences>()
+            .HasIndex(e => new { e.UserId, e.GuildId })
+            .IsUnique();
+
+        modelBuilder.Entity<MessageMention>()
+            .HasIndex(e => new { e.MessageId, e.UserId });
+        
+        modelBuilder.Entity<ChannelRead>()
+            .HasIndex(e => new { e.UserId, e.ChannelId })
             .IsUnique();
     }
 }

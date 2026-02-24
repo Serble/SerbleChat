@@ -11,7 +11,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("/account")]
 [ApiController]
 [Authorize]
-public class AccountController(IUserRepo users, IConnectionMultiplexer redis) : ControllerBase {
+public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRepo channels, IConnectionMultiplexer redis) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<UserAccountResponse>> Get() {
@@ -26,6 +26,34 @@ public class AccountController(IUserRepo users, IConnectionMultiplexer redis) : 
         }
         
         return Ok(UserAccountResponse.FromChatUser(user));
+    }
+    
+    [HttpPatch]
+    public async Task<ActionResult> Patch([FromBody] UserAccountUpdateRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+        
+        if (request.DefaultDmNotificationPreferences != null) {
+            user.DefaultDmNotificationPreferences = request.DefaultDmNotificationPreferences;
+        }
+        
+        if (request.DefaultGuildNotificationPreferences != null) {
+            user.DefaultGuildNotificationPreferences = request.DefaultGuildNotificationPreferences;
+        }
+
+        if (request.DefaultGroupNotificationPreferences != null) {
+            user.DefaultGroupNotificationPreferences = request.DefaultGroupNotificationPreferences;
+        }
+
+        await users.UpdateUser(user);
+        return Ok();
     }
 
     [HttpGet("{id}")]
@@ -126,5 +154,61 @@ public class AccountController(IUserRepo users, IConnectionMultiplexer redis) : 
         
         await users.SetClientOptions(userId, options);
         return Ok();
+    }
+    
+    [HttpGet("unreads")]
+    public async Task<ActionResult<Dictionary<int, int>>> GetUnreadCounts() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
+        Dictionary<int, Channel> channelData = (await channels.GetChannelsVisibleToUser(userId)).ToDictionary(c => c.Id);
+        Dictionary<int, UserChannelNotificationPreferences> channelPrefs = await users.GetAllChannelNotificationPreferences(userId);
+        Dictionary<int, UserGuildNotificationPreferences> guildPrefs = await users.GetAllUserGuildNotificationPreferences(userId);
+        Dictionary<int, int> msgUnreadCounts = await unreads.GetChannelUnreadMessagesCounts(userId);
+        Dictionary<int, int> mentionUnreadCounts = await unreads.GetChannelUnreadMentionsCounts(userId);
+        Dictionary<int, int> response = new();
+        foreach (int channelId in msgUnreadCounts.Keys.Union(mentionUnreadCounts.Keys)) {
+            Channel channel = channelData[channelId];
+            
+            int msgCount = msgUnreadCounts.GetValueOrDefault(channelId, 0);
+            int mentionCount = mentionUnreadCounts.GetValueOrDefault(channelId, 0);
+            NotificationPreferences pref = channelPrefs.TryGetValue(channelId, out UserChannelNotificationPreferences? o) 
+                ? o.Preferences
+                : NotificationPreferences.DefaultPreferences;
+            
+            int? guildId = channel.GuildId;
+            NotificationPreferences guildPref = guildId == null 
+                ? NotificationPreferences.DefaultPreferences 
+                : guildPrefs.TryGetValue(guildId.Value, out UserGuildNotificationPreferences? g) 
+                    ? g.Preferences
+                    : NotificationPreferences.DefaultPreferences;
+
+            NotificationPreferences userPref = channel.Type switch {
+                ChannelType.Guild => user.DefaultGuildNotificationPreferences,
+                ChannelType.Dm => user.DefaultDmNotificationPreferences,
+                ChannelType.Group => user.DefaultGroupNotificationPreferences,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            // apply overrides from most important to least important: channel > guild > user
+            pref = pref.ApplyOverride(guildPref);
+            pref = pref.ApplyOverride(userPref);
+            
+            response.Add(channelId, pref.Unreads switch {
+                NotificationPreference.AllMessages => msgCount,
+                NotificationPreference.MentionsOnly => mentionCount,
+                NotificationPreference.Nothing => 0,
+                _ => throw new ArgumentOutOfRangeException()
+            });
+        }
+        
+        return Ok(response);
     }
 }

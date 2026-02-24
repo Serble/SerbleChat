@@ -50,6 +50,16 @@ export async function getMyAccount() {
   return handle(res);
 }
 
+/** PATCH /account  – update own account settings (e.g. default notification prefs) */
+export async function patchAccount(body) {
+  const res = await fetch(`${BASE}/account`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handle(res);
+}
+
 /** GET /account/:id  – public profile by id */
 export async function getAccountById(id) {
   const res = await fetch(`${BASE}/account/${encodeURIComponent(id)}`, { headers: authHeaders() });
@@ -110,6 +120,44 @@ export async function unblockUser(id) {
   const res = await fetch(`${BASE}/account/blocks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** GET /account/unreads  – map of channelId -> unread count (already filtered by per-channel prefs) */
+export async function getUnreads() {
+  const res = await fetch(`${BASE}/account/unreads`, { headers: authHeaders() });
+  return handle(res); // { [channelId: string]: number }
+}
+
+/** GET /channel/:channelId/notification-preferences  – get notification prefs for a channel */
+export async function getChannelNotifPrefs(channelId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/notification-preferences`, { headers: authHeaders() });
+  return handle(res); // { notifications: 0|1|2, unreads: 0|1|2 }
+}
+
+/** PUT /channel/:channelId/notification-preferences  – update notification prefs */
+export async function setChannelNotifPrefs(channelId, { notifications, unreads }) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/notification-preferences`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notifications, unreads }),
+  });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/notification-preferences  – get guild-level notification prefs */
+export async function getGuildNotifPrefs(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/notification-preferences`, { headers: authHeaders() });
+  return handle(res); // { preferences: { notifications: 0|1|2|3, unreads: 0|1|2|3 } }
+}
+
+/** PUT /guild/:guildId/notification-preferences  – update guild-level notification prefs */
+export async function setGuildNotifPrefs(guildId, preferences) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/notification-preferences`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(preferences),
   });
   return handle(res);
 }

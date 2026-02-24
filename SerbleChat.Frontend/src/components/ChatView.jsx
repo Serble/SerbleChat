@@ -363,7 +363,7 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
@@ -567,6 +567,15 @@ export default function ChatView() {
   }
 
   useEffect(() => {
+    // Mark this channel as actively viewed (clears its unread count)
+    setActiveChannelId(channelId);
+    return () => {
+      // When leaving the channel, clear active so new messages are counted
+      setActiveChannelId(null);
+    };
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     setLoading(true);
     setChannel(null);
     setOtherUser(null);
@@ -581,6 +590,10 @@ export default function ChatView() {
     ]).then(([ch, msgs]) => {
       // Keep the correct sidebar active based on the channel type
       setActiveGuildId(ch.type === 0 ? String(ch.guildId) : null);
+      // Register channel metadata for tiered unread resolution
+      registerChannelMeta(channelId, { type: ch.type, guildId: ch.guildId ?? null });
+      // Mark channel as read now that we've loaded messages
+      markChannelRead(channelId);
       // Load permissions and member colors for guild channels
       if (ch.type === 0 && ch.guildId) {
         loadGuildPermissions(ch.guildId);

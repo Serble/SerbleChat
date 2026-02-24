@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
+import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
@@ -36,7 +37,7 @@ function StripButton({ title, active, onClick, children }) {
   );
 }
 
-function GuildIcon({ guild, active, onClick }) {
+function GuildIcon({ guild, active, onClick, onContextMenu }) {
   const [hov, setHov] = useState(false);
   const hue = guild.name
     ? (guild.name.charCodeAt(0) * 37 + guild.name.charCodeAt(guild.name.length - 1) * 17) % 360
@@ -47,6 +48,7 @@ function GuildIcon({ guild, active, onClick }) {
     <button
       title={guild.name}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
@@ -74,8 +76,14 @@ export default function ServerStrip() {
   const { guilds, refreshGuilds, activeGuildId, setActiveGuildId } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState(null); // { guildId, guildName, x, y }
 
   const onHome = !activeGuildId;
+
+  function handleGuildContextMenu(e, guild) {
+    e.preventDefault();
+    setCtxMenu({ guildId: guild.id, guildName: guild.name, x: e.clientX, y: e.clientY });
+  }
 
   return (
     <div style={{
@@ -99,6 +107,7 @@ export default function ServerStrip() {
           guild={g}
           active={String(activeGuildId) === String(g.id)}
           onClick={() => { setActiveGuildId(String(g.id)); nav(`/app/guild/${g.id}`); }}
+          onContextMenu={e => handleGuildContextMenu(e, g)}
         />
       ))}
 
@@ -153,6 +162,16 @@ export default function ServerStrip() {
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {ctxMenu && (
+        <GuildNotifContextMenu
+          guildId={ctxMenu.guildId}
+          guildName={ctxMenu.guildName}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
     </div>
   );
 }

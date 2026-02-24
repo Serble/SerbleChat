@@ -88,6 +88,7 @@ builder.Services.AddScoped<IMessageRepo, MessageRepo>();
 builder.Services.AddScoped<IGroupChatRepo, GroupChatRepo>();
 builder.Services.AddScoped<IGuildRepo, GuildRepo>();
 builder.Services.AddScoped<IRoleRepo, RoleRepo>();
+builder.Services.AddScoped<IUnreadsRepo, UnreadsRepo>();
 
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
