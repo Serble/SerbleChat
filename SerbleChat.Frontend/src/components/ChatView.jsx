@@ -212,12 +212,135 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
   );
 });
 
+function BlockedInputBanner({ username, userId, unblockUser }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleUnblock() {
+    setBusy(true);
+    try { await unblockUser(userId); }
+    catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '0.75rem',
+      padding: '0.75rem 1rem',
+      background: 'rgba(242,63,67,0.08)', border: '1px solid rgba(242,63,67,0.25)',
+      borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.875rem',
+    }}>
+      <span style={{ flexShrink: 0, fontSize: '1rem' }}>🚫</span>
+      <span style={{ flex: 1 }}>
+        You have blocked <strong style={{ color: 'var(--text-secondary)' }}>{username}</strong>. You cannot send messages until you unblock them.
+      </span>
+      <button
+        onClick={handleUnblock}
+        disabled={busy}
+        style={{
+          flexShrink: 0, padding: '0.35rem 0.85rem', borderRadius: '6px',
+          background: busy ? 'rgba(255,255,255,0.05)' : 'rgba(242,63,67,0.15)',
+          border: '1px solid rgba(242,63,67,0.35)',
+          color: busy ? 'var(--text-muted)' : '#f23f43',
+          fontSize: '0.8rem', fontWeight: 600,
+          cursor: busy ? 'default' : 'pointer',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'rgba(242,63,67,0.28)'; }}
+        onMouseLeave={e => { if (!busy) e.currentTarget.style.background = 'rgba(242,63,67,0.15)'; }}
+      >
+        {busy ? 'Unblocking…' : 'Unblock'}
+      </button>
+    </div>
+  );
+}
+
+function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData }) {
+  const [expanded, setExpanded] = useState(false);
+  const [author, setAuthor] = useState(null);
+
+  useEffect(() => {
+    resolveUser(authorId).then(setAuthor);
+  }, [authorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const count = messages.length;
+  const name = author?.username ?? '…';
+
+  if (expanded) {
+    return (
+      <div>
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            prevMsg={i === 0 ? null : messages[i - 1]}
+            resolveUser={resolveUser}
+            currentUserId={currentUserId}
+            onContextMenu={onContextMenu}
+            onUserClick={onUserClick}
+            getColor={getColor}
+            mentionData={mentionData}
+            highlighted={false}
+          />
+        ))}
+        <div
+          onClick={() => setExpanded(false)}
+          style={{
+            padding: '0.25rem 1rem 0.35rem',
+            fontSize: '0.78rem',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            userSelect: 'none',
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+        >
+          <span>▲</span>
+          <span>Hide messages from blocked user</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setExpanded(true)}
+      style={{
+        margin: '0.25rem 1rem',
+        padding: '0.45rem 0.8rem',
+        borderRadius: '6px',
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.6rem',
+        cursor: 'pointer',
+        userSelect: 'none',
+        transition: 'background 0.1s',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+    >
+      <span style={{ fontSize: '0.95rem', flexShrink: 0 }}>🚫</span>
+      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flex: 1 }}>
+        {count === 1
+          ? `1 message from blocked user ${name}`
+          : `${count} messages from blocked user ${name}`}
+      </span>
+      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', flexShrink: 0 }}>click to show ▼</span>
+    </div>
+  );
+}
+
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser } = useApp();
   const [input, setInput]           = useState('');
+  const [sendError, setSendError]   = useState(null); // string | null
   const [highlightMsgId, setHighlightMsgId] = useState(null);
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -284,6 +407,33 @@ export default function ChatView() {
     (userId, username) => getMemberColor(guildIdForColor, userId, username),
     [getMemberColor, guildIdForColor] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // Pre-process messages into render units, grouping consecutive blocked-user messages
+  const renderUnits = useMemo(() => {
+    const units = [];
+    let i = 0;
+    while (i < channelMessages.length) {
+      const msg = channelMessages[i];
+      if (!msg._pending && isBlocked(msg.authorId)) {
+        // Collect consecutive blocked messages from the same author
+        const group = [msg];
+        let j = i + 1;
+        while (j < channelMessages.length) {
+          const next = channelMessages[j];
+          if (!next._pending && isBlocked(next.authorId) && next.authorId === msg.authorId) {
+            group.push(next);
+            j++;
+          } else break;
+        }
+        units.push({ type: 'blocked', key: `blocked-${msg.id ?? i}`, authorId: msg.authorId, messages: group });
+        i = j;
+      } else {
+        units.push({ type: 'normal', key: msg.id ?? `tmp-${i}`, msg, prevMsg: channelMessages[i - 1] ?? null });
+        i++;
+      }
+    }
+    return units;
+  }, [channelMessages, isBlocked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // React to channel-level SignalR events
   useEffect(() => {
@@ -384,6 +534,7 @@ export default function ChatView() {
     setChannel(null);
     setOtherUser(null);
     setInput('');
+    setSendError(null);
     setMentionPicker(null);
     setMentionData({ members: [], channels: [], roles: [] });
 
@@ -467,10 +618,10 @@ export default function ChatView() {
     return () => clearTimeout(t);
   }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus input when channel changes
+  // Focus input when channel changes or once loading finishes
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [channelId]);
+    if (!loading) inputRef.current?.focus();
+  }, [channelId, loading]);
 
   // Auto-resize textarea as content grows/shrinks
   useEffect(() => {
@@ -539,6 +690,8 @@ export default function ChatView() {
     e.preventDefault();
     const text = input.trim();
     if (!text || !currentUser) return;
+
+    setSendError(null);
     setInput('');
 
     // Optimistic pending message — will be replaced by the NewMessage signal
@@ -567,6 +720,11 @@ export default function ChatView() {
         ...p,
         [String(channelId)]: (p[String(channelId)] ?? []).filter(m => m.id !== tempId),
       }));
+      if (err?.status === 403) {
+        setSendError('You cannot send messages here.');
+      } else {
+        setSendError('Failed to send message. Please try again.');
+      }
     }
   }
 
@@ -733,65 +891,103 @@ export default function ChatView() {
             </div>
           )}
 
-          {channelMessages.map((msg, i) => (
-            <MessageBubble
-              key={msg.id ?? `tmp-${i}`}
-              msg={msg}
-              prevMsg={channelMessages[i - 1] ?? null}
-              resolveUser={resolveUser}
-              currentUserId={currentUser?.id}
-              onContextMenu={handleContextMenu}
-              onUserClick={handleUserClick}
-              getColor={getColor}
-              mentionData={mentionData}
-              highlighted={highlightMsgId !== null && String(msg.id) === highlightMsgId}
-            />
-          ))}
+          {renderUnits.map(unit => {
+            if (unit.type === 'blocked') {
+              return (
+                <BlockedGroupBubble
+                  key={unit.key}
+                  messages={unit.messages}
+                  authorId={unit.authorId}
+                  resolveUser={resolveUser}
+                  currentUserId={currentUser?.id}
+                  onContextMenu={handleContextMenu}
+                  onUserClick={handleUserClick}
+                  getColor={getColor}
+                  mentionData={mentionData}
+                />
+              );
+            }
+            return (
+              <MessageBubble
+                key={unit.key}
+                msg={unit.msg}
+                prevMsg={unit.prevMsg}
+                resolveUser={resolveUser}
+                currentUserId={currentUser?.id}
+                onContextMenu={handleContextMenu}
+                onUserClick={handleUserClick}
+                getColor={getColor}
+                mentionData={mentionData}
+                highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
+              />
+            );
+          })}
           <div ref={bottomRef} style={{ height: 8 }} />
         </div>
 
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
-          {canSend ? (
-          <form onSubmit={handleSend} style={{ position: 'relative' }}>
-            {mentionPicker && (
-              <MentionPicker
-                suggestions={pickerSuggestions}
-                selectedIndex={pickerIndex}
-                onSelect={insertMention}
-                onHoverIndex={setPickerIndex}
-              />
+          {/* Blocked-by-me banner — replaces the input entirely */}
+          {isDmChannel && otherUser && isBlocked(otherUser.id) ? (
+            <BlockedInputBanner username={otherUser.username} userId={otherUser.id} unblockUser={unblockUser} />
+          ) : canSend ? (
+          <>
+            {sendError && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                marginBottom: '0.5rem', padding: '0.55rem 0.85rem',
+                background: 'rgba(242,63,67,0.12)', border: '1px solid rgba(242,63,67,0.35)',
+                borderRadius: '6px', color: '#f23f43', fontSize: '0.83rem',
+              }}>
+                <span style={{ flexShrink: 0 }}>🚫</span>
+                <span style={{ flex: 1 }}>{sendError}</span>
+                <button
+                  onClick={() => setSendError(null)}
+                  style={{ background: 'none', border: 'none', color: '#f23f43', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 0.1rem', opacity: 0.7, flexShrink: 0 }}
+                  title="Dismiss"
+                >✕</button>
+              </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'flex-end', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
-              <textarea
-                ref={inputRef}
-                rows={1}
-                style={{
-                  flex: 1, background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                  fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
-                  resize: 'none', overflow: 'hidden', lineHeight: 1.5,
-                  maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
-                }}
-                placeholder={`Message ${channelDisplayName}`}
-                value={input}
-                onChange={e => { setInput(e.target.value); detectMention(e.target.value, e.target.selectionStart); }}
-                onKeyDown={handleKeyDown}
-                onKeyUp={e => {
-                  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                    detectMention(input, e.target.selectionStart);
-                  }
-                }}
-                onClick={e => detectMention(input, e.target.selectionStart)}
-                maxLength={16384}
-              />
-              {input.trim() && (
-                <button type="submit"
-                  style={{ background: 'var(--accent)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
-                >↵</button>
+            <form onSubmit={handleSend} style={{ position: 'relative' }}>
+              {mentionPicker && (
+                <MentionPicker
+                  suggestions={pickerSuggestions}
+                  selectedIndex={pickerIndex}
+                  onSelect={insertMention}
+                  onHoverIndex={setPickerIndex}
+                />
               )}
-            </div>
-          </form>
+              <div style={{ display: 'flex', alignItems: 'flex-end', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
+                <textarea
+                  ref={inputRef}
+                  rows={1}
+                  style={{
+                    flex: 1, background: 'transparent', border: 'none', color: 'var(--text-secondary)',
+                    fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
+                    resize: 'none', overflow: 'hidden', lineHeight: 1.5,
+                    maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
+                  }}
+                  placeholder={`Message ${channelDisplayName}`}
+                  value={input}
+                  onChange={e => { setInput(e.target.value); setSendError(null); detectMention(e.target.value, e.target.selectionStart); }}
+                  onKeyDown={handleKeyDown}
+                  onKeyUp={e => {
+                    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                      detectMention(input, e.target.selectionStart);
+                    }
+                  }}
+                  onClick={e => detectMention(input, e.target.selectionStart)}
+                  maxLength={16384}
+                />
+                {input.trim() && (
+                  <button type="submit"
+                    style={{ background: 'var(--accent)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
+                  >↵</button>
+                )}
+              </div>
+            </form>
+          </>
           ) : (
             <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center' }}>
               🔒 You don't have permission to send messages here.

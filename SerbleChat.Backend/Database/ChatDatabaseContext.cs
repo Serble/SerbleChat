@@ -18,6 +18,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<Role> Roles { get; set; } = null!;
     public DbSet<UserRoleAssignment> UserRoleAssignments { get; set; } = null!;
     public DbSet<ChannelPermissionOverride> ChannelPermissionOverrides { get; set; } = null!;
+    public DbSet<UserBlock> UserBlocks { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<GroupChatMember>()
@@ -26,6 +27,10 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
         
         modelBuilder.Entity<UserRoleAssignment>()
             .HasIndex(e => new { e.UserId, e.RoleId })
+            .IsUnique();
+        
+        modelBuilder.Entity<UserBlock>()
+            .HasIndex(e => new { e.UserId, e.BlockedUserId })
             .IsUnique();
     }
 }

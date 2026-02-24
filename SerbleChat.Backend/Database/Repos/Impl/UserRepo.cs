@@ -34,6 +34,35 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         await context.SaveChangesAsync();
     }
 
+    public Task<bool> AreUsersBlocked(string userId1, string userId2) {
+        return context.UserBlocks.AnyAsync(b =>
+            (b.UserId == userId1 && b.BlockedUserId == userId2) ||
+            (b.UserId == userId2 && b.BlockedUserId == userId1));
+    }
+
+    public Task BlockUser(string blockerId, string blockedId) {
+        if (context.UserBlocks.Any(b => b.UserId == blockerId && b.BlockedUserId == blockedId)) {
+            return Task.CompletedTask;
+        }
+        context.UserBlocks.Add(new UserBlock {
+            UserId = blockerId, BlockedUserId = blockedId
+        });
+        return context.SaveChangesAsync();
+    }
+
+    public Task UnblockUser(string blockerId, string blockedId) {
+        return context.UserBlocks
+            .Where(b => b.UserId == blockerId && b.BlockedUserId == blockedId)
+            .ExecuteDeleteAsync();
+    }
+
+    public Task<UserBlock[]> GetBlockedUsers(string userId) {
+        return context.UserBlocks
+            .Where(b => b.UserId == userId)
+            .Include(b => b.BlockedUserNavigation)
+            .ToArrayAsync();
+    }
+
     public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
         if (user == null!) {
             throw new ArgumentNullException(nameof(user));

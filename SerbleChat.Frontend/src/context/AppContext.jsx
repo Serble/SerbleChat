@@ -4,6 +4,7 @@ import {
   getMyAccount, getFriends, getDmChannels,
   getGroupChats, getGroupChat, getAccountById, getMyGuilds,
   getMyGuildPermissions, getMyChannelPermissions, verifyAuth, getGuildChannelMembersDetails,
+  getBlockedUsers, blockUser as blockUserApi, unblockUser as unblockUserApi,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -16,6 +17,8 @@ export function AppProvider({ children }) {
   const [dmChannels,  setDmChannels]    = useState([]);
   const [groupChats,  setGroupChats]    = useState([]);
   const [guilds,      setGuilds]        = useState([]);
+  const [blockedUsers, setBlockedUsers] = useState([]); // PublicUserResponse[]
+  const [blockedUserIds, setBlockedUserIds] = useState(new Set()); // Set<string>
   const [isConnected, setIsConnected]   = useState(false);
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
   const [toasts,        setToasts]        = useState([]);
@@ -80,11 +83,33 @@ export function AppProvider({ children }) {
       setDmChannels(dms);
       await reloadGroups();
       await reloadGuilds();
+      await refreshBlockedUsers();
       connectHub();
     } catch (e) {
       console.error('AppContext init failed:', e);
     }
   }
+
+  async function refreshBlockedUsers() {
+    try {
+      const list = await getBlockedUsers();
+      const arr = Array.isArray(list) ? list : [];
+      setBlockedUsers(arr);
+      setBlockedUserIds(new Set(arr.map(u => String(u.id))));
+    } catch (e) { console.error('refreshBlockedUsers failed:', e); }
+  }
+
+  async function blockUserFn(id) {
+    await blockUserApi(id);
+    await refreshBlockedUsers();
+  }
+
+  async function unblockUserFn(id) {
+    await unblockUserApi(id);
+    await refreshBlockedUsers();
+  }
+
+  const isBlocked = useCallback((id) => blockedUserIds.has(String(id)), [blockedUserIds]);
 
   async function reloadGroups() {
     try {
@@ -325,6 +350,7 @@ export function AppProvider({ children }) {
       dmChannels, setDmChannels,
       groupChats, setGroupChats,
       guilds,     setGuilds,
+      blockedUsers, isBlocked, blockUser: blockUserFn, unblockUser: unblockUserFn, refreshBlockedUsers,
       isConnected,
       messages,  setMessages,
       toasts, addToast, removeToast,

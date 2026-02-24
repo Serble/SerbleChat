@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.jsx';
 import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 
-const TABS = ['All', 'Pending', 'Add Friend'];
+const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
 
 function Avatar({ name, size = 40 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -168,8 +168,40 @@ function EmptyState({ icon, title, text }) {
   );
 }
 
+function BlockedRow({ user, onUnblock }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleUnblock() {
+    setBusy(true);
+    try { await onUnblock(user.id); }
+    catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '0.875rem',
+      padding: '0.65rem 1rem', borderRadius: '8px',
+      borderBottom: '1px solid var(--border)',
+      transition: 'background 0.1s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+    >
+      <Avatar name={user?.username} />
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {user?.username ?? '…'}
+        </div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Blocked</div>
+      </div>
+      <ActionBtn label="Unblock" color="#ed4245" onClick={handleUnblock} disabled={busy} />
+    </div>
+  );
+}
+
 export default function FriendsHome() {
-  const { friends, currentUser, refreshFriends } = useApp();
+  const { friends, currentUser, refreshFriends, blockedUsers, unblockUser, refreshBlockedUsers } = useApp();
   const [tab, setTab]           = useState('All');
   const [addInput, setAddInput] = useState('');
   const [addStatus, setAddStatus] = useState(null);
@@ -302,6 +334,26 @@ export default function FriendsHome() {
                   </>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {/* ── Blocked ── */}
+        {tab === 'Blocked' && (
+          <div style={{ padding: '1rem 1.25rem 0' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem' }}>
+              Blocked — {blockedUsers.length}
+            </div>
+            {blockedUsers.length === 0 ? (
+              <EmptyState icon="🚫" title="No blocked users" text="Users you block will appear here." />
+            ) : (
+              blockedUsers.map(u => (
+                <BlockedRow
+                  key={u.id}
+                  user={u}
+                  onUnblock={async (id) => { await unblockUser(id); refreshBlockedUsers(); }}
+                />
+              ))
             )}
           </div>
         )}

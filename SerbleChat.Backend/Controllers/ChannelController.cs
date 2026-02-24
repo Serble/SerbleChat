@@ -32,6 +32,13 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
                 if (!(dmChannel.User1Id == userId || dmChannel.User2Id == userId)) {
                     return false;
                 }
+
+                if (sendMessages) {
+                    bool blocked = await users.AreUsersBlocked(dmChannel.User1Id, dmChannel.User2Id);
+                    if (blocked) {
+                        return false;
+                    }
+                }
                 
                 return true;
             }

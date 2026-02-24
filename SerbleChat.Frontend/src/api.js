@@ -16,7 +16,11 @@ async function handle(res) {
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = text; }
-  if (!res.ok) throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
+  if (!res.ok) {
+    const err = new Error(typeof data === 'string' ? data : JSON.stringify(data));
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -78,6 +82,32 @@ export async function addFriend(friendId) {
 /** DELETE /friends/:friendId  – remove a friend or cancel a request */
 export async function removeFriend(friendId) {
   const res = await fetch(`${BASE}/friends/${encodeURIComponent(friendId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+// ── Blocks ────────────────────────────────────────────────────────────────────
+
+/** GET /account/blocks  – list all blocked users */
+export async function getBlockedUsers() {
+  const res = await fetch(`${BASE}/account/blocks`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /account/blocks/:id  – block a user */
+export async function blockUser(id) {
+  const res = await fetch(`${BASE}/account/blocks/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** DELETE /account/blocks/:id  – unblock a user */
+export async function unblockUser(id) {
+  const res = await fetch(`${BASE}/account/blocks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });

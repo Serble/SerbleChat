@@ -10,5 +10,10 @@ public interface IUserRepo {
     Task UpdateRefreshToken(string id, string refreshToken);
     Task UpdateUser(ChatUser user);
     
+    Task<bool> AreUsersBlocked(string userId1, string userId2);
+    Task BlockUser(string blockerId, string blockedId);
+    Task UnblockUser(string blockerId, string blockedId);
+    Task<UserBlock[]> GetBlockedUsers(string userId);
+    
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
 }
