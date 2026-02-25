@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
+import { useVoice } from '../context/VoiceContext.jsx';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
+import VoicePanel from './VoicePanel.jsx';
 
 function Avatar({ name, size = 32 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -187,6 +189,7 @@ function SectionHeader({ label }) {
 
 export default function DmSidebar() {
   const { currentUser, dmChannels, groupChats, isConnected, friends, channelLastActive } = useApp();
+  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants } = useVoice();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -281,6 +284,18 @@ export default function DmSidebar() {
           </div>
         )}
       </div>
+
+      {/* Voice Panel - shown when connected to voice */}
+      {voiceSession && (
+        <VoicePanel
+          channelId={voiceChannelId}
+          voiceSession={voiceSession}
+          participants={voiceParticipants}
+          voiceMuted={voiceMuted}
+          onToggleMute={toggleMute}
+          onLeave={leaveVoice}
+        />
+      )}
 
       {/* User panel */}
       {currentUser && (

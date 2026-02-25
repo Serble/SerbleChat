@@ -7,7 +7,7 @@ import {
   getBlockedUsers, blockUser as blockUserApi, unblockUser as unblockUserApi,
   getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
-  getGuildChannels,
+  getGuildChannels, getUsersInVoice,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -44,6 +44,11 @@ export function AppProvider({ children }) {
   const [rolesUpdatedEvent, setRolesUpdatedEvent] = useState(null);
   // last UserUpdated event payload { userId } — MemberList / ChatView watches this
   const [userUpdatedEvent, setUserUpdatedEvent] = useState(null);
+  // channelId (string) -> string[] (userIds) for voice presence
+  const [voiceUsersByChannel, setVoiceUsersByChannel] = useState({});
+  const voiceUsersByChannelRef = useRef({});
+  const voicePresencePrimedRef = useRef(new Set());
+  const voicePresenceInflightRef = useRef(new Set());
 
   const hubRef          = useRef(null);
   const userCacheRef    = useRef({});
@@ -69,6 +74,7 @@ export function AppProvider({ children }) {
 
   // Keep refs in sync with state so SignalR handlers always read the latest values
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { voiceUsersByChannelRef.current = voiceUsersByChannel; }, [voiceUsersByChannel]);
 
   useEffect(() => {
     dmChannels.forEach(dm => {
@@ -156,6 +162,45 @@ export function AppProvider({ children }) {
   }
 
   const isBlocked = useCallback((id) => blockedUserIds.has(String(id)), [blockedUserIds]);
+
+  function setVoiceUsersForChannel(channelId, userIds) {
+    const key = String(channelId);
+    const nextList = Array.from(new Set((userIds ?? []).map(String)));
+    voiceUsersByChannelRef.current = { ...voiceUsersByChannelRef.current, [key]: nextList };
+    setVoiceUsersByChannel(prev => ({ ...prev, [key]: nextList }));
+  }
+
+  function addVoiceUser(channelId, userId) {
+    const key = String(channelId);
+    const existing = voiceUsersByChannelRef.current[key] ?? [];
+    if (existing.includes(String(userId))) return;
+    const nextList = [...existing, String(userId)];
+    voiceUsersByChannelRef.current = { ...voiceUsersByChannelRef.current, [key]: nextList };
+    setVoiceUsersByChannel(prev => ({ ...prev, [key]: nextList }));
+  }
+
+  function removeVoiceUser(channelId, userId) {
+    const key = String(channelId);
+    const existing = voiceUsersByChannelRef.current[key] ?? [];
+    const nextList = existing.filter(id => String(id) !== String(userId));
+    voiceUsersByChannelRef.current = { ...voiceUsersByChannelRef.current, [key]: nextList };
+    setVoiceUsersByChannel(prev => ({ ...prev, [key]: nextList }));
+  }
+
+  async function primeVoiceUsers(channelId) {
+    const key = String(channelId);
+    if (voicePresencePrimedRef.current.has(key) || voicePresenceInflightRef.current.has(key)) return;
+    voicePresenceInflightRef.current.add(key);
+    try {
+      const response = await getUsersInVoice(key);
+      setVoiceUsersForChannel(key, response?.users ?? []);
+      voicePresencePrimedRef.current.add(key);
+    } catch (e) {
+      console.warn('primeVoiceUsers failed:', e);
+    } finally {
+      voicePresenceInflightRef.current.delete(key);
+    }
+  }
 
   /** Call when the user navigates to a channel. Clears unread count for that channel. */
   function setActiveChannelId(id) {
@@ -513,6 +558,16 @@ export function AppProvider({ children }) {
       setUserUpdatedEvent({ userId: id, ts: Date.now() });
     });
 
+    conn.on('ClientJoinVoice', ({ userId, channelId }) => {
+      if (userId == null || channelId == null) return;
+      addVoiceUser(channelId, userId);
+    });
+
+    conn.on('ClientLeaveVoice', ({ userId, channelId }) => {
+      if (userId == null || channelId == null) return;
+      removeVoiceUser(channelId, userId);
+    });
+
     conn.on('NewChannel', async (channel) => {      // channel.type: 0=Guild, 1=DM, 2=Group
       if (channel?.type === 0) {
         // Guild channel created — notify guild sidebar to reload its channel list
@@ -540,6 +595,8 @@ export function AppProvider({ children }) {
       sendStatus();
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = setInterval(sendStatus, 30_000);
+      // Allow voice presence to re-prime after reconnect
+      voicePresencePrimedRef.current = new Set();
     });
 
     try {
@@ -607,6 +664,8 @@ export function AppProvider({ children }) {
       loadGuildNotifPrefs,
       updateGuildNotifPrefs,
       updateUserDefaultPrefs,
+      voiceUsersByChannel,
+      primeVoiceUsers,
     }}>
       {children}
     </Ctx.Provider>

@@ -93,6 +93,7 @@ builder.Services.AddScoped<IUnreadsRepo, UnreadsRepo>();
 // services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
+builder.Services.AddScoped<IVoiceManager, VoiceManager>();
 
 WebApplication app = builder.Build();
 

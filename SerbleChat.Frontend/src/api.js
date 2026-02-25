@@ -209,6 +209,12 @@ export async function getChannelVoiceToken(channelId) {
   return handle(res);
 }
 
+/** GET /channel/:channelId/voice  – get list of users currently in voice */
+export async function getUsersInVoice(channelId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/voice`, { headers: authHeaders() });
+  return handle(res);
+}
+
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 /** GET /channel/:channelId/messages?limit&offset  – list messages */

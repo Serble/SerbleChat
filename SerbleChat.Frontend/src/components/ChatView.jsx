@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
+import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL } from '../api.js';
-import { joinChannel, leaveChannel, setMuted as applyVoiceMuted } from '../voice.js';
 import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
+import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -365,6 +366,7 @@ export default function ChatView() {
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta } = useApp();
+  const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted } = useVoice();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [input, setInput]           = useState('');
@@ -386,10 +388,6 @@ export default function ChatView() {
   const [mentionData, setMentionData]   = useState({ members: [], channels: [], roles: [] });
   const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
   const [pickerIndex, setPickerIndex]   = useState(0);
-  const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | connecting | connected | error
-  const [voiceSession, setVoiceSession] = useState(null);
-  const [voiceMuted, setVoiceMuted] = useState(false);
-  const [voiceBusy, setVoiceBusy] = useState(false);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -841,49 +839,6 @@ export default function ChatView() {
       handleSend(e);
     }
   }
-  
-  async function handleJoinVoice() {
-    if (voiceBusy || voiceStatus === 'connecting') return;
-    setVoiceBusy(true);
-    setVoiceStatus('connecting');
-    try {
-      const session = await joinChannel({ channelId });
-      setVoiceSession(session ?? {});
-      setVoiceStatus('connected');
-    } catch (err) {
-      console.error('joinChannel failed:', err);
-      setVoiceStatus('error');
-    } finally {
-      setVoiceBusy(false);
-    }
-  }
-
-  async function handleLeaveVoice() {
-    if (voiceBusy) return;
-    setVoiceBusy(true);
-    try {
-      await leaveChannel(voiceSession);
-    } catch (err) {
-      console.error('leaveChannel failed:', err);
-    } finally {
-      setVoiceSession(null);
-      setVoiceMuted(false);
-      setVoiceStatus('idle');
-      setVoiceBusy(false);
-    }
-  }
-
-  async function handleToggleMute() {
-    if (!voiceSession) return;
-    
-    const nextMuted = !voiceMuted;
-    try {
-      await applyVoiceMuted(voiceSession, nextMuted);
-      setVoiceMuted(nextMuted);
-    } catch (err) {
-      console.error('setMuted failed:', err);
-    }
-  }
 
   const channelDisplayName = channel?.type === 1
     ? (otherUser?.username ?? '…')
@@ -932,14 +887,15 @@ export default function ChatView() {
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Direct Message</span>
           )}
 
-          {(isDmChannel || isGroupChannel) && (
+          {/* Voice button - shown for DM, group, and voice-capable guild channels */}
+          {(isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable)) && (
             <HeaderBtn
-              title={voiceStatus === 'connected' ? 'Leave Voice' : 'Join Voice'}
-              onClick={voiceStatus === 'connected' ? handleLeaveVoice : handleJoinVoice}
-              active={voiceStatus === 'connected'}
+              title={voiceChannelId === Number(channelId) ? 'Leave Voice' : 'Join Voice'}
+              onClick={voiceChannelId === Number(channelId) ? leaveVoice : () => joinVoice(Number(channelId))}
+              active={voiceChannelId === Number(channelId)}
               disabled={voiceBusy || voiceStatus === 'connecting'}
             >
-              {voiceStatus === 'connected' ? '🔊' : '🎙️'}
+              {voiceChannelId === Number(channelId) ? '🔊' : '🎙️'}
             </HeaderBtn>
           )}
 
@@ -955,32 +911,9 @@ export default function ChatView() {
           <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
         </div>
 
-        {(isDmChannel || isGroupChannel) && voiceStatus !== 'idle' && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: '0.75rem', padding: '0.5rem 1rem',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '0.85rem',
-          }}>
-            <div>
-              {voiceStatus === 'connecting' && 'Connecting to voice…'}
-              {voiceStatus === 'connected' && 'Voice connected'}
-              {voiceStatus === 'error' && 'Voice error'}
-            </div>
-            {voiceStatus === 'connected' && (
-              <button
-                onClick={handleToggleMute}
-                style={{
-                  background: voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
-                  border: 'none', color: voiceMuted ? 'var(--danger)' : 'var(--text-primary)',
-                  borderRadius: '6px', padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem',
-                }}
-                title={voiceMuted ? 'Unmute microphone' : 'Mute microphone'}
-              >
-                {voiceMuted ? '🔇' : '🎙️'}
-              </button>
-            )}
-          </div>
+        {/* Voice participants preview (below header buttons, above messages) */}
+        {(isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable)) && (
+          <VoiceParticipantPreview channelId={channelId} compact={false} />
         )}
 
         {/* Messages area */}

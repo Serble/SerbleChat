@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Livekit.Server.Sdk.Dotnet;
@@ -9,7 +8,9 @@ using Microsoft.Extensions.Options;
 using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Helpers;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.Services;
 using SerbleChat.Backend.SocketHubs;
 
 namespace SerbleChat.Backend.Controllers;
@@ -19,7 +20,56 @@ namespace SerbleChat.Backend.Controllers;
 [Authorize]
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
-    IUnreadsRepo unreads) : ControllerBase {
+    IUnreadsRepo unreads, IVoiceManager voiceManager) : ControllerBase {
+
+    private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
+        switch (channel.Type) {
+            case ChannelType.Group:
+                return await groups.IsMemberInChat(channel.Id, userId);
+            
+            case ChannelType.Dm: {
+                DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
+                if (dmChannel == null) {
+                    return false;
+                }
+
+                if (!(dmChannel.User1Id == userId || dmChannel.User2Id == userId)) {
+                    return false;
+                }
+
+                if (sendMessages) {
+                    bool blocked = await users.AreUsersBlocked(dmChannel.User1Id, dmChannel.User2Id);
+                    if (blocked) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+
+            case ChannelType.Guild: {
+                if (!channel.GuildId.HasValue) {
+                    return false;
+                }
+
+                if (!await guilds.IsGuildMember(channel.GuildId.Value, userId)) {
+                    return false;
+                }
+
+                if (sendMessages) {
+                    GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId.Value, channel.Id);
+                    if (!perms.HasPerm(p => p.SendMessages)) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            default:
+                return false;
+        }
+    }
 
     [HttpPost("{channelId:int}")]
     public async Task<ActionResult> PostMessage(int channelId, [FromBody] SendMessageBody body) {
@@ -399,30 +449,13 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
 
     [HttpPost("{channelId:int}/voice")]
     public async Task<ActionResult<LiveKitTokenResponse>> GetVoiceToken(int channelId) {
-        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId == null) {
-            return Unauthorized();
+        Result<string, ActionResult<LiveKitTokenResponse>> result = 
+            await CheckVoicePerms<LiveKitTokenResponse>(channelId, false);
+        if (result.GetErr(out ActionResult<LiveKitTokenResponse> error)) {
+            return error;
         }
 
-        Channel? channel = await channels.GetChannel(channelId);
-        if (channel == null) {
-            return NotFound();
-        }
-        
-        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
-            return Forbid();
-        }
-        
-        if (!channel.VoiceCapable) {
-            return BadRequest();
-        }
-        
-        if (channel.Type == ChannelType.Guild) {
-            GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId!.Value);
-            if (!(perms.JoinVoice.ToBool() || perms.Administrator.ToBool())) {
-                return Forbid();
-            }
-        }
+        string userId = result.Unwrap();
         
         AccessToken token = new AccessToken(liveKitSettings.Value.Key, liveKitSettings.Value.Secret)
             .WithIdentity(userId)
@@ -432,6 +465,48 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             });
         
         return Ok(new LiveKitTokenResponse { Token = token.ToJwt() });
+    }
+
+    [HttpGet("{channelId:int}/voice")]
+    public async Task<ActionResult<UsersInVoiceResponse>> GetUsersInVoice(int channelId) {
+        Result<string, ActionResult<UsersInVoiceResponse>> result = 
+            await CheckVoicePerms<UsersInVoiceResponse>(channelId, false);
+        if (result.GetErr(out ActionResult<UsersInVoiceResponse> error)) {
+            return error;
+        }
+
+        return Ok(new UsersInVoiceResponse {
+            Users = await voiceManager.GetConnectedUsers(channelId)
+        });
+    }
+    
+    private async Task<Result<string, ActionResult<T>>> CheckVoicePerms<T>(int channelId, bool joining) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Result<string, ActionResult<T>>.Err(Unauthorized());
+        }
+        
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return Result<string, ActionResult<T>>.Err(NotFound());
+        }
+        
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
+            return Result<string, ActionResult<T>>.Err(Forbid());
+        }
+        
+        if (!channel.VoiceCapable) {
+            return Result<string, ActionResult<T>>.Err(BadRequest());
+        }
+        
+        if (channel.Type == ChannelType.Guild) {
+            GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId!.Value);
+            if (!((perms.ViewChannel.ToBool() && (!joining || perms.JoinVoice.ToBool())) || perms.Administrator.ToBool())) {
+                return Result<string, ActionResult<T>>.Err(Forbid());
+            }
+        }
+
+        return Result<string, ActionResult<T>>.Ok(userId);
     }
     
     [HttpGet("{channelId:int}/notification-preferences")]

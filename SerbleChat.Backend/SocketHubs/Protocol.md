@@ -66,3 +66,19 @@
     "id": "string"
 }
 ```
+
+`ClientJoinVoice`:
+```json
+{
+    "userId": "string",
+    "channelId": int
+}
+```
+
+`ClientLeaveVoice`:
+```json
+{
+    "userId": "string",
+    "channelId": int
+}
+```

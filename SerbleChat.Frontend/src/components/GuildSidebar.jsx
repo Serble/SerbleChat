@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
+import { useVoice } from '../context/VoiceContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
@@ -13,6 +14,7 @@ import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
 import ChannelPermsTab from './ChannelPermsTab.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
+import VoicePanel from './VoicePanel.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -613,6 +615,86 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
 
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
+function VoiceParticipantsBelow({ channelId }) {
+  const [users, setUsers] = useState({});
+  const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
+  const userIds = voiceUsersByChannel[String(channelId)] ?? [];
+
+  useEffect(() => {
+    primeVoiceUsers(channelId);
+  }, [channelId, primeVoiceUsers]);
+
+  useEffect(() => {
+    userIds.forEach(id => {
+      if (!users[id]) {
+        resolveUser(id).then(user => {
+          setUsers(prev => ({ ...prev, [id]: user }));
+        });
+      }
+    });
+  }, [userIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (userIds.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{
+      paddingLeft: '2rem',
+      paddingRight: '0.4rem',
+      paddingTop: '0.2rem',
+      paddingBottom: '0.2rem',
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '0.35rem',
+      alignItems: 'center',
+    }}>
+      {userIds.map(id => {
+        const user = users[id];
+        const name = user?.username ?? id.slice(0, 10);
+        const initial = name ? name[0].toUpperCase() : '?';
+        const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
+        
+        return (
+          <div
+            key={id}
+            title={name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              padding: '0.2rem 0.35rem',
+              borderRadius: '3px',
+              background: 'rgba(124,58,237,0.08)',
+              fontSize: '0.75rem',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <div style={{
+              width: 16,
+              height: 16,
+              borderRadius: '50%',
+              background: `hsl(${hue},45%,40%)`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '0.6rem',
+              flexShrink: 0,
+            }}>
+              {initial}
+            </div>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>
+              {name}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
                        onDragStart, onDragEnter, onDragEnd, isDragOver }) {
   const { unreads } = useApp();
@@ -703,6 +785,11 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
           onClose={() => setCtxMenu(null)}
         />
       )}
+      
+      {/* Voice participants below voice-capable channels */}
+      {ch.voiceCapable && (
+        <VoiceParticipantsBelow channelId={ch.id} />
+      )}
     </>
   );
 }
@@ -710,7 +797,8 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
 // ─── Main GuildSidebar ────────────────────────────────────────────────────────
 
 export default function GuildSidebar({ guildId }) {
-  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms } = useApp();
+  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected } = useApp();
+  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
@@ -842,6 +930,70 @@ export default function GuildSidebar({ guildId }) {
           />
         ))}
       </div>
+
+      {/* Voice Panel - shown when connected to voice */}
+      {voiceSession && (
+        <VoicePanel
+          channelId={voiceChannelId}
+          voiceSession={voiceSession}
+          participants={voiceParticipants}
+          voiceMuted={voiceMuted}
+          onToggleMute={toggleMute}
+          onLeave={leaveVoice}
+        />
+      )}
+
+      {/* User panel */}
+      {currentUser && (
+        <div style={{
+          padding: '0.6rem 0.75rem', background: 'var(--bg-user-panel)',
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          flexShrink: 0,
+        }}>
+          <div style={{ position: 'relative' }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: `hsl(${(currentUser.username.charCodeAt(0) * 37 + currentUser.username.charCodeAt(currentUser.username.length - 1) * 17) % 360},45%,40%)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 700, fontSize: 13.44,
+              flexShrink: 0, userSelect: 'none',
+            }}>
+              {currentUser.username[0].toUpperCase()}
+            </div>
+            <div style={{
+              position: 'absolute', bottom: 0, right: 0,
+              width: 10, height: 10, borderRadius: '50%',
+              background: isConnected ? 'var(--success)' : 'var(--text-subtle)',
+              border: '2px solid var(--bg-user-panel)',
+            }} />
+          </div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{
+              fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {currentUser.username}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {isConnected ? '● Online' : '○ Offline'}
+            </div>
+          </div>
+          <button
+            title="Log out"
+            onClick={() => { localStorage.removeItem('jwt'); window.location.href = '/'; }}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '4px',
+              fontSize: '1rem', flexShrink: 0, lineHeight: 1,
+              transition: 'color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(242,63,67,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            ⏻
+          </button>
+        </div>
+      )}
 
       {showSettings && guild && (
         <GuildSettingsModal

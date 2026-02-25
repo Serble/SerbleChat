@@ -7,6 +7,7 @@ import { AppProvider } from './context/AppContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { ClientOptionsProvider } from './context/ClientOptionsContext.jsx';
 import { MobileProvider } from './context/MobileContext.jsx';
+import { VoiceProvider } from './context/VoiceContext.jsx';
 
 function ProtectedRoute({ children }) {
   return localStorage.getItem('jwt') ? children : <Navigate to="/" replace />;
@@ -24,9 +25,11 @@ export default function App() {
             <ProtectedRoute>
               <AppProvider>
                 <ClientOptionsProvider>
-                  <MobileProvider>
-                    <AppShell />
-                  </MobileProvider>
+                  <VoiceProvider>
+                    <MobileProvider>
+                      <AppShell />
+                    </MobileProvider>
+                  </VoiceProvider>
                 </ClientOptionsProvider>
               </AppProvider>
             </ProtectedRoute>
