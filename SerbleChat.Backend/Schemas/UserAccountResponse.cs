@@ -6,14 +6,16 @@ public record UserAccountResponse(
     string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt,
     NotificationPreferences DefaultDmNotificationPreferences,
     NotificationPreferences DefaultGroupNotificationPreferences,
-    NotificationPreferences DefaultGuildNotificationPreferences)
+    NotificationPreferences DefaultGuildNotificationPreferences,
+    bool NotificationsWhileOnline)
 {
     public static UserAccountResponse FromChatUser(ChatUser user) {
         return new UserAccountResponse(
             user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt,
             user.DefaultDmNotificationPreferences,
             user.DefaultGroupNotificationPreferences,
-            user.DefaultGuildNotificationPreferences);
+            user.DefaultGuildNotificationPreferences,
+            user.NotificationsWhileOnline);
     }
 }
 

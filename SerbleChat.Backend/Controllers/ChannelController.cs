@@ -20,7 +20,7 @@ namespace SerbleChat.Backend.Controllers;
 [Authorize]
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
-    IUnreadsRepo unreads, IVoiceManager voiceManager) : ControllerBase {
+    IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications) : ControllerBase {
 
     private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
         switch (channel.Type) {
@@ -118,6 +118,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         });
         await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
         
+        notifications.EnqueueMessageProcessing(channel, msg, mentionedUserIds);
         return Ok();
     }
 

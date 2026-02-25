@@ -67,6 +67,14 @@
 }
 ```
 
+`UserStatusUpdated`:
+```json
+{
+    "userId": "string",
+    "status": "string"
+}
+```
+
 `ClientJoinVoice`:
 ```json
 {

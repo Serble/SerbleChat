@@ -9,6 +9,7 @@ import {
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
   getGuildChannels, getUsersInVoice,
 } from '../api.js';
+import { resubscribeIfEnabled } from '../push.js';
 
 const Ctx = createContext(null);
 
@@ -49,6 +50,8 @@ export function AppProvider({ children }) {
   const voiceUsersByChannelRef = useRef({});
   const voicePresencePrimedRef = useRef(new Set());
   const voicePresenceInflightRef = useRef(new Set());
+  // userId (string) -> 'online' | 'offline'
+  const [userStatuses, setUserStatuses] = useState({});
 
   const hubRef          = useRef(null);
   const userCacheRef    = useRef({});
@@ -136,6 +139,8 @@ export function AppProvider({ children }) {
         for (const [k, v] of Object.entries(counts ?? {})) stringKeyed[String(k)] = v;
         setUnreads(stringKeyed);
       } catch (e) { console.warn('getUnreads failed:', e); }
+      // Re-register push subscription in the background (no-op if not opted in)
+      resubscribeIfEnabled().catch(e => console.warn('resubscribeIfEnabled failed:', e));
       connectHub();
     } catch (e) {
       console.error('AppContext init failed:', e);
@@ -324,7 +329,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  /** PATCH /account – update user-level default notification preferences. */
+  /** PATCH /account – update user-level default notification preferences and/or notificationsWhileOnline. */
   async function updateUserDefaultPrefs(patch) {
     try {
       await patchAccount(patch);
@@ -568,6 +573,10 @@ export function AppProvider({ children }) {
       removeVoiceUser(channelId, userId);
     });
 
+    conn.on('UserStatusUpdated', ({ userId, status }) => {
+      setUserStatuses(p => ({ ...p, [String(userId)]: status }));
+    });
+
     conn.on('NewChannel', async (channel) => {      // channel.type: 0=Guild, 1=DM, 2=Group
       if (channel?.type === 0) {
         // Guild channel created — notify guild sidebar to reload its channel list
@@ -651,6 +660,7 @@ export function AppProvider({ children }) {
       guildMemberColors, loadGuildMemberColors, getMemberColor,
       rolesUpdatedEvent,
       userUpdatedEvent,
+      userStatuses,
       // Unread counts & notification preferences
       unreads,
       guildUnreads,

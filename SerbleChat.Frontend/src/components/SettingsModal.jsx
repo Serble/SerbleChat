@@ -4,6 +4,7 @@ import { useTheme, THEME_PROPS } from '../context/ThemeContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
 
 // ─── Theme editor helpers ─────────────────────────────────────────────────────
 
@@ -108,8 +109,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
               color: 'var(--text-subtle)', fontSize: '0.75rem',
               cursor: 'pointer', padding: '0.1rem 0.2rem', borderRadius: 3,
             }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-subtle)'}
+            className="hov-color-danger"
           >
             🗑
           </button>
@@ -284,8 +284,7 @@ function AppearanceTab() {
                 padding: '0.5rem', cursor: 'pointer', textAlign: 'center',
                 transition: 'color 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              className="hov-text-secondary-border"
             >
               + New Theme
             </button>
@@ -297,8 +296,7 @@ function AppearanceTab() {
                 padding: '0.5rem', cursor: 'pointer', textAlign: 'center',
                 transition: 'color 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              className="hov-text-secondary-border"
             >
               ⬆ Import JSON
             </button>
@@ -371,8 +369,7 @@ function AppearanceTab() {
             color: 'var(--text-secondary)', padding: '0.45rem 1rem', fontSize: '0.875rem',
             cursor: 'pointer',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-active)'}
+          className="hov-bg"
         >
           ⬇ Export JSON
         </button>
@@ -383,8 +380,7 @@ function AppearanceTab() {
             color: '#fff', padding: '0.45rem 1.2rem', fontSize: '0.875rem',
             cursor: 'pointer', fontWeight: 600,
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
+          className="hov-accent"
         >
           {isBuiltIn ? 'Save as Custom & Apply' : 'Save & Apply'}
         </button>
@@ -516,8 +512,7 @@ function ChatTab() {
                   background: active ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)',
                   transition: 'border-color 0.15s, background 0.15s',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
+                className={!active ? 'hov-bg' : undefined}
               >
                 {/* Radio circle */}
                 <div style={{
@@ -585,8 +580,7 @@ function NotifPrefPicker({ label, field, value, onChange }) {
                 background: active ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = active ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)'; }}
+              className={!active ? 'hov-bg' : undefined}
             >
               <div style={{
                 width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
@@ -648,43 +642,239 @@ function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNot
 
 function NotificationsTab() {
   const { currentUser, updateUserDefaultPrefs } = useApp();
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
+  const saveStatusTimerRef = useRef(null);
 
-  // Local draft state mirroring currentUser prefs
+  // ── Push notification state ───────────────────────────────────────────────
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled,   setPushEnabled]   = useState(false);
+  const [pushPending,   setPushPending]   = useState(false);
+  // { outcome: 'ok'|'denied'|'error'|null, message: string }
+  const [pushStatus, setPushStatus] = useState({ outcome: null, message: '' });
+
+  useEffect(() => {
+    setPushSupported(isPushSupported());
+    setPushEnabled(isPushEnabled());
+  }, []);
+
+  async function handlePushToggle() {
+    if (pushPending) return;
+    setPushPending(true);
+    setPushStatus({ outcome: null, message: '' });
+    if (pushEnabled) {
+      await disablePush();
+      setPushEnabled(false);
+    } else {
+      const { outcome, message } = await enablePush();
+      if (outcome === 'granted') {
+        setPushEnabled(true);
+      }
+      setPushStatus({ outcome, message });
+    }
+    setPushPending(false);
+  }
+
+  // ── Default notification prefs ────────────────────────────────────────────
+
   const [dmNotif,    setDmNotif]    = useState(currentUser?.defaultDmNotificationPreferences?.notifications    ?? 1);
   const [dmUnreads,  setDmUnreads]  = useState(currentUser?.defaultDmNotificationPreferences?.unreads          ?? 1);
   const [grpNotif,   setGrpNotif]   = useState(currentUser?.defaultGroupNotificationPreferences?.notifications ?? 2);
   const [grpUnreads, setGrpUnreads] = useState(currentUser?.defaultGroupNotificationPreferences?.unreads       ?? 1);
   const [gldNotif,   setGldNotif]   = useState(currentUser?.defaultGuildNotificationPreferences?.notifications ?? 2);
   const [gldUnreads, setGldUnreads] = useState(currentUser?.defaultGuildNotificationPreferences?.unreads       ?? 1);
+  const [notifsWhileOnline, setNotifsWhileOnline] = useState(currentUser?.notificationsWhileOnline ?? false);
 
-  // Sync drafts if currentUser updates (e.g. after initial load)
+  // Used to suppress auto-save when state is being synced from the server
+  const pendingSyncRef = useRef(false);
+
+  // Sync drafts when currentUser loads or changes account
   useEffect(() => {
     if (!currentUser) return;
+    pendingSyncRef.current = true;
     setDmNotif(currentUser.defaultDmNotificationPreferences?.notifications    ?? 1);
     setDmUnreads(currentUser.defaultDmNotificationPreferences?.unreads          ?? 1);
     setGrpNotif(currentUser.defaultGroupNotificationPreferences?.notifications ?? 2);
     setGrpUnreads(currentUser.defaultGroupNotificationPreferences?.unreads       ?? 1);
     setGldNotif(currentUser.defaultGuildNotificationPreferences?.notifications ?? 2);
     setGldUnreads(currentUser.defaultGuildNotificationPreferences?.unreads       ?? 1);
+    setNotifsWhileOnline(currentUser.notificationsWhileOnline ?? false);
   }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSave() {
-    if (saving) return;
-    setSaving(true);
-    await updateUserDefaultPrefs({
-      defaultDmNotificationPreferences:    { notifications: dmNotif,    unreads: dmUnreads },
-      defaultGroupNotificationPreferences: { notifications: grpNotif,   unreads: grpUnreads },
-      defaultGuildNotificationPreferences: { notifications: gldNotif,   unreads: gldUnreads },
-    });
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
+  // Auto-save with debounce whenever any pref value changes
+  useEffect(() => {
+    // Skip saves triggered by the server-sync effect above
+    if (pendingSyncRef.current) {
+      pendingSyncRef.current = false;
+      return;
+    }
+    // Don't save before currentUser is loaded
+    if (!currentUser) return;
+
+    setSaveStatus('saving');
+    const t = setTimeout(async () => {
+      await updateUserDefaultPrefs({
+        defaultDmNotificationPreferences:    { notifications: dmNotif,    unreads: dmUnreads },
+        defaultGroupNotificationPreferences: { notifications: grpNotif,   unreads: grpUnreads },
+        defaultGuildNotificationPreferences: { notifications: gldNotif,   unreads: gldUnreads },
+        notificationsWhileOnline: notifsWhileOnline,
+      });
+      setSaveStatus('saved');
+      clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => setSaveStatus(null), 2000);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [dmNotif, dmUnreads, grpNotif, grpUnreads, gldNotif, gldUnreads, notifsWhileOnline]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+
+      {/* ── Auto-save status indicator ─────────────────────── */}
+      <div style={{
+        height: '1.4rem', marginBottom: '0.75rem',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+      }}>
+        {saveStatus === 'saving' && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Saving…
+          </span>
+        )}
+        {saveStatus === 'saved' && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>
+            ✓ Saved
+          </span>
+        )}
+      </div>
+
+      {/* ── Push Notifications ─────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Push Notifications
+      </div>
+
+      {!pushSupported ? (
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.75rem', lineHeight: 1.5 }}>
+          ⚠️ Your browser does not support Web Push notifications.
+        </div>
+      ) : getPushUnsupportedReason() ? (
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.6, marginBottom: '0.4rem' }}>
+            ⚠️ Push notifications are not available in this environment:
+          </div>
+          <pre style={{
+            margin: 0, padding: '0.5rem 0.65rem',
+            background: 'var(--bg-secondary)', borderRadius: 6,
+            fontFamily: 'monospace', fontSize: '0.72rem',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            color: 'var(--text-muted)', border: '1px solid var(--border)',
+          }}>{getPushUnsupportedReason()}</pre>
+        </div>
+      ) : (
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
+                Browser push notifications
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {pushEnabled
+                  ? 'You will receive push notifications even when the tab is closed.'
+                  : 'Enable to receive notifications when the app is in the background.'}
+              </div>
+            </div>
+            {/* Toggle switch */}
+            <button
+              onClick={handlePushToggle}
+              disabled={pushPending || getPermissionState() === 'denied'}
+              title={getPermissionState() === 'denied' ? 'Notifications are blocked in your browser settings' : undefined}
+              style={{
+                position: 'relative', flexShrink: 0,
+                width: 44, height: 24, borderRadius: 12, border: 'none',
+                background: pushEnabled ? 'var(--accent)' : 'var(--bg-active)',
+                cursor: (pushPending || getPermissionState() === 'denied') ? 'not-allowed' : 'pointer',
+                opacity: pushPending ? 0.6 : 1,
+                transition: 'background 0.2s',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 3, left: pushEnabled ? 23 : 3,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+              }} />
+            </button>
+          </div>
+          {pushStatus.outcome === 'denied' && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.5 }}>
+              ❌ {pushStatus.message || 'Notification permission was denied. Please allow notifications in your browser settings and try again.'}
+            </div>
+          )}
+          {pushStatus.outcome === 'error' && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: '0.3rem' }}>❌ Failed to enable push notifications:</div>
+              <pre style={{
+                margin: 0, padding: '0.5rem 0.65rem',
+                background: 'var(--bg-secondary)', borderRadius: 6,
+                fontFamily: 'monospace', fontSize: '0.72rem',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                color: 'var(--danger)', border: '1px solid var(--border)',
+              }}>{pushStatus.message}</pre>
+            </div>
+          )}
+          {pushStatus.outcome === 'granted' && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--success)', lineHeight: 1.5 }}>
+              ✓ Push notifications enabled!
+            </div>
+          )}
+          {getPermissionState() === 'denied' && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Notifications are blocked by your browser. Open your browser's site settings to allow them.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Notifications While Online ─────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Online Behaviour
+      </div>
+
+      <div style={{ marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
+              Receive notifications while online
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              When enabled, push notifications are sent even if you are currently active in the app.
+              Disable to suppress push notifications while you have a session open.
+            </div>
+          </div>
+          <button
+            onClick={() => setNotifsWhileOnline(v => !v)}
+            style={{
+              position: 'relative', flexShrink: 0,
+              width: 44, height: 24, borderRadius: 12, border: 'none',
+              background: notifsWhileOnline ? 'var(--accent)' : 'var(--bg-active)',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}
+          >
+            <div style={{
+              position: 'absolute', top: 3, left: notifsWhileOnline ? 23 : 3,
+              width: 18, height: 18, borderRadius: '50%', background: '#fff',
+              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+            }} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Default notification prefs ─────────────────────── */}
       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
         These are your <strong style={{ color: 'var(--text-secondary)' }}>default</strong> notification preferences.
         They apply to all channels unless overridden at the guild or channel level.
@@ -717,19 +907,6 @@ function NotificationsTab() {
         onUnreadsChange={setGldUnreads}
       />
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        style={{
-          background: saved ? 'var(--success)' : 'var(--accent)',
-          border: 'none', borderRadius: 6, padding: '0.6rem 1.5rem',
-          color: '#fff', fontSize: '0.9rem', fontWeight: 600,
-          cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
-          transition: 'background 0.2s',
-        }}
-      >
-        {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Defaults'}
-      </button>
     </div>
   );
 }

@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
@@ -11,7 +13,7 @@ namespace SerbleChat.Backend.Controllers;
 
 [Route("/auth")]
 [ApiController]
-public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt) : ControllerBase {
+public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt, IOptions<PushNotificationsSettings> pushSettings) : ControllerBase {
     
     [HttpPost]
     public async Task<ActionResult<AuthResponse>> Post(AuthenticateRequest request) {
@@ -67,5 +69,11 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
         }
         
         return Ok();
+    }
+    
+    [HttpGet("vapid-public-key")]
+    [AllowAnonymous]
+    public ActionResult<string> GetVapidPublicKey() {
+        return Ok(pushSettings.Value.VapidPublicKey);
     }
 }

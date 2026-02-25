@@ -16,6 +16,13 @@ public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultip
     public async Task UpdateStatus() {
         string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");
         await redis.GetDatabase().StringSetAsync("status:" + userId, "online", TimeSpan.FromMinutes(1));
+        
+        // List<Channel> visible = await channels.GetChannelsVisibleToUser(userId);
+        // await Clients.Groups(visible.Select(v => $"channel-{v.Id}"))
+        //     .SendAsync("UserStatusUpdated", new {
+        //         UserId = userId,
+        //         Status = "online"
+        //     });
     }
 
     public async Task RefreshListeners() {

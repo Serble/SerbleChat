@@ -24,6 +24,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<UserGuildNotificationPreferences> UserGuildNotificationPreferences { get; set; } = null!;
     public DbSet<MessageMention> MessageMentions { get; set; } = null!;
     public DbSet<ChannelRead> ChannelReads { get; set; } = null!;
+    public DbSet<UserWebNotificationHook> UserWebNotificationHooks { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Message>()

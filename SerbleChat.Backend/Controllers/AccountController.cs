@@ -51,6 +51,10 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
         if (request.DefaultGroupNotificationPreferences != null) {
             user.DefaultGroupNotificationPreferences = request.DefaultGroupNotificationPreferences;
         }
+        
+        if (request.NotificationsWhileOnline.HasValue) {
+            user.NotificationsWhileOnline = request.NotificationsWhileOnline.Value;
+        }
 
         await users.UpdateUser(user);
         return Ok();
@@ -210,5 +214,24 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
         }
         
         return Ok(response);
+    }
+
+    [HttpPost("web-push-subscription")]
+    public async Task<ActionResult> AddWebPushSubscription([FromBody] WebNotificationHookAddRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        UserWebNotificationHook subscription = new() {
+            UserId = userId,
+            Url = request.Url,
+            P256dh = request.P256dh,
+            Auth = request.Auth,
+            UserAgent = Request.Headers.UserAgent.FirstOrDefault("") ?? "",
+            CreatedAt = DateTime.UtcNow
+        };
+        await users.CreateWebNotificationSubscription(subscription);
+        return Ok();
     }
 }
