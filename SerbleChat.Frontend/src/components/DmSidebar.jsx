@@ -5,14 +5,14 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
+import { avatarBg } from '../userColor.js';
 
-function Avatar({ name, size = 32 }) {
+function Avatar({ name, size = 32, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none',
@@ -95,7 +95,7 @@ function DmItem({ dm, currentChannelId }) {
           transition: 'background 0.1s, color 0.1s',
         }}
       >
-        <Avatar name={name} size={28} />
+        <Avatar name={name} size={28} color={otherUser?.color} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
         {unread > 0 && !active && (
           <span style={{

@@ -4,16 +4,16 @@ import { useApp } from '../context/AppContext.jsx';
 import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { avatarBg } from '../userColor.js';
 
 const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
 
-function Avatar({ name, size = 40 }) {
+function Avatar({ name, size = 40, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none',
@@ -117,7 +117,7 @@ function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
         onClick={e => onUserClick(e, otherId, user?.username)}
         style={{ cursor: 'pointer', flexShrink: 0 }}
       >
-        <Avatar name={user?.username} />
+        <Avatar name={user?.username} color={user?.color} />
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div
@@ -189,7 +189,7 @@ function BlockedRow({ user, onUnblock }) {
       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
-      <Avatar name={user?.username} />
+      <Avatar name={user?.username} color={user?.color} />
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {user?.username ?? '…'}

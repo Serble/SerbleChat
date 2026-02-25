@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { getChannelMembers, getGuildChannelMembersDetails } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import { useApp } from '../context/AppContext.jsx';
+import { avatarBg } from '../userColor.js';
 
-function Avatar({ name, size = 32 }) {
+function Avatar({ name, size = 32, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none',
@@ -61,11 +61,13 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
       .finally(() => setLoading(false));
   }, [channelId, guildId, refreshTick, localTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Normalise to { id, username, isOnline, color? } regardless of source
+  // Normalise to { id, username, isOnline, color?, userColor? } regardless of source
+  // color     = top role colour (guild only)
+  // userColor = user's own profile colour
   const normalised = members.map(m =>
     isGuild
-      ? { id: m.user.id, username: m.user.username, isOnline: m.user.isOnline, color: m.color }
-      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null }
+      ? { id: m.user.id, username: m.user.username, isOnline: m.user.isOnline, color: m.color, userColor: m.user.color ?? '' }
+      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null, userColor: m.color ?? '' }
   );
 
   function handleClick(e, member) {
@@ -132,9 +134,13 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
 function MemberRow({ member, ownerId, onClick }) {
   const [hovered, setHovered] = useState(false);
   const isOwner = ownerId && member.id === ownerId;
-  const nameColor = member.color && member.color !== '#ffffff' && member.color !== ''
-    ? member.color
-    : (hovered ? 'var(--text-primary)' : 'var(--text-secondary)');
+  // Priority: role colour > user profile colour > default
+  const nameColor =
+    (member.color && member.color !== '#ffffff' && member.color !== '')
+      ? member.color
+      : (member.userColor && member.userColor !== '')
+        ? member.userColor
+        : (hovered ? 'var(--text-primary)' : 'var(--text-secondary)');
 
   return (
     <button
@@ -151,7 +157,7 @@ function MemberRow({ member, ownerId, onClick }) {
       }}
     >
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <Avatar name={member.username} size={32} />
+        <Avatar name={member.username} size={32} color={member.userColor} />
         <div style={{
           position: 'absolute', bottom: 0, right: 0,
           width: 10, height: 10, borderRadius: '50%',

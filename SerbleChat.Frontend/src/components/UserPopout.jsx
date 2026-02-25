@@ -1,21 +1,78 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import { avatarBg, bannerBg, nameTextColor } from '../userColor.js';
 import {
   getAccountById, getGuildRoles, getUserGuildRoles, addUserGuildRole, removeUserGuildRole,
   addFriend, removeFriend, getOrCreateDmChannel,
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
 
+const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+
+/** Renders blurb markdown inside the popout with compact, themed styles. */
+function BlurbMarkdown({ content }) {
+  const components = {
+    p:      ({ children }) => <p style={{ margin: '0 0 0.4em', lineHeight: 1.55 }}>{children}</p>,
+    a:      ({ href, children }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+        {children}
+      </a>
+    ),
+    strong: ({ children }) => <strong style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{children}</strong>,
+    em:     ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+    code:   ({ children }) => (
+      <code style={{
+        background: 'rgba(255,255,255,0.08)', borderRadius: '3px',
+        padding: '0.1em 0.35em', fontSize: '0.82em', fontFamily: 'monospace',
+        color: 'var(--text-primary)',
+      }}>{children}</code>
+    ),
+    pre:    ({ children }) => (
+      <pre style={{
+        background: 'var(--bg-tertiary)', borderRadius: '6px',
+        padding: '0.5rem 0.65rem', overflowX: 'auto',
+        fontSize: '0.78rem', lineHeight: 1.5, margin: '0.35em 0',
+        border: '1px solid var(--border)',
+      }}>{children}</pre>
+    ),
+    ul:     ({ children }) => <ul style={{ margin: '0.3em 0', paddingLeft: '1.2em' }}>{children}</ul>,
+    ol:     ({ children }) => <ol style={{ margin: '0.3em 0', paddingLeft: '1.2em' }}>{children}</ol>,
+    li:     ({ children }) => <li style={{ margin: '0.15em 0' }}>{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote style={{
+        margin: '0.35em 0', paddingLeft: '0.65rem',
+        borderLeft: '3px solid var(--accent)',
+        color: 'var(--text-muted)', fontStyle: 'italic',
+      }}>{children}</blockquote>
+    ),
+    h1: ({ children }) => <div style={{ fontSize: '1em', fontWeight: 700, margin: '0.4em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    h2: ({ children }) => <div style={{ fontSize: '0.95em', fontWeight: 700, margin: '0.4em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    h3: ({ children }) => <div style={{ fontSize: '0.9em', fontWeight: 700, margin: '0.4em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    hr:  () => <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0.5em 0' }} />,
+    img: ({ src, alt }) => (
+      <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: '4px', display: 'block', margin: '0.3em 0' }} />
+    ),
+  };
+  return (
+    <ReactMarkdown remarkPlugins={BLURB_REMARK_PLUGINS} components={components}>
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 const ONLINE  = { label: 'Online',  color: '#23a55a' };
 const OFFLINE = { label: 'Offline', color: '#747f8d' };
 
-function Avatar({ name, size = 64 }) {
+function Avatar({ name, size = 64, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none',
@@ -195,12 +252,12 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
       }}
     >
       {/* Banner */}
-      <div style={{ height: 60, flexShrink: 0, background: `hsl(${displayName ? (displayName.charCodeAt(0) * 37 + displayName.charCodeAt(displayName.length - 1) * 17) % 360 : 200},35%,22%)` }} />
+      <div style={{ height: 60, flexShrink: 0, background: bannerBg(displayName, user?.color) }} />
 
       {/* Avatar row */}
       <div style={{ position: 'relative', padding: '0 1rem', flexShrink: 0 }}>
         <div style={{ position: 'absolute', top: -34, background: 'var(--bg-overlay)', borderRadius: '50%', padding: 3, outline: sm ? `3px solid ${sm.color}` : 'none', outlineOffset: 1 }}>
-          <Avatar name={displayName} size={60} />
+          <Avatar name={displayName} size={60} color={user?.color} />
         </div>
       </div>
 
@@ -209,7 +266,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
         <div style={{ padding: '2.2rem 1rem 0.75rem' }}>
 
           {/* Name + status */}
-          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)', marginBottom: '0.15rem' }}>{displayName}</div>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: nameTextColor(displayName, user?.color), marginBottom: '0.15rem' }}>{displayName}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.9rem' }}>
             <div style={{ width: 9, height: 9, borderRadius: '50%', background: sm?.color ?? 'var(--text-subtle)', flexShrink: 0 }} />
             <span style={{ fontSize: '0.78rem', color: sm?.color ?? 'var(--text-subtle)', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
@@ -244,6 +301,20 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           )}
 
           <div style={{ height: 1, background: 'var(--border)', margin: '0 0 0.65rem' }} />
+
+          {/* About Me */}
+          {user?.blurb && (
+            <>
+              <div style={sectionLabel}>About Me</div>
+              <div style={{
+                fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.55,
+                padding: '0.4rem 0.5rem', background: 'var(--bg-tertiary)', borderRadius: '6px',
+                marginBottom: '0.75rem', wordBreak: 'break-word',
+              }}>
+                <BlurbMarkdown content={user.blurb} />
+              </div>
+            </>
+          )}
 
           {/* User ID */}
           <div style={sectionLabel}>User ID</div>

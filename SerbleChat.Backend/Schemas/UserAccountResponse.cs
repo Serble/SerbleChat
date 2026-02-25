@@ -7,7 +7,9 @@ public record UserAccountResponse(
     NotificationPreferences DefaultDmNotificationPreferences,
     NotificationPreferences DefaultGroupNotificationPreferences,
     NotificationPreferences DefaultGuildNotificationPreferences,
-    bool NotificationsWhileOnline)
+    bool NotificationsWhileOnline,
+    string Blurb,
+    string Color)
 {
     public static UserAccountResponse FromChatUser(ChatUser user) {
         return new UserAccountResponse(
@@ -15,12 +17,14 @@ public record UserAccountResponse(
             user.DefaultDmNotificationPreferences,
             user.DefaultGroupNotificationPreferences,
             user.DefaultGuildNotificationPreferences,
-            user.NotificationsWhileOnline);
+            user.NotificationsWhileOnline,
+            user.Blurb,
+            user.Color);
     }
 }
 
-public record PublicUserResponse(string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt, bool IsOnline) {
+public record PublicUserResponse(string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt, bool IsOnline, string Blurb, string Color) {
     public static PublicUserResponse FromChatUser(ChatUser user, bool isOnline) {
-        return new PublicUserResponse(user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt, isOnline);
+        return new PublicUserResponse(user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt, isOnline, user.Blurb, user.Color);
     }
 }

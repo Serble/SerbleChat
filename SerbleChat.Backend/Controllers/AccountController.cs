@@ -56,6 +56,14 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             user.NotificationsWhileOnline = request.NotificationsWhileOnline.Value;
         }
 
+        if (request.Blurb != null) {
+            user.Blurb = request.Blurb;
+        }
+        
+        if (request.Color != null) {
+            user.Color = request.Color;
+        }
+
         await users.UpdateUser(user);
         return Ok();
     }

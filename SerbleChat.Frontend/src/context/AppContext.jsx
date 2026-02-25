@@ -333,9 +333,19 @@ export function AppProvider({ children }) {
   async function updateUserDefaultPrefs(patch) {
     try {
       await patchAccount(patch);
-      setCurrentUser(p => p ? { ...p, ...patch } : p);
+      setCurrentUser(p => {
+        if (!p) return p;
+        const updated = { ...p, ...patch };
+        // Keep the resolveUser cache in sync so other components that
+        // already resolved the current user see the new colour/blurb.
+        if (userCacheRef.current[p.id]) {
+          userCacheRef.current[p.id] = { ...userCacheRef.current[p.id], ...patch };
+        }
+        return updated;
+      });
     } catch (e) {
       console.error('updateUserDefaultPrefs failed:', e);
+      throw e;
     }
   }
 
@@ -419,17 +429,22 @@ export function AppProvider({ children }) {
 
   /**
    * Resolve a display colour for a user.
-   * - In a guild: returns their top-role colour if set, else falls back to
-   *   a hue derived from their username.
-   * - Outside a guild: always derives a hue from their username.
+   * Priority: guild role colour > user's own profile colour > hue from username.
+   *
+   * @param {string|null} guildId
+   * @param {string}      userId
+   * @param {string}      username
+   * @param {string}      [userColor]  hex colour from the user's profile (may be "")
    */
-  const getMemberColor = useCallback((guildId, userId, username) => {
+  const getMemberColor = useCallback((guildId, userId, username, userColor) => {
     if (guildId) {
       const map = guildMemberColors[String(guildId)];
       const roleColor = map?.[userId];
       if (roleColor && roleColor !== '#ffffff') return roleColor;
     }
-    // Consistent hue seeded from username (or userId as fallback)
+    // User's own chosen profile colour
+    if (userColor && userColor !== '') return userColor;
+    // Deterministic hue seeded from username (or userId as fallback)
     const seed = username || userId || 'x';
     const hue  = (seed.charCodeAt(0) * 37 + seed.charCodeAt(seed.length - 1) * 17) % 360;
     return `hsl(${hue},60%,72%)`;

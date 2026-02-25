@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { useTheme, THEME_PROPS } from '../context/ThemeContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
+
+const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
 // ─── Theme editor helpers ─────────────────────────────────────────────────────
 
@@ -388,6 +393,438 @@ function AppearanceTab() {
     </div>
   );
 }
+
+// ─── Profile Tab ─────────────────────────────────────────────────────────────
+
+const BLURB_MAX = 1024;
+
+/** Shared markdown components for blurb preview in settings. */
+function BlurbPreviewMarkdown({ content }) {
+  const components = {
+    p:      ({ children }) => <p style={{ margin: '0 0 0.45em', lineHeight: 1.6 }}>{children}</p>,
+    a:      ({ href, children }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+        {children}
+      </a>
+    ),
+    strong: ({ children }) => <strong style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{children}</strong>,
+    em:     ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+    code:   ({ children }) => (
+      <code style={{
+        background: 'rgba(255,255,255,0.1)', borderRadius: '3px',
+        padding: '0.1em 0.35em', fontSize: '0.85em', fontFamily: 'monospace',
+        color: 'var(--text-primary)',
+      }}>{children}</code>
+    ),
+    pre:    ({ children }) => (
+      <pre style={{
+        background: 'var(--bg-tertiary)', borderRadius: '6px',
+        padding: '0.5rem 0.7rem', overflowX: 'auto',
+        fontSize: '0.82rem', lineHeight: 1.5, margin: '0.4em 0',
+        border: '1px solid var(--border)',
+      }}>{children}</pre>
+    ),
+    ul:     ({ children }) => <ul style={{ margin: '0.3em 0', paddingLeft: '1.3em' }}>{children}</ul>,
+    ol:     ({ children }) => <ol style={{ margin: '0.3em 0', paddingLeft: '1.3em' }}>{children}</ol>,
+    li:     ({ children }) => <li style={{ margin: '0.15em 0' }}>{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote style={{
+        margin: '0.35em 0', paddingLeft: '0.7rem',
+        borderLeft: '3px solid var(--accent)',
+        color: 'var(--text-muted)', fontStyle: 'italic',
+      }}>{children}</blockquote>
+    ),
+    h1: ({ children }) => <div style={{ fontSize: '1.05em', fontWeight: 700, margin: '0.5em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    h2: ({ children }) => <div style={{ fontSize: '1em',    fontWeight: 700, margin: '0.5em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    h3: ({ children }) => <div style={{ fontSize: '0.95em', fontWeight: 700, margin: '0.5em 0 0.2em', color: 'var(--text-primary)' }}>{children}</div>,
+    hr:  () => <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0.6em 0' }} />,
+    img: ({ src, alt }) => (
+      <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: '5px', display: 'block', margin: '0.4em 0' }} />
+    ),
+  };
+  return (
+    <ReactMarkdown remarkPlugins={BLURB_REMARK_PLUGINS} components={components}>
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+function ProfileTab() {
+  const { currentUser, updateUserDefaultPrefs } = useApp();
+
+  // ── Colour state ───────────────────────────────────────────────────────────
+  const [colorDraft,       setColorDraft]       = useState(currentUser?.color ?? '');
+  const [colorHex,         setColorHex]         = useState(
+    currentUser?.color && currentUser.color !== '' ? currentUser.color : '#5865f2'
+  );
+  const [colorSaveStatus,  setColorSaveStatus]  = useState(null);
+  const colorTimerRef = useRef(null);
+
+  // ── Blurb state ────────────────────────────────────────────────────────────
+  const [draft,       setDraft]       = useState(currentUser?.blurb ?? '');
+  const [saveStatus,  setSaveStatus]  = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const saveTimerRef  = useRef(null);
+
+  // Sync when currentUser loads / changes account
+  useEffect(() => {
+    if (!currentUser) return;
+    setDraft(currentUser.blurb ?? '');
+    setColorDraft(currentUser.color ?? '');
+    setColorHex(currentUser.color && currentUser.color !== '' ? currentUser.color : '#5865f2');
+  }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Colour handlers ────────────────────────────────────────────────────────
+  const hasCustomColor = colorDraft !== '';
+  const colorDirty = colorDraft !== (currentUser?.color ?? '');
+
+  async function saveColor(newColor) {
+    setColorSaveStatus('saving');
+    clearTimeout(colorTimerRef.current);
+    try {
+      await updateUserDefaultPrefs({ color: newColor });
+      setColorSaveStatus('saved');
+    } catch {
+      setColorSaveStatus('error');
+    }
+    colorTimerRef.current = setTimeout(() => setColorSaveStatus(null), 2500);
+  }
+
+  function handlePickerChange(e) {
+    setColorHex(e.target.value);
+    setColorDraft(e.target.value);
+  }
+
+  function handleHexTextChange(e) {
+    const v = e.target.value;
+    setColorDraft(v);
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) setColorHex(v);
+  }
+
+  function handleColorSave() {
+    if (colorSaveStatus === 'saving') return;
+    saveColor(colorDraft);
+  }
+
+  function handleColorReset() {
+    setColorDraft('');
+    setColorHex('#5865f2');
+    saveColor('');
+  }
+
+  // ── Blurb handlers ─────────────────────────────────────────────────────────
+  const remaining = BLURB_MAX - draft.length;
+  const dirty     = draft !== (currentUser?.blurb ?? '');
+
+  async function handleSave() {
+    if (saveStatus === 'saving') return;
+    setSaveStatus('saving');
+    clearTimeout(saveTimerRef.current);
+    try {
+      await updateUserDefaultPrefs({ blurb: draft });
+      setSaveStatus('saved');
+    } catch {
+      setSaveStatus('error');
+    }
+    saveTimerRef.current = setTimeout(() => setSaveStatus(null), 2500);
+  }
+
+  // ── Avatar preview helper ──────────────────────────────────────────────────
+  const previewName = currentUser?.username ?? '?';
+  const previewColor = colorDraft;
+  const previewInitial = previewName[0].toUpperCase();
+  // Use the same avatarBg logic inline (importing from userColor.js would need a dynamic import; inline is simpler here)
+  function previewBg(name, color) {
+    if (color && color !== '') return color;
+    const hue = (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360;
+    return `hsl(${hue},45%,40%)`;
+  }
+  function previewNameColor(name, color) {
+    if (color && color !== '') return color;
+    const hue = (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360;
+    return `hsl(${hue},60%,72%)`;
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+
+      {/* ── Colour ─────────────────────────────────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        User Colour
+      </div>
+
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.55 }}>
+        Your colour is used for your avatar, profile banner, and username across the app.
+        Leave it unset to use the auto-generated colour based on your username.
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {/* Picker + hex input */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <input
+              type="color"
+              value={colorHex}
+              onChange={handlePickerChange}
+              style={{
+                width: 44, height: 44, padding: 3, borderRadius: 8,
+                border: '1px solid var(--border)', background: 'var(--bg-input)',
+                cursor: 'pointer', flexShrink: 0,
+              }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <input
+                type="text"
+                value={colorDraft}
+                onChange={handleHexTextChange}
+                maxLength={7}
+                placeholder="#rrggbb"
+                style={{
+                  width: 100, background: 'var(--bg-input)', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text-primary)', fontSize: '0.9rem',
+                  padding: '0.4rem 0.6rem', fontFamily: 'ui-monospace, monospace', outline: 'none',
+                }}
+                onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+                onBlur={e  => { e.target.style.borderColor = 'var(--border)'; }}
+              />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>Hex value</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.25rem' }}>
+            <button
+              onClick={handleColorSave}
+              disabled={!colorDirty || colorSaveStatus === 'saving'}
+              style={{
+                background: colorDirty && colorSaveStatus !== 'saving' ? 'var(--accent)' : 'var(--bg-active)',
+                border: 'none', borderRadius: 6,
+                color: colorDirty && colorSaveStatus !== 'saving' ? '#fff' : 'var(--text-muted)',
+                padding: '0.4rem 1rem', fontSize: '0.83rem', fontWeight: 600,
+                cursor: colorDirty && colorSaveStatus !== 'saving' ? 'pointer' : 'default',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              Apply
+            </button>
+            {hasCustomColor && (
+              <button
+                onClick={handleColorReset}
+                style={{
+                  background: 'transparent', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text-muted)',
+                  padding: '0.4rem 0.85rem', fontSize: '0.83rem', fontWeight: 500,
+                  cursor: 'pointer', transition: 'color 0.15s, border-color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = 'rgba(242,63,67,0.4)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
+                Reset
+              </button>
+            )}
+            {colorSaveStatus === 'saving' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Saving…</span>}
+            {colorSaveStatus === 'saved'  && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Saved</span>}
+            {colorSaveStatus === 'error'  && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed</span>}
+          </div>
+        </div>
+
+        {/* Live preview */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>Preview</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)', minWidth: 200 }}>
+            {/* Mini avatar */}
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              background: previewBg(previewName, previewColor),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 700, fontSize: 15, userSelect: 'none',
+            }}>
+              {previewInitial}
+            </div>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: previewNameColor(previewName, previewColor) }}>
+              {previewName}
+            </span>
+          </div>
+          {/* Mini popout banner preview */}
+          <div style={{
+            width: 200, background: 'var(--bg-overlay)', borderRadius: 8,
+            border: '1px solid var(--border)', overflow: 'hidden',
+          }}>
+            <div style={{
+              height: 36,
+              background: previewColor && previewColor !== ''
+                ? `linear-gradient(135deg, ${previewColor}cc 0%, ${previewColor}66 100%)`
+                : (() => { const h = (previewName.charCodeAt(0) * 37 + previewName.charCodeAt(previewName.length - 1) * 17) % 360; return `hsl(${h},35%,22%)`; })(),
+            }} />
+            <div style={{ position: 'relative', padding: '0 0.75rem' }}>
+              <div style={{
+                position: 'absolute', top: -22,
+                background: 'var(--bg-overlay)', borderRadius: '50%', padding: 2,
+              }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: '50%',
+                  background: previewBg(previewName, previewColor),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: 16,
+                }}>
+                  {previewInitial}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '1.6rem 0.75rem 0.6rem' }}>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: previewNameColor(previewName, previewColor) }}>{previewName}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── About Me ───────────────────────────────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        About Me
+      </div>
+
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.85rem', lineHeight: 1.55 }}>
+        Write a short blurb about yourself. It will be visible to other users when they click on your name.{' '}
+        <span style={{ color: 'var(--text-secondary)' }}>Markdown is supported.</span>
+      </div>
+
+      {/* Edit / Preview toggle */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '0.6rem', width: 'fit-content' }}>
+        {['Edit', 'Preview'].map(tab => {
+          const active = (tab === 'Preview') === showPreview;
+          return (
+            <button key={tab} onClick={() => setShowPreview(tab === 'Preview')} style={{
+              padding: '0.3rem 0.85rem', fontSize: '0.8rem', fontWeight: active ? 600 : 400,
+              background: active ? 'var(--bg-active)' : 'transparent',
+              border: '1px solid var(--border)', borderRadius: tab === 'Edit' ? '6px 0 0 6px' : '0 6px 6px 0',
+              borderRight: tab === 'Edit' ? 'none' : '1px solid var(--border)',
+              color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+              cursor: 'pointer', transition: 'background 0.12s, color 0.12s',
+            }}>
+              {tab}
+            </button>
+          );
+        })}
+      </div>
+
+      {!showPreview ? (
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value.slice(0, BLURB_MAX))}
+          placeholder="Tell others a little about yourself… (Markdown supported)"
+          rows={7}
+          style={{
+            width: '100%', resize: 'vertical',
+            background: 'var(--bg-input)', border: '1px solid var(--border)',
+            borderRadius: '8px', color: 'var(--text-primary)',
+            fontSize: '0.9rem', lineHeight: 1.6,
+            padding: '0.65rem 0.85rem',
+            outline: 'none', boxSizing: 'border-box',
+            fontFamily: 'ui-monospace, "Fira Code", monospace',
+            transition: 'border-color 0.15s',
+          }}
+          onFocus={e  => { e.target.style.borderColor = 'var(--accent)'; }}
+          onBlur={e   => { e.target.style.borderColor = 'var(--border)'; }}
+        />
+      ) : (
+        <div style={{
+          minHeight: 120, background: 'var(--bg-input)', border: '1px solid var(--border)',
+          borderRadius: '8px', padding: '0.65rem 0.85rem',
+          fontSize: '0.9rem', color: 'var(--text-secondary)',
+          lineHeight: 1.6, wordBreak: 'break-word',
+        }}>
+          {draft.trim()
+            ? <BlurbPreviewMarkdown content={draft} />
+            : <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>Nothing to preview.</span>
+          }
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.55rem' }}>
+        <span style={{
+          fontSize: '0.75rem',
+          color: remaining < 50 ? 'var(--danger)' : 'var(--text-muted)',
+        }}>
+          {remaining} / {BLURB_MAX} characters remaining
+        </span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {saveStatus === 'saving' && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Saving…</span>
+          )}
+          {saveStatus === 'saved' && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Saved</span>
+          )}
+          {saveStatus === 'error' && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed to save</span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={!dirty || saveStatus === 'saving'}
+            style={{
+              background: dirty && saveStatus !== 'saving' ? 'var(--accent)' : 'var(--bg-active)',
+              border: 'none', borderRadius: '6px',
+              color: dirty && saveStatus !== 'saving' ? '#fff' : 'var(--text-muted)',
+              padding: '0.45rem 1.2rem', fontSize: '0.875rem', fontWeight: 600,
+              cursor: dirty && saveStatus !== 'saving' ? 'pointer' : 'default',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      {/* Markdown quick-reference */}
+      <details style={{ marginTop: '1.5rem' }}>
+        <summary style={{
+          fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer',
+          userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem',
+        }}>
+          <span>▸</span> Markdown reference
+        </summary>
+        <div style={{
+          marginTop: '0.6rem', background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)', borderRadius: '8px',
+          padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--text-muted)',
+          display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.25rem 1rem',
+          lineHeight: 1.7,
+        }}>
+          {[
+            ['**bold**',         'Bold text'],
+            ['*italic*',         'Italic text'],
+            ['`code`',           'Inline code'],
+            ['[text](url)',       'Hyperlink'],
+            ['> quote',          'Block quote'],
+            ['# Heading',        'Heading (1–3 levels)'],
+            ['- item',           'Bullet list'],
+            ['1. item',          'Numbered list'],
+            ['---',              'Horizontal rule'],
+            ['```\\ncode\\n```', 'Code block'],
+          ].map(([syntax, desc]) => (
+            <>
+              <code key={syntax + '-code'} style={{
+                fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem',
+                color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)',
+                padding: '0.05em 0.3em', borderRadius: '3px', whiteSpace: 'nowrap',
+              }}>{syntax}</code>
+              <span key={syntax + '-desc'}>{desc}</span>
+            </>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 
 // ─── Chat Tab ─────────────────────────────────────────────────────────────────
 
@@ -914,6 +1351,7 @@ function NotificationsTab() {
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 const TABS = [
+  { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
   { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
   { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
   { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
@@ -922,7 +1360,7 @@ const TABS = [
 const SECTIONS = [...new Set(TABS.map(t => t.section))];
 
 export default function SettingsModal({ onClose }) {
-  const [activeTab, setActiveTab] = useState('appearance');
+  const [activeTab, setActiveTab] = useState('profile');
   const backdropRef = useRef(null);
   const { isMobile } = useMobile();
 
@@ -1010,6 +1448,7 @@ export default function SettingsModal({ onClose }) {
 
           {/* Right: tab content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {activeTab === 'profile'       && <ProfileTab />}
             {activeTab === 'appearance'    && <AppearanceTab />}
             {activeTab === 'chat'          && <ChatTab />}
             {activeTab === 'notifications' && <NotificationsTab />}

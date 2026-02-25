@@ -15,6 +15,7 @@ import InviteCard from './InviteCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { avatarBg } from '../userColor.js';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -106,13 +107,12 @@ function CtxBtn({ icon, label, onClick, danger, copied }) {
   );
 }
 
-function Avatar({ name, size = 40 }) {
+function Avatar({ name, size = 40, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,38%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none', marginTop: 2,
@@ -160,8 +160,8 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
   // Memoize invite ID extraction — only re-runs when message content changes
   const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
 
-  // Resolve color: use role color if in guild, otherwise seed from username
-  const nameColor = getColor(msg.authorId, author?.username);
+  // Resolve color: role color > user profile color > generated hue
+  const nameColor = getColor(msg.authorId, author?.username, author?.color);
 
   const ts = msg._pending
     ? 'Sending…'
@@ -214,7 +214,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
         onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
         style={{ cursor: msg._pending ? 'default' : 'pointer', flexShrink: 0 }}
       >
-        <Avatar name={author?.username} size={40} />
+        <Avatar name={author?.username} size={40} color={author?.color} />
       </div>
       <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
@@ -471,7 +471,7 @@ export default function ChatView() {
   // the parent re-renders with an otherwise unchanged getColor inline lambda.
   const guildIdForColor = isGuildChannel ? channel?.guildId : null;
   const getColor = useCallback(
-    (userId, username) => getMemberColor(guildIdForColor, userId, username),
+    (userId, username, userColor) => getMemberColor(guildIdForColor, userId, username, userColor),
     [getMemberColor, guildIdForColor] // eslint-disable-line react-hooks/exhaustive-deps
   );
 

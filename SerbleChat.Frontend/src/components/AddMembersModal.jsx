@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { addGroupChatMembers } from '../api.js';
+import { avatarBg } from '../userColor.js';
 
-function Avatar({ name, size = 32 }) {
+function Avatar({ name, size = 32, color }) {
   const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
+      background: avatarBg(name, color),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.42,
       flexShrink: 0, userSelect: 'none',
@@ -118,7 +118,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
                     }}
                     className={!isSel ? 'hov-bg-secondary' : undefined}
                   >
-                    <Avatar name={u?.username} size={32} />
+                    <Avatar name={u?.username} size={32} color={u?.color} />
                     <span style={{ flex: 1, color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: isSel ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {u?.username ?? '…'}
                     </span>

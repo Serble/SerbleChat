@@ -25,6 +25,16 @@ public class ChatUser {
     [NotificationJsonIgnore]
     public string RefreshToken { get; set; } = null!;
     
+    // PROFILE
+    
+    [StringLength(1024)]
+    public string Blurb { get; set; } = "";
+    
+    [StringLength(7)]
+    public string Color { get; set; } = "";
+    
+    // NOTIFICATIONS
+    
     [NotificationJsonIgnore]
     public NotificationPreferences DefaultDmNotificationPreferences { get; set; } = NotificationPreferences.DefaultDmPreferences;
     [NotificationJsonIgnore]
@@ -34,6 +44,8 @@ public class ChatUser {
     
     [NotificationJsonIgnore]
     public bool NotificationsWhileOnline { get; set; } = false;
+    
+    // ACCOUNT STATES
     
     [JsonProperty(PropertyName = "is_admin")]
     public bool IsAdmin { get; set; }
