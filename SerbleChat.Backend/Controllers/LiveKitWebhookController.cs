@@ -13,8 +13,6 @@ public class LiveKitWebhookController(IVoiceManager voiceManager, IOptions<LiveK
     public async Task<IActionResult> HandleWebhook() {
         using StreamReader reader = new(Request.Body);
         string body = await reader.ReadToEndAsync();
-        
-        Console.WriteLine(body);
 
         WebhookReceiver receiver = new(liveKitSettings.Value.Key, liveKitSettings.Value.Secret);
         WebhookEvent ev = receiver.Receive(body, HttpContext.Request.Headers.Authorization.FirstOrDefault());
