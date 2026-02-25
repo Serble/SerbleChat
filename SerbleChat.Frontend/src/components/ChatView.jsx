@@ -13,6 +13,7 @@ import remarkBreaks from 'remark-breaks';
 import InviteCard from './InviteCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -365,6 +366,7 @@ export default function ChatView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
+  const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
   const [highlightMsgId, setHighlightMsgId] = useState(null);
@@ -400,11 +402,57 @@ export default function ChatView() {
   const inputRef  = useRef(null);
   const ctxRef    = useRef(null);
 
+  // true  → user is at (or snapped to) the bottom; we should keep them there
+  // false → user has scrolled up manually; don't auto-snap on resize
+  const pinnedToBottom = useRef(true);
+
   // Scroll the messages container to the very bottom instantly
   function scrollToBottom() {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      pinnedToBottom.current = true;
+    }
   }
+
+  // Track whether the user is at the bottom so resize snapping is opt-out
+  function handleMessagesScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  }
+
+  // When the scroll container is resized (e.g. on-screen keyboard opens and
+  // --app-height shrinks) re-snap to the bottom if we were already there.
+  // ResizeObserver fires *after* layout reflow so clientHeight is correct.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedToBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also snap via visualViewport.resize so the re-snap happens immediately
+  // when the on-screen keyboard starts animating in/out, before the CSS
+  // variable update has triggered a full DOM layout reflow.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function onVVResize() {
+      if (!pinnedToBottom.current) return;
+      // Defer one rAF so the CSS height variables have been applied and the
+      // scroll container has its new clientHeight before we set scrollTop.
+      requestAnimationFrame(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    }
+    vv.addEventListener('resize', onVVResize);
+    return () => vv.removeEventListener('resize', onVVResize);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const channelMessages = messages[String(channelId)] ?? [];
 
@@ -864,11 +912,23 @@ export default function ChatView() {
           padding: '0 0.75rem 0 1.25rem', borderBottom: '1px solid var(--border)',
           flexShrink: 0, background: 'var(--bg-base)',
         }}>
+          {/* Hamburger – only shown on mobile */}
+          {isMobile && (
+            <button
+              title="Open sidebar"
+              onClick={openSidebar}
+              style={{
+                background: 'none', border: 'none', color: 'var(--text-secondary)',
+                cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
+                padding: '0.25rem', marginRight: '0.15rem', flexShrink: 0,
+              }}
+            >☰</button>
+          )}
           <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
-          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1 }}>
+          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {channelDisplayName}
           </span>
-          {isDmChannel && otherUser && (
+          {isDmChannel && otherUser && !isMobile && (
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Direct Message</span>
           )}
 
@@ -892,9 +952,7 @@ export default function ChatView() {
             </div>
           )}
 
-          {!isGuildChannel && (
-            <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
-          )}
+          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
         </div>
 
         {(isDmChannel || isGroupChannel) && voiceStatus !== 'idle' && (
@@ -926,7 +984,7 @@ export default function ChatView() {
         )}
 
         {/* Messages area */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
+        <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
           {channelMessages.length === 0 && !loading && (
             <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
@@ -1090,13 +1148,45 @@ export default function ChatView() {
         )}
       </div>
 
-      {showMembers && channel && (
-        <MemberList
-          channelId={channelId}
-          guildId={isGuildChannel ? channel.guildId : null}
-          ownerId={groupChat?.ownerId ?? null}
-          refreshTick={memberRefreshTick}
-        />
+      {channel && (
+        isMobile ? (
+          <>
+            {/* Mobile: backdrop — only visible when panel is open */}
+            {showMembers && (
+              <div
+                onClick={toggleMembers}
+                style={{ position: 'fixed', inset: 0, zIndex: 190, background: 'rgba(0,0,0,0.6)' }}
+              />
+            )}
+            {/* Mobile: slide-in drawer from the right — always mounted so transition works */}
+            <div style={{
+              position: 'fixed', top: 0, right: 0,
+              height: 'var(--app-height, 100dvh)',
+              zIndex: 200,
+              transform: showMembers ? 'translateX(0)' : 'translateX(100%)',
+              transition: 'transform 0.25s ease',
+              willChange: 'transform',
+            }}>
+              <MemberList
+                channelId={channelId}
+                guildId={isGuildChannel ? channel.guildId : null}
+                ownerId={groupChat?.ownerId ?? null}
+                refreshTick={memberRefreshTick}
+                style={{ width: 'min(85vw, 320px)', height: '100%' }}
+              />
+            </div>
+          </>
+        ) : (
+          /* Desktop: plain flex sibling — only render when open */
+          showMembers && (
+            <MemberList
+              channelId={channelId}
+              guildId={isGuildChannel ? channel.guildId : null}
+              ownerId={groupChat?.ownerId ?? null}
+              refreshTick={memberRefreshTick}
+            />
+          )
+        )
       )}
 
       {showAddMembers && (

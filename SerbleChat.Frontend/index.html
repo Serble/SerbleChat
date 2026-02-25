@@ -2,23 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>SerbleChat</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; }
-      html, body, #root {
+      html, body {
         margin: 0; padding: 0;
-        height: 100%; overflow: hidden;
+        overflow: hidden;
+        height: 100%;
+      }
+      /* Fixed positioning removes #root from the document flow entirely,
+         so there is no scroll container and the browser can't scroll below
+         the content even when the keyboard shrinks the visual viewport. */
+      #root {
+        position: fixed;
+        top: var(--app-top, 0px);
+        left: 0;
+        width: 100%;
+        height: var(--app-height, 100dvh);
+        overflow: hidden;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background: #313338;
         color: #e2e8f0;
       }
+      /* Prevent iOS from zooming in on inputs (font-size must be ≥ 16px) */
+      input, textarea, select {
+        font-size: max(16px, 1em);
+      }
       ::-webkit-scrollbar { width: 8px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #111213; }
+      /* Hide scrollbar on elements that use overflow:auto for layout only */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { scrollbar-width: none; }
     </style>
   </head>
   <body>

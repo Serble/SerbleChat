@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { createGuild } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 
 export default function CreateGuildModal({ onClose, onCreated }) {
   const { reconnectHub, setActiveGuildId } = useApp();
@@ -10,6 +12,7 @@ export default function CreateGuildModal({ onClose, onCreated }) {
   const [error, setError] = useState(null);
   const backdropRef = useRef(null);
   const nav = useNavigate();
+  const { isMobile } = useMobile();
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -35,22 +38,24 @@ export default function CreateGuildModal({ onClose, onCreated }) {
     }
   }
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.75)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '1rem',
+        display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center',
+        padding: isMobile ? 0 : '1rem',
       }}
     >
       <div style={{
-        background: 'var(--bg-base)', borderRadius: '12px',
-        width: '100%', maxWidth: 460,
+        background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px',
+        width: '100%', maxWidth: isMobile ? '100%' : 460,
+        height: isMobile ? '100%' : 'auto',
         boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
         overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
         <div style={{ padding: '1.5rem 1.5rem 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -68,7 +73,7 @@ export default function CreateGuildModal({ onClose, onCreated }) {
           >✕</button>
         </div>
 
-        <form onSubmit={handleCreate} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleCreate} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
               Guild Name
@@ -118,6 +123,7 @@ export default function CreateGuildModal({ onClose, onCreated }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

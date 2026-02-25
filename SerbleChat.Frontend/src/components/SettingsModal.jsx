@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme, THEME_PROPS } from '../context/ThemeContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 
 // ─── Theme editor helpers ─────────────────────────────────────────────────────
 
@@ -210,6 +212,7 @@ function AppearanceTab() {
 
   const groups = groupedProps();
   const isBuiltIn = editingTheme.builtIn;
+  const { isMobile } = useMobile();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -222,17 +225,23 @@ function AppearanceTab() {
         onChange={handleImportFile}
       />
 
-      {/* Two-panel body */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left: theme list */}
+      {/* Two-panel body — stacks vertically on mobile */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexDirection: isMobile ? 'column' : 'row' }}>
+        {/* Theme list */}
         <div style={{
-          width: 190, flexShrink: 0, borderRight: '1px solid var(--border)',
+          width: isMobile ? '100%' : 190,
+          height: isMobile ? 'auto' : undefined,
+          maxHeight: isMobile ? '35%' : undefined,
+          flexShrink: 0,
+          borderRight: isMobile ? 'none' : '1px solid var(--border)',
+          borderBottom: isMobile ? '1px solid var(--border)' : 'none',
           overflowY: 'auto', padding: '0.75rem 0.5rem',
-          display: 'flex', flexDirection: 'column', gap: '0.2rem',
+          display: 'flex', flexDirection: isMobile ? 'row' : 'column',
+          gap: '0.2rem', flexWrap: isMobile ? 'wrap' : 'nowrap',
         }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0 0.5rem 0.5rem' }}>
+          {!isMobile && <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0 0.5rem 0.5rem' }}>
             Built-in
-          </div>
+          </div>}
           {allThemes.filter(t => t.builtIn).map(t => (
             <ThemeListItem
               key={t.id}
@@ -244,9 +253,9 @@ function AppearanceTab() {
             />
           ))}
 
-          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.75rem 0.5rem 0.5rem' }}>
+          {!isMobile && <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.75rem 0.5rem 0.5rem' }}>
             Custom
-          </div>
+          </div>}
           {allThemes.filter(t => !t.builtIn).map(t => (
             <ThemeListItem
               key={t.id}
@@ -264,7 +273,8 @@ function AppearanceTab() {
             </div>
           )}
 
-          {/* Bottom actions */}
+          {/* Bottom actions — hidden on mobile to keep horizontal list clean */}
+          {!isMobile && (
           <div style={{ marginTop: 'auto', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <button
               onClick={handleNew}
@@ -298,6 +308,7 @@ function AppearanceTab() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Right: editor */}
@@ -602,6 +613,7 @@ function NotifPrefPicker({ label, field, value, onChange }) {
 }
 
 function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNotifChange, onUnreadsChange }) {
+  const { isMobile } = useMobile();
   return (
     <div style={{ marginBottom: '2rem' }}>
       <div style={{
@@ -616,7 +628,7 @@ function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNot
           {description}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
         <NotifPrefPicker
           label="🔔 Notifications"
           field="notifications"
@@ -735,6 +747,7 @@ const SECTIONS = [...new Set(TABS.map(t => t.section))];
 export default function SettingsModal({ onClose }) {
   const [activeTab, setActiveTab] = useState('appearance');
   const backdropRef = useRef(null);
+  const { isMobile } = useMobile();
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -742,19 +755,23 @@ export default function SettingsModal({ onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center',
       }}
     >
       <div style={{
-        background: 'var(--bg-overlay)', border: '1px solid var(--border)',
-        borderRadius: 10, width: 860, maxWidth: '96vw', maxHeight: '88vh',
+        background: 'var(--bg-overlay)', border: isMobile ? 'none' : '1px solid var(--border)',
+        borderRadius: isMobile ? 0 : 10,
+        width: isMobile ? '100%' : 860,
+        maxWidth: isMobile ? '100%' : '96vw',
+        height: isMobile ? '100%' : 'auto',
+        maxHeight: isMobile ? '100%' : '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
       }}>
@@ -777,22 +794,30 @@ export default function SettingsModal({ onClose }) {
         </div>
 
         {/* ── Body ── */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* Left: tab navigation */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexDirection: isMobile ? 'column' : 'row' }}>
+          {/* Left (desktop) / Top (mobile): tab navigation */}
           <div style={{
-            width: 140, flexShrink: 0, borderRight: '1px solid var(--border)',
-            overflowY: 'auto', padding: '1rem 0.5rem',
-            display: 'flex', flexDirection: 'column', gap: '0.1rem',
+            width: isMobile ? '100%' : 140,
+            flexShrink: 0,
+            borderRight: isMobile ? 'none' : '1px solid var(--border)',
+            borderBottom: isMobile ? '1px solid var(--border)' : 'none',
+            overflowY: isMobile ? 'hidden' : 'auto',
+            overflowX: isMobile ? 'auto' : 'hidden',
+            padding: isMobile ? '0.5rem' : '1rem 0.5rem',
+            display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '0.1rem',
+            flexWrap: isMobile ? 'nowrap' : 'nowrap',
           }}>
             {SECTIONS.map(section => (
-              <div key={section}>
-                <div style={{
-                  fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
-                  textTransform: 'uppercase', letterSpacing: '0.08em',
-                  padding: '0 0.6rem 0.4rem',
-                }}>
-                  {section}
-                </div>
+              <div key={section} style={{ display: 'contents' }}>
+                {!isMobile && (
+                  <div style={{
+                    fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0 0.6rem 0.4rem',
+                  }}>
+                    {section}
+                  </div>
+                )}
                 {TABS.filter(t => t.section === section).map(tab => (
                   <TabButton
                     key={tab.id}
@@ -814,7 +839,8 @@ export default function SettingsModal({ onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

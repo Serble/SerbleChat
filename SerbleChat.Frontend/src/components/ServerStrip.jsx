@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
 import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
@@ -92,6 +93,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
 export default function ServerStrip() {
   const nav = useNavigate();
   const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads } = useApp();
+  const { isMobile } = useMobile() ?? { isMobile: false };
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null); // { guildId, guildName, x, y }
@@ -103,6 +105,20 @@ export default function ServerStrip() {
     setCtxMenu({ guildId: guild.id, guildName: guild.name, x: e.clientX, y: e.clientY });
   }
 
+  function handleGuildClick(g) {
+    setActiveGuildId(String(g.id));
+    // On mobile, don't navigate — keep the sidebar open so the user can pick a channel.
+    // On desktop, navigate to the guild which auto-selects the first channel.
+    if (!isMobile) nav(`/app/guild/${g.id}`);
+  }
+
+  function handleHomeClick() {
+    setActiveGuildId(null);
+    // On mobile, stay in the sidebar (DmSidebar will show).
+    // On desktop, navigate to friends.
+    if (!isMobile) nav('/app/friends');
+  }
+
   return (
     <div style={{
       width: 72, background: 'var(--bg-tertiary)', flexShrink: 0,
@@ -111,7 +127,7 @@ export default function ServerStrip() {
       borderRight: '1px solid var(--border)', overflowY: 'auto',
     }}>
       {/* Home */}
-      <StripButton title="Home" active={onHome} onClick={() => { setActiveGuildId(null); nav('/app/friends'); }}>
+      <StripButton title="Home" active={onHome} onClick={handleHomeClick}>
         🏠
       </StripButton>
 
@@ -124,7 +140,7 @@ export default function ServerStrip() {
           key={g.id}
           guild={g}
           active={String(activeGuildId) === String(g.id)}
-          onClick={() => { setActiveGuildId(String(g.id)); nav(`/app/guild/${g.id}`); }}
+          onClick={() => handleGuildClick(g)}
           onContextMenu={e => handleGuildContextMenu(e, g)}
           unreadCount={guildUnreads?.[String(g.id)] ?? 0}
         />

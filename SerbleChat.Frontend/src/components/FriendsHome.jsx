@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
 import UserPopout from './UserPopout.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 
 const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
 
@@ -202,6 +203,7 @@ function BlockedRow({ user, onUnblock }) {
 
 export default function FriendsHome() {
   const { friends, currentUser, refreshFriends, blockedUsers, unblockUser, refreshBlockedUsers } = useApp();
+  const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [tab, setTab]           = useState('All');
   const [addInput, setAddInput] = useState('');
   const [addStatus, setAddStatus] = useState(null);
@@ -248,14 +250,26 @@ export default function FriendsHome() {
       {/* Header */}
       <div style={{
         height: 48, display: 'flex', alignItems: 'center',
-        padding: '0 1.25rem', gap: '0.25rem',
+        padding: '0 1.25rem 0 1.25rem', gap: '0.25rem',
         borderBottom: '1px solid var(--border)', flexShrink: 0,
         background: 'var(--bg-base)',
       }}>
+        {isMobile && (
+          <button
+            title="Open sidebar"
+            onClick={openSidebar}
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-secondary)',
+              cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
+              padding: '0.25rem', marginRight: '0.25rem', flexShrink: 0,
+            }}
+          >☰</button>
+        )}
         <span style={{ fontWeight: 700, color: 'var(--text-primary)', marginRight: '0.75rem', fontSize: '0.95rem' }}>
           👥 Friends
         </span>
-        <div style={{ width: 1, height: 20, background: 'var(--border)', marginRight: '0.5rem' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--border)', marginRight: '0.5rem', flexShrink: 0 }} />
+        <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', flex: 1, scrollbarWidth: 'none' }}>
         {TABS.map(t => {
           const isActive = tab === t;
           const count = t === 'Pending' ? pendingCount : 0;
@@ -286,6 +300,7 @@ export default function FriendsHome() {
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* Content */}

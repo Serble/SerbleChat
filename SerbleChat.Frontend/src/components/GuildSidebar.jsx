@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
   updateGuildChannel, updateGuild, deleteGuild,
@@ -147,6 +149,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
   const [creating, setCreating]     = useState(false);
   const [copied, setCopied]         = useState(null);
   const backdropRef = useRef(null);
+  const { isMobile } = useMobile();
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -206,13 +209,13 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
   // Roles tab needs more width
   const modalWidth = tab === 'roles' ? 680 : 460;
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center', padding: isMobile ? 0 : '1rem' }}
     >
-      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: modalWidth, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column', transition: 'max-width 0.15s' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px', width: '100%', maxWidth: isMobile ? '100%' : modalWidth, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', height: isMobile ? '100%' : 'auto', maxHeight: isMobile ? '100%' : '90vh', display: 'flex', flexDirection: 'column', transition: 'max-width 0.15s' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Guild Settings</div>
@@ -306,7 +309,8 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -317,6 +321,7 @@ function InvitePopup({ guildId, onClose }) {
   const [busy, setBusy]     = useState(true);
   const [copied, setCopied] = useState(false);
   const backdropRef = useRef(null);
+  const { isMobile } = useMobile();
   // Prevent double POST in React StrictMode (effect fires twice in dev)
   const fetchedRef = useRef(false);
 
@@ -344,10 +349,10 @@ function InvitePopup({ guildId, onClose }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  return (
+  return createPortal(
     <div ref={backdropRef} onClick={e => { if (e.target === backdropRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center', padding: isMobile ? 0 : '1rem' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px', width: '100%', maxWidth: isMobile ? '100%' : 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', height: isMobile ? '100%' : 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>🔗 Invite People</div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
@@ -366,7 +371,8 @@ function InvitePopup({ guildId, onClose }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -378,6 +384,7 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
   const [busy, setBusy]               = useState(false);
   const [err, setErr]                 = useState(null);
   const backdropRef                   = useRef(null);
+  const { isMobile }                  = useMobile();
   const inputRef                      = useRef(null);
 
   useEffect(() => {
@@ -399,13 +406,13 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
     } catch (e) { setErr(e.message); setBusy(false); }
   }
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center', padding: isMobile ? 0 : '1rem' }}
     >
-      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: 420, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px', width: '100%', maxWidth: isMobile ? '100%' : 420, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', height: isMobile ? '100%' : 'auto' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Create Channel</div>
@@ -454,7 +461,8 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -485,6 +493,7 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
   const [busy, setBusy]             = useState(false);
   const [err, setErr]               = useState(null);
   const backdropRef                 = useRef(null);
+  const { isMobile }                = useMobile();
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -524,13 +533,13 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
     transition: 'background 0.1s, color 0.1s', whiteSpace: 'nowrap',
   });
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={e => { if (e.target === backdropRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center', padding: isMobile ? 0 : '1rem' }}
     >
-      <div style={{ background: 'var(--bg-base)', borderRadius: '12px', width: '100%', maxWidth: tab === 'permissions' ? 560 : 420, maxHeight: '85vh', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'max-width 0.15s' }}>
+      <div style={{ background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px', width: '100%', maxWidth: isMobile ? '100%' : (tab === 'permissions' ? 560 : 420), maxHeight: isMobile ? '100%' : '85vh', height: isMobile ? '100%' : 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'max-width 0.15s' }}>
         {/* Header */}
         <div style={{ padding: '1.1rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
@@ -597,7 +606,8 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

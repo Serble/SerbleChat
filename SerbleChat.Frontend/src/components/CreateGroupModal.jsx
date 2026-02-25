@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { createGroupChat } from '../api.js';
+import { useMobile } from '../context/MobileContext.jsx';
 
 function Avatar({ name, size = 32 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -29,6 +31,7 @@ export default function CreateGroupModal({ onClose }) {
   const [busy, setBusy]         = useState(false);
   const [error, setError]       = useState(null);
   const backdropRef             = useRef(null);
+  const { isMobile }            = useMobile();
 
   // Accepted friends only
   const acceptedFriends = friends.filter(f => !f.pending);
@@ -78,20 +81,21 @@ export default function CreateGroupModal({ onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       onClick={handleBackdrop}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '1rem',
+        display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center',
+        padding: isMobile ? 0 : '1rem',
       }}
     >
       <div style={{
-        background: 'var(--bg-base)', borderRadius: '12px',
-        width: '100%', maxWidth: 460,
+        background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px',
+        width: '100%', maxWidth: isMobile ? '100%' : 460,
+        height: isMobile ? '100%' : 'auto',
         boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
@@ -124,7 +128,7 @@ export default function CreateGroupModal({ onClose }) {
           </button>
         </div>
 
-        <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, overflow: 'hidden' }}>
           {/* Group name */}
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
@@ -153,7 +157,7 @@ export default function CreateGroupModal({ onClose }) {
             </label>
             <div style={{
               background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px',
-              maxHeight: 220, overflowY: 'auto',
+              flex: 1, overflowY: 'auto', minHeight: 0,
             }}>
               {acceptedFriends.length === 0 && (
                 <div style={{ padding: '1rem', color: 'var(--text-subtle)', fontSize: '0.85rem', textAlign: 'center' }}>
@@ -248,6 +252,7 @@ export default function CreateGroupModal({ onClose }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

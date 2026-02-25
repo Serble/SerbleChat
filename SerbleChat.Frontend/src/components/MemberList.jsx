@@ -26,7 +26,7 @@ function Avatar({ name, size = 32 }) {
  *  ownerId     string | null            (group owner, or null for DMs/guilds)
  *  refreshTick number                   (increment to force a reload)
  */
-export default function MemberList({ channelId, guildId, ownerId, refreshTick }) {
+export default function MemberList({ channelId, guildId, ownerId, refreshTick, style: styleProp }) {
   const [members, setMembers]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [popout,  setPopout]    = useState(null);
@@ -81,6 +81,7 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick })
       width: 240, flexShrink: 0, background: 'var(--bg-secondary)',
       borderLeft: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      ...styleProp,
     }}>
       <div style={{
         height: 48, display: 'flex', alignItems: 'center',
