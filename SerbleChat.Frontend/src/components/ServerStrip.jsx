@@ -37,7 +37,7 @@ function StripButton({ title, active, onClick, children }) {
   );
 }
 
-function GuildIcon({ guild, active, onClick, onContextMenu }) {
+function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
   const [hov, setHov] = useState(false);
   const hue = guild.name
     ? (guild.name.charCodeAt(0) * 37 + guild.name.charCodeAt(guild.name.length - 1) * 17) % 360
@@ -45,35 +45,53 @@ function GuildIcon({ guild, active, onClick, onContextMenu }) {
   const initial = guild.name ? guild.name[0].toUpperCase() : '?';
 
   return (
-    <button
-      title={guild.name}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: 48, height: 48,
-        borderRadius: active || hov ? '30%' : '50%',
-        background: active
-          ? `hsl(${hue},50%,48%)`
-          : hov
-          ? `hsl(${hue},45%,42%)`
-          : `hsl(${hue},40%,32%)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.2rem',
-        transition: 'border-radius 0.2s, background 0.2s',
-        userSelect: 'none', border: 'none', flexShrink: 0,
-        boxShadow: active ? `0 0 0 3px hsl(${hue},50%,55%)` : 'none',
-      }}
-    >
-      {initial}
-    </button>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        title={guild.name}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={{
+          width: 48, height: 48,
+          borderRadius: active || hov ? '30%' : '50%',
+          background: active
+            ? `hsl(${hue},50%,48%)`
+            : hov
+            ? `hsl(${hue},45%,42%)`
+            : `hsl(${hue},40%,32%)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.2rem',
+          transition: 'border-radius 0.2s, background 0.2s',
+          userSelect: 'none', border: 'none', flexShrink: 0,
+          boxShadow: active ? `0 0 0 3px hsl(${hue},50%,55%)` : 'none',
+        }}
+      >
+        {initial}
+      </button>
+      {unreadCount > 0 && !active && (
+        <div style={{
+          position: 'absolute', bottom: -2, right: -2,
+          minWidth: 18, height: 18,
+          background: 'var(--danger, #ed4245)',
+          borderRadius: 9,
+          border: '2px solid var(--bg-tertiary)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '0.65rem', fontWeight: 700, color: '#fff',
+          padding: '0 4px',
+          pointerEvents: 'none',
+          lineHeight: 1,
+        }}>
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function ServerStrip() {
   const nav = useNavigate();
-  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId } = useApp();
+  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null); // { guildId, guildName, x, y }
@@ -108,6 +126,7 @@ export default function ServerStrip() {
           active={String(activeGuildId) === String(g.id)}
           onClick={() => { setActiveGuildId(String(g.id)); nav(`/app/guild/${g.id}`); }}
           onContextMenu={e => handleGuildContextMenu(e, g)}
+          unreadCount={guildUnreads?.[String(g.id)] ?? 0}
         />
       ))}
 

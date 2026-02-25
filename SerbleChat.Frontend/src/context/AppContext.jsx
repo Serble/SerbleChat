@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import {
   getMyAccount, getFriends, getDmChannels,
@@ -7,6 +7,7 @@ import {
   getBlockedUsers, blockUser as blockUserApi, unblockUser as unblockUserApi,
   getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
+  getGuildChannels,
 } from '../api.js';
 
 const Ctx = createContext(null);
@@ -55,6 +56,8 @@ export function AppProvider({ children }) {
   const channelMetaRef  = useRef({});
   // Unread counts: channelId (string) -> number
   const [unreads, setUnreads] = useState({});
+  // Channel-to-guild mapping: channelId (string) -> guildId (string)
+  const [channelToGuild, setChannelToGuild] = useState({});
   // Notification prefs cache: channelId (string) -> { notifications: 0|1|2|3, unreads: 0|1|2|3 }
   const [notifPrefs, setNotifPrefs] = useState({});
   // Guild notification prefs cache: guildId (string) -> { preferences: { notifications, unreads } }
@@ -164,6 +167,9 @@ export function AppProvider({ children }) {
   /** Register channel type/guildId so the unread resolver knows the hierarchy. */
   function registerChannelMeta(channelId, meta) {
     channelMetaRef.current[String(channelId)] = meta;
+    if (meta?.type === 0 && meta?.guildId != null) {
+      setChannelToGuild(p => ({ ...p, [String(channelId)]: String(meta.guildId) }));
+    }
   }
 
   /**
@@ -297,6 +303,20 @@ export function AppProvider({ children }) {
     try {
       const gs = await getMyGuilds();
       setGuilds(gs);
+      // Build channel→guild map for unread aggregation
+      const entries = await Promise.all(
+        gs.map(g =>
+          getGuildChannels(g.id)
+            .then(chs => (chs ?? []).map(ch => [String(ch.id), String(g.id)]))
+            .catch(() => [])
+        )
+      );
+      const map = Object.fromEntries(entries.flat());
+      setChannelToGuild(p => ({ ...p, ...map }));
+      // Also register in channelMetaRef so resolveEffectiveUnreadsMode works
+      for (const [channelId, guildId] of Object.entries(map)) {
+        channelMetaRef.current[channelId] = { type: 0, guildId: Number(guildId) };
+      }
     } catch (e) { console.error('reloadGuilds failed:', e); }
   }
 
@@ -536,6 +556,16 @@ export function AppProvider({ children }) {
     }
   }
 
+  /** guildId (string) -> total unread count across all its channels */
+  const guildUnreads = useMemo(() => {
+    const result = {};
+    for (const [channelId, count] of Object.entries(unreads)) {
+      const guildId = channelToGuild[channelId];
+      if (guildId) result[guildId] = (result[guildId] ?? 0) + count;
+    }
+    return result;
+  }, [unreads, channelToGuild]);
+
   return (
     <Ctx.Provider value={{
       currentUser,
@@ -566,6 +596,7 @@ export function AppProvider({ children }) {
       userUpdatedEvent,
       // Unread counts & notification preferences
       unreads,
+      guildUnreads,
       markChannelRead,
       setActiveChannelId,
       registerChannelMeta,
