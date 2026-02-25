@@ -107,8 +107,7 @@ export default function InvitePage() {
               opacity: state === 'joining' ? 0.7 : 1, transition: 'background 0.15s',
               width: '100%',
             }}
-            onMouseEnter={e => { if (state !== 'joining') e.currentTarget.style.background = '#6d28d9'; }}
-            onMouseLeave={e => e.currentTarget.style.background = '#7c3aed'}
+            className={state !== 'joining' ? 'hov-accent' : undefined}
           >
             {state === 'joining' ? 'Joining…' : isLoggedIn ? 'Accept Invite' : 'Log in to Join'}
           </button>
@@ -117,8 +116,7 @@ export default function InvitePage() {
         {state === 'already' && (
           <button onClick={() => nav('/app/friends')}
             style={{ background: '#383a40', border: 'none', borderRadius: '8px', padding: '0.75rem 2rem', color: '#f2f3f5', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', width: '100%', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#4a4c55'}
-            onMouseLeave={e => e.currentTarget.style.background = '#383a40'}>
+            className="hov-invite-already">
             Go to App
           </button>
         )}
@@ -134,8 +132,7 @@ export default function InvitePage() {
         {isLoggedIn && state !== 'joined' && (
           <button onClick={() => nav('/app/friends')}
             style={{ background: 'transparent', border: 'none', color: '#4f5660', fontSize: '0.82rem', cursor: 'pointer', padding: 0 }}
-            onMouseEnter={e => e.currentTarget.style.color = '#72767d'}
-            onMouseLeave={e => e.currentTarget.style.color = '#4f5660'}>
+            className="hov-invite-back">
             Back to app
           </button>
         )}

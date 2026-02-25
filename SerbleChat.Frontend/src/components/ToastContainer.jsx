@@ -49,8 +49,7 @@ function Toast({ toast, onRemove }) {
           padding: '0.1rem', flexShrink: 0,
           transition: 'color 0.1s',
         }}
-        onMouseEnter={e => e.currentTarget.style.color = '#f2f3f5'}
-        onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+        className="hov-text-primary"
       >
         ✕
       </button>

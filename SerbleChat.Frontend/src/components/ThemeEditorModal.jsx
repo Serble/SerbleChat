@@ -250,8 +250,7 @@ export default function ThemeEditorModal({ onClose }) {
                   padding: '0.5rem', cursor: 'pointer', textAlign: 'center',
                   transition: 'color 0.15s, border-color 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                className="hov-text-secondary-border"
               >
                 + New Theme
               </button>
@@ -263,8 +262,7 @@ export default function ThemeEditorModal({ onClose }) {
                   padding: '0.5rem', cursor: 'pointer', textAlign: 'center',
                   transition: 'color 0.15s, border-color 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                className="hov-text-secondary-border"
               >
                 ⬆ Import JSON
               </button>
@@ -336,8 +334,7 @@ export default function ThemeEditorModal({ onClose }) {
               color: 'var(--text-secondary)', padding: '0.45rem 1rem', fontSize: '0.875rem',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-active)'}
+            className="hov-bg"
           >
             ⬇ Export JSON
           </button>
@@ -355,8 +352,7 @@ export default function ThemeEditorModal({ onClose }) {
               color: '#fff', padding: '0.45rem 1rem', fontSize: '0.875rem',
               cursor: 'pointer', fontWeight: 600,
             }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
+              className="hov-accent"
             >
               {isBuiltIn ? 'Save as Custom & Apply' : 'Save & Apply'}
             </button>
@@ -421,8 +417,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
               color: 'var(--text-subtle)', fontSize: '0.75rem',
               cursor: 'pointer', padding: '0.1rem 0.2rem', borderRadius: 3,
             }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-subtle)'}
+            className="hov-color-danger"
           >
             🗑
           </button>

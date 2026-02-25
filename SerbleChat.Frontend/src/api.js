@@ -36,6 +36,22 @@ export async function exchangeCode(code) {
   return handle(res);
 }
 
+/** GET /auth/vapid-public-key  – returns the server's VAPID public key (no auth needed) */
+export async function getVapidPublicKey() {
+  const res = await fetch(`${BASE}/auth/vapid-public-key`);
+  return handle(res); // returns the key as a plain string
+}
+
+/** POST /account/web-push-subscription  – register a push subscription endpoint */
+export async function addWebPushSubscription({ url, p256dh, auth }) {
+  const res = await fetch(`${BASE}/account/web-push-subscription`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, p256dh, auth }),
+  });
+  return handle(res);
+}
+
 /** GET /auth  – verify the current JWT is still valid */
 export async function verifyAuth() {
   const res = await fetch(`${BASE}/auth`, { headers: authHeaders() });

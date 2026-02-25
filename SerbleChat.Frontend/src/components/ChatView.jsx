@@ -186,8 +186,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
         className={highlighted ? 'msg-highlighted' : undefined}
         onContextMenu={e => onContextMenu(e, msg)}
         style={{ padding: '0.1rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        className="hov-bg"
       >
         <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
           {ts}
@@ -208,8 +207,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
       className={highlighted ? 'msg-highlighted' : undefined}
       onContextMenu={e => onContextMenu(e, msg)}
       style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      className="hov-bg"
     >
       <div
         onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
@@ -271,8 +269,7 @@ function BlockedInputBanner({ username, userId, unblockUser }) {
           cursor: busy ? 'default' : 'pointer',
           transition: 'background 0.15s',
         }}
-        onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'rgba(242,63,67,0.28)'; }}
-        onMouseLeave={e => { if (!busy) e.currentTarget.style.background = 'rgba(242,63,67,0.15)'; }}
+        className={!busy ? 'hov-danger-light' : undefined}
       >
         {busy ? 'Unblocking…' : 'Unblock'}
       </button>
@@ -320,8 +317,7 @@ function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, on
             gap: '0.4rem',
             userSelect: 'none',
           }}
-          onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+          className="hov-text-secondary"
         >
           <span>▲</span>
           <span>Hide messages from blocked user</span>
@@ -346,8 +342,7 @@ function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, on
         userSelect: 'none',
         transition: 'background 0.1s',
       }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+      className="hov-bg"
     >
       <span style={{ fontSize: '0.95rem', flexShrink: 0 }}>🚫</span>
       <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flex: 1 }}>
@@ -1089,8 +1084,7 @@ export default function ChatView() {
                 {input.trim() && (
                   <button type="submit"
                     style={{ background: 'var(--accent)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}
+                    className="hov-accent"
                   >↵</button>
                 )}
               </div>

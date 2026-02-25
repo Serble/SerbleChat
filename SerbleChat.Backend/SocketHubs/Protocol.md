@@ -66,3 +66,11 @@
     "id": "string"
 }
 ```
+
+`UserStatusUpdated`:
+```json
+{
+    "userId": "string",
+    "status": "string"
+}
+```

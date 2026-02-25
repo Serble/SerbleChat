@@ -1,27 +1,43 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 using SerbleChat.Backend.Schemas;
+using NotificationJsonIgnore = Newtonsoft.Json.JsonIgnoreAttribute;
+using ApiJsonIgnore = System.Text.Json.Serialization.JsonIgnoreAttribute;
 
 namespace SerbleChat.Backend.Database.Structs;
 
+// The newtonsoft json annotations are for notifications.
+// The System.Text.Json annotations are for the API.
 public class ChatUser {
     [Key]
     [StringLength(64)]
+    [JsonProperty(PropertyName = "id")]
     public string Id { get; set; } = null!;
 
     [StringLength(255)]
+    [JsonProperty(PropertyName = "username")]
     public string Username { get; set; } = null!;
     
+    [JsonProperty(PropertyName = "created_at")]
     public DateTime CreatedAt { get; set; }
     
-    [JsonIgnore]
+    [ApiJsonIgnore]
+    [NotificationJsonIgnore]
     public string RefreshToken { get; set; } = null!;
     
+    [NotificationJsonIgnore]
     public NotificationPreferences DefaultDmNotificationPreferences { get; set; } = NotificationPreferences.DefaultDmPreferences;
+    [NotificationJsonIgnore]
     public NotificationPreferences DefaultGroupNotificationPreferences { get; set; } = NotificationPreferences.DefaultGroupPreferences;
+    [NotificationJsonIgnore]
     public NotificationPreferences DefaultGuildNotificationPreferences { get; set; } = NotificationPreferences.DefaultGuildPreferences;
     
+    [NotificationJsonIgnore]
+    public bool NotificationsWhileOnline { get; set; } = false;
+    
+    [JsonProperty(PropertyName = "is_admin")]
     public bool IsAdmin { get; set; }
     
+    [JsonProperty(PropertyName = "is_banned")]
     public bool IsBanned { get; set; }
 }

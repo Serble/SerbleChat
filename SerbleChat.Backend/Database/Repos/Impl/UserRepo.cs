@@ -125,6 +125,42 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
+    public Task<Dictionary<string, UserChannelNotificationPreferences>> GetUsersChannelNotificationPreferences(IEnumerable<string> userIds, int channelId) {
+        return context.UserChannelNotificationPreferences
+            .Where(p => userIds.Contains(p.UserId) && p.ChannelId == channelId)
+            .ToDictionaryAsync(p => p.UserId);
+    }
+
+    public Task<Dictionary<string, UserGuildNotificationPreferences>> GetUsersGuildNotificationPreferences(IEnumerable<string> userIds, int guildId) {
+        return context.UserGuildNotificationPreferences
+            .Where(p => userIds.Contains(p.UserId) && p.GuildId == guildId)
+            .ToDictionaryAsync(p => p.UserId);
+    }
+
+    public Task CreateWebNotificationSubscription(UserWebNotificationHook subscription) {
+        context.UserWebNotificationHooks.Add(subscription);
+        return context.SaveChangesAsync();
+    }
+
+    public async Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId) {
+        return await context.UserWebNotificationHooks
+            .Where(h => h.UserId == userId)
+            .ToArrayAsync();
+    }
+
+    public Task DeleteWebNotificationSubscriptions(params int[] subscriptionId) {
+        return context.UserWebNotificationHooks
+            .Where(h => subscriptionId.Contains(h.Id))
+            .ExecuteDeleteAsync();
+    }
+
+    public Task<Dictionary<string, IEnumerable<UserWebNotificationHook>>> GetUsersWebNotificationSubscriptions(IEnumerable<string> userIds) {
+        return context.UserWebNotificationHooks
+            .Where(h => userIds.Contains(h.UserId))
+            .GroupBy(h => h.UserId)
+            .ToDictionaryAsync(g => g.Key, g => g.AsEnumerable());
+    }
+
     public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
         if (user == null!) {
             throw new ArgumentNullException(nameof(user));

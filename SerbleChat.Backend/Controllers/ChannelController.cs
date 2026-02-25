@@ -10,6 +10,7 @@ using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.Services;
 using SerbleChat.Backend.SocketHubs;
 
 namespace SerbleChat.Backend.Controllers;
@@ -19,7 +20,7 @@ namespace SerbleChat.Backend.Controllers;
 [Authorize]
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
-    IUnreadsRepo unreads) : ControllerBase {
+    IUnreadsRepo unreads, INotificationService notifications) : ControllerBase {
 
     [HttpPost("{channelId:int}")]
     public async Task<ActionResult> PostMessage(int channelId, [FromBody] SendMessageBody body) {
@@ -68,6 +69,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         });
         await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
         
+        notifications.EnqueueMessageProcessing(channel, msg, mentionedUserIds);
         return Ok();
     }
 

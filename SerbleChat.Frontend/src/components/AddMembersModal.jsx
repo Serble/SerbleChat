@@ -87,8 +87,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', padding: '0.25rem', borderRadius: '4px', lineHeight: 1 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+            className="hov-text-primary"
           >✕</button>
         </div>
 
@@ -117,8 +116,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
                       background: isSel ? 'rgba(124,58,237,0.15)' : 'transparent',
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
-                    onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
+                    className={!isSel ? 'hov-bg-secondary' : undefined}
                   >
                     <Avatar name={u?.username} size={32} />
                     <span style={{ flex: 1, color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: isSel ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -148,8 +146,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
             <button type="button" onClick={onClose}
               style={{ padding: '0.6rem 1.25rem', borderRadius: '6px', background: 'transparent', border: 'none', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+              className="hov-text-primary"
             >Cancel</button>
             <button type="submit" disabled={busy || selected.size === 0}
               style={{
@@ -158,8 +155,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
                 color: '#fff', cursor: busy || selected.size === 0 ? 'default' : 'pointer',
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={e => { if (!busy && selected.size > 0) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-              onMouseLeave={e => { if (!busy && selected.size > 0) e.currentTarget.style.background = 'var(--accent)'; }}
+              className={!busy && selected.size > 0 ? 'hov-accent' : undefined}
             >{busy ? 'Adding…' : 'Add Members'}</button>
           </div>
         </form>

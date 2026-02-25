@@ -1,0 +1,61 @@
+/*
+ * hover.css — CSS-only hover utility classes.
+ *
+ * All interactive elements use these instead of onMouseEnter/onMouseLeave inline
+ * style mutations. The browser's :hover pseudo-class is always reliable; JS mouse
+ * event handlers can be missed when elements re-render, animate, or overlap,
+ * leaving elements permanently stuck in their hovered visual state.
+ *
+ * The !important is necessary to override inline `style` props set by React.
+ */
+
+/* Background → --bg-hover (from any base: transparent, --bg-secondary, --bg-active, --bg-input) */
+.hov-bg:hover { background: var(--bg-hover) !important; }
+
+/* Background → --bg-secondary (AddMembers list items) */
+.hov-bg-secondary:hover { background: var(--bg-secondary) !important; }
+
+/* Background → --accent-hover (accent-coloured primary buttons) */
+.hov-accent:hover { background: var(--accent-hover) !important; }
+
+/* Danger-zone buttons: fills solid --danger background on hover */
+.hov-danger-fill:hover { background: var(--danger) !important; color: #fff !important; }
+
+/* Danger light: slightly brighter danger tint (Unblock button) */
+.hov-danger-light:hover { background: rgba(242,63,67,0.28) !important; }
+
+/* Color → --text-primary (close buttons, cancel text) */
+.hov-text-primary:hover { color: var(--text-primary) !important; }
+
+/* Color → --text-secondary (secondary icon buttons) */
+.hov-text-secondary:hover { color: var(--text-secondary) !important; }
+
+/* Color → --danger (destructive icon/trash buttons) */
+.hov-color-danger:hover { color: var(--danger) !important; }
+
+/* Border-color only → --text-muted (Cancel in CreateChannelModal) */
+.hov-border-only:hover { border-color: var(--text-muted) !important; }
+
+/* Border-color → --text-muted + Color → --text-secondary (cancel/secondary outline buttons) */
+.hov-text-secondary-border:hover {
+  color: var(--text-secondary) !important;
+  border-color: var(--text-muted) !important;
+}
+
+/* Border-color → --accent + Color → --text-secondary (Add Override dashed button) */
+.hov-border-accent:hover {
+  border-color: var(--accent) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* LandingPage login button: lift + stronger shadow */
+.hov-landing-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 36px rgba(124,58,237,0.6) !important;
+}
+
+/* InvitePage "Go to App" already-joined button (hardcoded palette) */
+.hov-invite-already:hover { background: #4a4c55 !important; }
+
+/* InvitePage back link (hardcoded palette) */
+.hov-invite-back:hover { color: #72767d !important; }

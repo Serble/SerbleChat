@@ -133,8 +133,7 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
           background: expanded ? 'var(--bg-hover)' : 'transparent',
           transition: 'background 0.1s',
         }}
-        onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-        onMouseLeave={e => { if (!expanded) e.currentTarget.style.background = 'transparent'; }}
+        className={!expanded ? 'hov-bg' : undefined}
       >
         <span style={{ fontSize: '1rem' }}>{label?.icon ?? '…'}</span>
         <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
@@ -157,8 +156,7 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
               <button onClick={handleDelete} disabled={delBusy}
                 style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.35rem 0.75rem', color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 600, cursor: delBusy ? 'default' : 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => { if (!delBusy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = 'var(--text-primary)'; } }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>
+                className={!delBusy ? 'hov-danger-fill' : undefined}>
                 Delete Override
               </button>
             </div>
@@ -260,8 +258,7 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
             />
             <button onClick={lookupUser}
               style={{ background: 'var(--bg-input)', border: 'none', borderRadius: '6px', padding: '0.5rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.1s' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
+              className="hov-bg">
               Look up
             </button>
           </div>
@@ -281,8 +278,7 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
         <button onClick={onCancel} disabled={busy}
           style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.85rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+          className="hov-text-secondary-border">
           Cancel
         </button>
         <button onClick={handleCreate} disabled={busy || (type === 'role' ? !roleId : !resolvedUser)}
@@ -376,8 +372,7 @@ export default function ChannelPermsTab({ guildId, channelId, canManage }) {
             padding: '0.55rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600,
             cursor: 'pointer', transition: 'all 0.15s', alignSelf: 'flex-start',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+          className="hov-border-accent">
           ＋ Add Permission Override
         </button>
       )}

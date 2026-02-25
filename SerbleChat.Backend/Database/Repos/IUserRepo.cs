@@ -25,5 +25,14 @@ public interface IUserRepo {
     Task SetChannelNotificationPreferences(string userId, int channelId, UserChannelNotificationPreferences preferences);
     Task SetUserGuildNotificationPreferences(string userId, int guildId, UserGuildNotificationPreferences preferences);
     
+    // mass notification prefs gets
+    Task<Dictionary<string, UserChannelNotificationPreferences>> GetUsersChannelNotificationPreferences(IEnumerable<string> userIds, int channelId);
+    Task<Dictionary<string, UserGuildNotificationPreferences>> GetUsersGuildNotificationPreferences(IEnumerable<string> userIds, int guildId);
+    
+    Task CreateWebNotificationSubscription(UserWebNotificationHook subscription);
+    Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId);
+    Task DeleteWebNotificationSubscriptions(params int[] subscriptionId);
+    Task<Dictionary<string, IEnumerable<UserWebNotificationHook>>> GetUsersWebNotificationSubscriptions(IEnumerable<string> userIds);
+    
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
 }

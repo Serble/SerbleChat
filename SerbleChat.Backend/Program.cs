@@ -1,4 +1,5 @@
 using System.Text;
+using Lib.Net.Http.WebPush;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,10 +18,12 @@ builder.Services.AddOptions<SerbleApiSettings>().Bind(builder.Configuration.GetS
 builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
 builder.Services.AddOptions<LiveKitSettings>().Bind(builder.Configuration.GetSection("LiveKit"));
+builder.Services.AddOptions<PushNotificationsSettings>().Bind(builder.Configuration.GetSection("PushNotifications"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
 ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
 LiveKitSettings liveKitSettings = builder.Configuration.GetSection("LiveKit").Get<LiveKitSettings>() ?? throw new Exception("LiveKit settings not found");
+PushNotificationsSettings pushSettings = builder.Configuration.GetSection("PushNotifications").Get<PushNotificationsSettings>() ?? throw new Exception("Push notifications settings not found");
 
 builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -90,9 +93,20 @@ builder.Services.AddScoped<IGuildRepo, GuildRepo>();
 builder.Services.AddScoped<IRoleRepo, RoleRepo>();
 builder.Services.AddScoped<IUnreadsRepo, UnreadsRepo>();
 
-// services
+// generic services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
+builder.Services.AddSingleton<INotificationService, NotificationService>();
+builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
+
+// push notifications
+builder.Services.AddMemoryCache();
+builder.Services.AddMemoryVapidTokenCache();
+builder.Services.AddPushServiceClient(options => {
+    options.PublicKey = pushSettings.VapidPublicKey;
+    options.PrivateKey = pushSettings.VapidPrivateKey;
+    options.Subject = pushSettings.Subject;
+});
 
 WebApplication app = builder.Build();
 

@@ -36,8 +36,7 @@ function PrefRow({ label, value, onChange, allowInherit, busy }) {
                 cursor: busy ? 'default' : 'pointer',
                 transition: 'all 0.1s',
               }}
-              onMouseEnter={e => { if (!active && !busy) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              className={!active && !busy ? 'hov-bg' : undefined}
             >
               <span>{opt.icon}</span>
               <span>{opt.label}</span>

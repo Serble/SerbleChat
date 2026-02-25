@@ -51,11 +51,10 @@ function GuildPrefPicker({ label, value, onChange }) {
                 background: active ? 'rgba(124,58,237,0.12)' : 'transparent',
                 color: active ? 'var(--text-primary)' : 'var(--text-muted)',
                 fontSize: '0.8rem', fontWeight: active ? 600 : 400,
-                cursor: 'pointer', transition: 'all 0.1s',
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-            >
+              cursor: 'pointer', transition: 'all 0.1s',
+            }}
+            className={!active ? 'hov-bg' : undefined}
+          >
               <span>{opt.icon}</span> <span>{opt.label}</span>
             </button>
           );
@@ -221,8 +220,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
           <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Guild Settings</div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+            className="hov-text-primary">✕</button>
         </div>
 
         {/* Tabs */}
@@ -249,15 +247,13 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
               {error && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{error}</div>}
               <button type="submit" disabled={busy || !name.trim()}
                 style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-                onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>Save Changes</button>
+                className={!busy && name.trim() ? 'hov-accent' : undefined}>Save Changes</button>
               {isOwner && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
                   <button type="button" onClick={handleDelete} disabled={busy}
                     style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
-                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; } }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>Delete Guild</button>
+                    className={!busy ? 'hov-danger-fill' : undefined}>Delete Guild</button>
                 </div>
               )}
             </form>
@@ -268,8 +264,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button onClick={handleCreateInvite} disabled={creating}
                 style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.55rem 1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1, alignSelf: 'flex-start', transition: 'background 0.15s' }}
-                onMouseEnter={e => { if (!creating) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
+                className={!creating ? 'hov-accent' : undefined}>
                 {creating ? 'Creating…' : '+ Create Invite'}
               </button>
               {invLoading && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading…</div>}
@@ -288,8 +283,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
                     </button>
                     <button onClick={() => handleDeleteInvite(inv.id)} title="Delete invite"
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem', borderRadius: '4px', flexShrink: 0, lineHeight: 1 }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>🗑</button>
+                      className="hov-color-danger">🗑</button>
                   </div>
                 );
               })}
@@ -356,8 +350,7 @@ function InvitePopup({ guildId, onClose }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>🔗 Invite People</div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+            className="hov-text-primary">✕</button>
         </div>
         {busy && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Creating invite link…</div>}
         {!busy && invite && (
@@ -418,8 +411,7 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Create Channel</div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+            className="hov-text-primary">✕</button>
         </div>
 
         {/* Form */}
@@ -450,12 +442,10 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
             <button type="button" onClick={onClose} disabled={busy}
               style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.55rem 1rem', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'border-color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-muted)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>Cancel</button>
+              className="hov-border-only">Cancel</button>
             <button type="submit" disabled={busy || !name.trim()}
               style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.55rem 1.1rem', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-              onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
+              className={!busy && name.trim() ? 'hov-accent' : undefined}>
               {busy ? 'Creating…' : 'Create Channel'}
             </button>
           </div>
@@ -548,8 +538,7 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
           </div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+            className="hov-text-primary">✕</button>
         </div>
 
         {/* Tabs */}
@@ -586,16 +575,14 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
               {canManage && (
                 <button type="submit" disabled={busy || !name.trim()}
                   style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
-                  onMouseEnter={e => { if (!busy && name.trim()) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-                  onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>Save Changes</button>
+                  className={!busy && name.trim() ? 'hov-accent' : undefined}>Save Changes</button>
               )}
               {canManage && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
                   <button type="button" onClick={handleDelete} disabled={busy}
                     style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
-                    onMouseEnter={e => { if (!busy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; } }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>Delete Channel</button>
+                    className={!busy ? 'hov-danger-fill' : undefined}>Delete Channel</button>
                 </div>
               )}
             </form>
@@ -690,8 +677,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
             title="Channel Settings"
             onClick={e => { e.stopPropagation(); onSettings(); }}
             style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, flexShrink: 0, transition: 'color 0.1s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#dbdee1'}
-            onMouseLeave={e => e.currentTarget.style.color = '#72767d'}
+            className="hov-text-primary"
           >⚙</span>
         )}
       </div>
@@ -794,14 +780,12 @@ export default function GuildSidebar({ guildId }) {
         {canCreateInvites && (
           <button title="Create Invite" onClick={() => setShowInvite(true)}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>🔗</button>
+            className="hov-text-primary">🔗</button>
         )}
         {canOpenSettings && (
           <button title="Guild Settings" onClick={() => setShowSettings(true)}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>⚙</button>
+            className="hov-text-primary">⚙</button>
         )}
       </div>
 
@@ -812,8 +796,7 @@ export default function GuildSidebar({ guildId }) {
           {canManageChannels && (
             <button title="Create Channel" onClick={() => setShowCreateChannel(true)}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0.1rem', borderRadius: '4px', transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>＋</button>
+              className="hov-text-secondary">＋</button>
           )}
         </div>
 
