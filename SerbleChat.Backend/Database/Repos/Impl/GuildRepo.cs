@@ -88,59 +88,126 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
             .ToArrayAsync();
     }
 
-    public Task<ChatUser[]> GetGuildChannelMembers(int channelId) {
-        // for now assume all guild members have access to all channels
-        // we'll get the guild id from the channel, then get all members of that guild
-        return context.GuildChannels
+    /// <summary>
+    /// Returns all guild members who have the <c>ViewChannel</c> permission for
+    /// <paramref name="channelId"/>, paired with their guild-scoped roles (ordered by
+    /// priority descending).
+    ///
+    /// Executes exactly <b>4 SQL queries</b> regardless of member / role count:
+    /// <list type="number">
+    ///   <item>GuildChannels → Guilds (guildId, ownerId, defaultPermissions)</item>
+    ///   <item>GuildMembers → ChatUsers</item>
+    ///   <item>UserRoleAssignments inner-joined with Roles (filtered to this guild)</item>
+    ///   <item>ChannelPermissionOverrides for this channel</item>
+    /// </list>
+    /// Permission resolution mirrors <see cref="GetUserPermissions"/> exactly.
+    /// </summary>
+    private async Task<List<(ChatUser User, List<Role> Roles)>> GetVisibleMembersWithRoles(int channelId) {
+        // Query 1: guild context via a single JOIN (GuildChannels → Guilds)
+        var guildInfo = await context.GuildChannels
+            .AsNoTracking()
             .Where(c => c.ChannelId == channelId)
-            .Select(c => c.GuildId)
-            .Join(context.GuildMembers, guildId => guildId, m => m.GuildId, (guildId, m) => m.UserNavigation)
-            .ToArrayAsync();
-    }
-    
-    public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId) {
-        // Get the guild for this channel
-        int guildId = await context.GuildChannels
-            .Where(c => c.ChannelId == channelId)
-            .Select(c => c.GuildId)
+            .Select(c => new {
+                c.GuildId,
+                OwnerId            = c.GuildNavigation.OwnerId,
+                DefaultPermissions = c.GuildNavigation.DefaultPermissions
+            })
             .FirstOrDefaultAsync();
 
-        // All guild members (includes those with no roles)
+        if (guildInfo == null) return [];
+
+        int guildId = guildInfo.GuildId;
+
+        // Query 2: all guild members with their user rows
         ChatUser[] allMembers = await context.GuildMembers
             .Where(m => m.GuildId == guildId)
             .Select(m => m.UserNavigation)
             .ToArrayAsync();
 
-        // Their role assignments (left join via in-memory grouping)
-        var roleAssignments = await context.UserRoleAssignments
-            .Where(a => context.Roles.Any(r => r.GuildId == guildId && r.Id == a.RoleId))
-            .Join(context.Roles.Where(r => r.GuildId == guildId),
-                a => a.RoleId, r => r.Id,
-                (a, r) => new { a.UserId, Role = r })
+        // Query 3: role assignments for every member of this guild — single INNER JOIN
+        var roleAssignments = await (
+            from ura in context.UserRoleAssignments
+            join r   in context.Roles on ura.RoleId equals r.Id
+            where r.GuildId == guildId
+            select new { ura.UserId, Role = r }
+        ).ToArrayAsync();
+
+        // Query 4: channel-level permission overrides
+        ChannelPermissionOverride[] channelOverrides = await context.ChannelPermissionOverrides
+            .Where(o => o.ChannelId == channelId)
             .ToArrayAsync();
 
+        // Build per-user role lookup (priority descending — same order as GetUserPermissions)
         Dictionary<string, List<Role>> rolesByUser = roleAssignments
             .GroupBy(x => x.UserId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Role)
-                .OrderByDescending(r => r.Priority)
-                .ToList());
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => x.Role).OrderByDescending(r => r.Priority).ToList());
 
-        List<GuildMemberResponse> members = [];
+        List<(ChatUser, List<Role>)> visible = new(allMembers.Length);
+
         foreach (ChatUser user in allMembers) {
+            // Guild owner bypasses all permission checks
+            if (user.Id == guildInfo.OwnerId) {
+                rolesByUser.TryGetValue(user.Id, out List<Role>? ownerRoles);
+                visible.Add((user, ownerRoles ?? []));
+                continue;
+            }
+
+            rolesByUser.TryGetValue(user.Id, out List<Role>? memberRoles);
+            memberRoles ??= [];
+
+            // Replicate GetUserPermissions exactly:
+            //   list = [role perms desc-priority] ++ [applicable channel overrides]
+            //   then applied in reverse (lowest-priority role first, highest wins).
+            List<GuildPermissions?> permissions =
+                memberRoles.Select(GuildPermissions? (r) => r.Permissions).ToList();
+
+            foreach (ChannelPermissionOverride co in channelOverrides) {
+                if (co.RoleId.HasValue) {
+                    if (memberRoles.Any(r => r.Id == co.RoleId.Value))
+                        permissions.Add(co.Permissions);
+                } else if (co.UserId == user.Id) {
+                    permissions.Add(co.Permissions);
+                }
+            }
+
+            GuildPermissions effective = guildInfo.DefaultPermissions;
+            for (int i = permissions.Count - 1; i >= 0; i--) {
+                effective = effective.ApplyOverrides(permissions[i]);
+            }
+
+            if (effective.HasPerm(p => p.ViewChannel)) {
+                visible.Add((user, memberRoles));
+            }
+        }
+
+        return visible;
+    }
+
+    public async Task<ChatUser[]> GetGuildChannelMembers(int channelId) {
+        return (await GetVisibleMembersWithRoles(channelId))
+            .Select(m => m.User)
+            .ToArray();
+    }
+
+    public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId) {
+        List<(ChatUser User, List<Role> Roles)> members = await GetVisibleMembersWithRoles(channelId);
+
+        List<GuildMemberResponse> result = new(members.Count);
+        foreach ((ChatUser user, List<Role> memberRoles) in members) {
             string colour = "#ffffff";
-            if (rolesByUser.TryGetValue(user.Id, out List<Role>? roles)) {
-                foreach (Role role in roles) {
-                    if (!string.IsNullOrWhiteSpace(role.Color)) {
-                        colour = role.Color;
-                        break;
-                    }
+            foreach (Role role in memberRoles) {
+                if (!string.IsNullOrWhiteSpace(role.Color)) {
+                    colour = role.Color;
+                    break;
                 }
             }
             bool online = redis.GetDatabase().StringGet($"status:{user.Id}").HasValue;
-            members.Add(new GuildMemberResponse(PublicUserResponse.FromChatUser(user, online), colour));
+            result.Add(new GuildMemberResponse(PublicUserResponse.FromChatUser(user, online), colour));
         }
 
-        return members.ToArray();
+        return result.ToArray();
     }
 
     public Task<ChannelPermissionOverride[]> GetChannelPermissionOverrides(int channelId) {
@@ -231,5 +298,77 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         }
         
         return current;
+    }
+
+    public async Task<Dictionary<int, GuildPermissions>> GetUserPermissionsForGuild(string userId, int guildId) {
+        // Query 1: guild context
+        Guild? guild = await context.Guilds.FindAsync(guildId);
+        if (guild == null) return [];
+
+        // Query 2: all channel ids for this guild
+        int[] channelIds = await context.GuildChannels
+            .Where(c => c.GuildId == guildId)
+            .Select(c => c.ChannelId)
+            .ToArrayAsync();
+
+        if (channelIds.Length == 0) return [];
+
+        // Guild owner gets full permissions on every channel — skip remaining queries
+        if (guild.OwnerId == userId)
+            return channelIds.ToDictionary(id => id, _ => GuildPermissions.OwnerPermissions);
+
+        // Query 3: user's roles in this guild, priority descending
+        // (mirrors the OrderByDescending in GetUserPermissions so index 0 = highest-priority role)
+        Role[] userRoles = await (
+            from ura in context.UserRoleAssignments
+            join r in context.Roles on ura.RoleId equals r.Id
+            where ura.UserId == userId && r.GuildId == guildId
+            orderby r.Priority descending
+            select r
+        ).ToArrayAsync();
+
+        int[] userRoleIds = userRoles.Select(r => r.Id).ToArray();
+
+        // Query 4: all channel overrides for every channel in this guild that apply to
+        // this user — single IN query, no per-channel round-trips
+        ChannelPermissionOverride[] allOverrides = await context.ChannelPermissionOverrides
+            .Where(co => channelIds.Contains(co.ChannelId)
+                      && (co.UserId == userId
+                          || (co.RoleId != null && userRoleIds.Contains(co.RoleId.Value))))
+            .ToArrayAsync();
+
+        // Group overrides by channel for O(1) lookup in the resolution loop below
+        Dictionary<int, List<ChannelPermissionOverride>> overridesByChannel = allOverrides
+            .GroupBy(co => co.ChannelId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Base role permission list — identical for every channel; only channel-specific
+        // overrides differ. Built priority-descending so the reverse-apply loop gives the
+        // same result as GetUserPermissions (index 0 = highest-priority, applied last, wins).
+        List<GuildPermissions?> baseRolePerms = userRoles
+            .Select(GuildPermissions? (r) => r.Permissions)
+            .ToList();
+
+        Dictionary<int, GuildPermissions> result = new(channelIds.Length);
+
+        foreach (int channelId in channelIds) {
+            // Append this channel's overrides after the role perms — same structure that
+            // GetUserPermissions builds before its reverse-apply loop
+            List<GuildPermissions?> permissions = new(baseRolePerms);
+            if (overridesByChannel.TryGetValue(channelId, out List<ChannelPermissionOverride>? channelOverrides))
+                foreach (ChannelPermissionOverride co in channelOverrides) {
+                    permissions.Add(co.Permissions);
+                }
+
+            // Apply in reverse: lowest-priority entry first, highest-priority role wins
+            GuildPermissions effective = guild.DefaultPermissions;
+            for (int i = permissions.Count - 1; i >= 0; i--) {
+                effective = effective.ApplyOverrides(permissions[i]);
+            }
+
+            result[channelId] = effective;
+        }
+
+        return result;
     }
 }

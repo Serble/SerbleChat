@@ -21,55 +21,6 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
     IUnreadsRepo unreads) : ControllerBase {
 
-    private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
-        switch (channel.Type) {
-            case ChannelType.Group:
-                return await groups.IsMemberInChat(channel.Id, userId);
-            
-            case ChannelType.Dm: {
-                DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
-                if (dmChannel == null) {
-                    return false;
-                }
-
-                if (!(dmChannel.User1Id == userId || dmChannel.User2Id == userId)) {
-                    return false;
-                }
-
-                if (sendMessages) {
-                    bool blocked = await users.AreUsersBlocked(dmChannel.User1Id, dmChannel.User2Id);
-                    if (blocked) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-
-            case ChannelType.Guild: {
-                if (!channel.GuildId.HasValue) {
-                    return false;
-                }
-
-                if (!await guilds.IsGuildMember(channel.GuildId.Value, userId)) {
-                    return false;
-                }
-
-                if (sendMessages) {
-                    GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId.Value, channel.Id);
-                    if (!perms.HasPerm(p => p.SendMessages)) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-            
-            default:
-                return false;
-        }
-    }
-
     [HttpPost("{channelId:int}")]
     public async Task<ActionResult> PostMessage(int channelId, [FromBody] SendMessageBody body) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -83,7 +34,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel, true)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, true)) {
             return Forbid();
         }
 
@@ -167,7 +118,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel, false)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
     
@@ -189,13 +140,15 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel, false)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
         
         return Ok(channel);
     }
 
+    // This is expensive, for redis this is O(n), where n is member count.
+    // But for MySQL this is O(1).
     [HttpGet("{channelId:int}/members")]
     public async Task<ActionResult<IEnumerable<PublicUserResponse>>> GetChannelMembers(int channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -209,43 +162,17 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel, false)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
-
-        switch (channel.Type) {
-            case ChannelType.Group: {
-                IEnumerable<GroupChatMember> members = await groups.GetMembers(channelId);
-                List<PublicUserResponse> response = [];
-                foreach (GroupChatMember member in members) {
-                    response.Add(await users.CompilePublicUserResponse(member.UserNavigation));
-                }
-                return Ok(response);
-            }
-            
-            case ChannelType.Dm: {
-                DmChannel? dmChannel = await dms.GetDmChannel(channelId);
-                if (dmChannel == null) {
-                    return NotFound("DM channel not found");
-                }
-                List<PublicUserResponse> response = [];
-                response.Add(await users.CompilePublicUserResponse(dmChannel.User1Navigation));
-                response.Add(await users.CompilePublicUserResponse(dmChannel.User2Navigation));
-                return Ok(response);
-            }
-
-            case ChannelType.Guild: {
-                ChatUser[] members = await guilds.GetGuildChannelMembers(channelId);
-                List<PublicUserResponse> response = [];
-                foreach (ChatUser member in members) {
-                    response.Add(await users.CompilePublicUserResponse(member));
-                }
-                return Ok(response);
-            }
-                
-            default:
-                throw new InvalidOperationException("Unknown channel type");
+        
+        IEnumerable<ChatUser> members = await channels.GetChannelMembers(channel);
+        List<PublicUserResponse> response = [];
+        foreach (ChatUser member in members) {
+            response.Add(await users.CompilePublicUserResponse(member));
         }
+        
+        return Ok(response);
     }
 
     [HttpGet("{channelId:int}/unreads")]
@@ -266,7 +193,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
         
         // permission check
-        if (!await UserHasAccessToChannel(userId, channel, false)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
 
@@ -482,7 +409,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             return NotFound();
         }
         
-        if (!await UserHasAccessToChannel(userId, channel, false)) {
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
             return Forbid();
         }
         
@@ -514,7 +441,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
 
         Channel? channel = await channels.GetChannel(channelId);
         if (channel == null) return NotFound("Channel not found");
-        if (!await UserHasAccessToChannel(userId, channel, false)) return Forbid();
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) return Forbid();
 
         UserChannelNotificationPreferences prefs = await users.GetChannelNotificationPreferences(userId, channelId);
         return Ok(prefs.Preferences);
@@ -527,7 +454,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
 
         Channel? channel = await channels.GetChannel(channelId);
         if (channel == null) return NotFound("Channel not found");
-        if (!await UserHasAccessToChannel(userId, channel, false)) return Forbid();
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) return Forbid();
 
         UserChannelNotificationPreferences prefs = await users.GetChannelNotificationPreferences(userId, channelId);
         prefs.UserId = userId;

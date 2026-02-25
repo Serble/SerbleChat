@@ -9,6 +9,7 @@ const PERM_KEYS = [
   { key: 'kickMembers',    label: 'Kick Members',    desc: 'Remove members from the guild' },
   { key: 'banMembers',     label: 'Ban Members',     desc: 'Permanently ban members' },
   { key: 'createInvites',  label: 'Create Invites',  desc: 'Generate invite links' },
+  { key: 'viewChannel',    label: 'View Channel',    desc: 'See and read channels' },
   { key: 'sendMessages',   label: 'Send Messages',   desc: 'Post messages in channels' },
   { key: 'manageMessages', label: 'Manage Messages', desc: 'Delete others\' messages' },
   { key: 'joinVoice',      label: 'Join Voice',      desc: 'Connect to voice channels' },
@@ -58,21 +59,21 @@ export default function DefaultPermsTab({ guild, onSaved }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <div style={{ fontSize: '0.82rem', color: '#72767d', lineHeight: 1.5, flex: 1 }}>
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>
           Default permissions apply to all members that don't have a role overriding them.
         </div>
-        {status === 'saving' && <span style={{ fontSize: '0.72rem', color: '#72767d', flexShrink: 0 }}>Saving…</span>}
-        {status === 'saved'  && <span style={{ fontSize: '0.72rem', color: '#23a55a', flexShrink: 0 }}>✓ Saved</span>}
-        {status === 'error'  && <span style={{ fontSize: '0.72rem', color: '#f23f43', flexShrink: 0 }} title={err}>✗ Error</span>}
+        {status === 'saving' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>Saving…</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.72rem', color: 'var(--success)', flexShrink: 0 }}>✓ Saved</span>}
+        {status === 'error'  && <span style={{ fontSize: '0.72rem', color: 'var(--danger)', flexShrink: 0 }} title={err}>✗ Error</span>}
       </div>
 
       {PERM_KEYS.map(({ key, label, desc }) => {
         const value = perms[key] ?? 2;
         return (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0', borderBottom: '1px solid #2b2d31' }}>
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0', borderBottom: '1px solid var(--border)' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dbdee1' }}>{label}</div>
-              <div style={{ fontSize: '0.72rem', color: '#72767d' }}>{desc}</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{desc}</div>
             </div>
             <button
               onClick={() => setPerms(p => ({ ...p, [key]: cycleState(value) }))}

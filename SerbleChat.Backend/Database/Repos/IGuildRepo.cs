@@ -34,4 +34,5 @@ public interface IGuildRepo {
     Task<GuildInvite[]> GetGuildInvites(int guildId);
     
     public Task<GuildPermissions> GetUserPermissions(string userId, int guildId, int channelId = -1);
+    public Task<Dictionary<int, GuildPermissions>> GetUserPermissionsForGuild(string userId, int guildId);
 }

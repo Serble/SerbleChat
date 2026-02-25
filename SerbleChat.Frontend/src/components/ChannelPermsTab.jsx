@@ -42,10 +42,10 @@ function PermissionsEditor({ perms, onChange, disabled }) {
       {PERM_KEYS.map(({ key, label, desc }) => {
         const value = p[key] ?? 2;
         return (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem 0', borderBottom: '1px solid #2b2d31' }}>
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.83rem', fontWeight: 600, color: '#dbdee1' }}>{label}</div>
-              <div style={{ fontSize: '0.7rem', color: '#72767d' }}>{desc}</div>
+              <div style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{desc}</div>
             </div>
             <button
               disabled={disabled}
@@ -123,42 +123,42 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
   }
 
   return (
-    <div style={{ border: '1px solid #3b3d43', borderRadius: '8px', overflow: 'hidden', marginBottom: '0.5rem' }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', marginBottom: '0.5rem' }}>
       {/* Header row */}
       <div
         onClick={() => setExpanded(v => !v)}
         style={{
           display: 'flex', alignItems: 'center', gap: '0.6rem',
           padding: '0.65rem 0.85rem', cursor: 'pointer',
-          background: expanded ? '#2b2d31' : 'transparent',
+          background: expanded ? 'var(--bg-hover)' : 'transparent',
           transition: 'background 0.1s',
         }}
-        onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = '#2b2d31'; }}
+        onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = 'var(--bg-hover)'; }}
         onMouseLeave={e => { if (!expanded) e.currentTarget.style.background = 'transparent'; }}
       >
         <span style={{ fontSize: '1rem' }}>{label?.icon ?? '…'}</span>
-        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem', color: '#dbdee1' }}>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
           {label?.name ?? 'Loading…'}
         </span>
-        {status === 'saving' && <span style={{ fontSize: '0.68rem', color: '#72767d' }}>Saving…</span>}
-        {status === 'saved'  && <span style={{ fontSize: '0.68rem', color: '#23a55a' }}>✓ Saved</span>}
-        {status === 'error'  && <span style={{ fontSize: '0.68rem', color: '#f23f43' }} title={err}>✗ Error</span>}
-        <span style={{ fontSize: '0.75rem', color: '#72767d', flexShrink: 0, marginLeft: '0.25rem' }}>
+        {status === 'saving' && <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saving…</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.68rem', color: 'var(--success)' }}>✓ Saved</span>}
+        {status === 'error'  && <span style={{ fontSize: '0.68rem', color: 'var(--danger)' }} title={err}>✗ Error</span>}
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0, marginLeft: '0.25rem' }}>
           {expanded ? '▲' : '▼'}
         </span>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div style={{ padding: '0.75rem 0.85rem', borderTop: '1px solid #3b3d43', background: '#1e1f22' }}>
+        <div style={{ padding: '0.75rem 0.85rem', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
           <PermissionsEditor perms={perms} onChange={setPerms} disabled={!canManage || delBusy} />
-          {err && <div style={{ color: '#f23f43', fontSize: '0.8rem', marginTop: '0.5rem' }}>{err}</div>}
+          {err && <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '0.5rem' }}>{err}</div>}
           {canManage && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
               <button onClick={handleDelete} disabled={delBusy}
-                style={{ background: 'transparent', border: '1px solid #f23f43', borderRadius: '6px', padding: '0.35rem 0.75rem', color: '#f23f43', fontSize: '0.8rem', fontWeight: 600, cursor: delBusy ? 'default' : 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => { if (!delBusy) { e.currentTarget.style.background = '#f23f43'; e.currentTarget.style.color = '#fff'; } }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#f23f43'; }}>
+                style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.35rem 0.75rem', color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 600, cursor: delBusy ? 'default' : 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { if (!delBusy) { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = 'var(--text-primary)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)'; }}>
                 Delete Override
               </button>
             </div>
@@ -215,8 +215,8 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
   }
 
   return (
-    <div style={{ border: '1px solid #5865f2', borderRadius: '8px', padding: '1rem', background: '#1e1f22', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#b5bac1' }}>New Permission Override</div>
+    <div style={{ border: '1px solid var(--accent)', borderRadius: '8px', padding: '1rem', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>New Permission Override</div>
 
       {/* Type selector */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -224,8 +224,8 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
           <button key={t} onClick={() => { setType(t); setRoleId(''); setUsername(''); setResolvedUser(null); setLookupErr(null); }}
             style={{
               flex: 1, padding: '0.4rem', borderRadius: '5px', border: 'none',
-              background: type === t ? '#5865f2' : '#313338',
-              color: type === t ? '#fff' : '#72767d', fontWeight: 600,
+              background: type === t ? 'var(--accent)' : 'var(--bg-active)',
+              color: type === t ? '#fff' : 'var(--text-muted)', fontWeight: 600,
               fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.15s',
             }}>
             {t === 'role' ? '🏷 Role' : '👤 User'}
@@ -236,10 +236,10 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
       {/* Role selector */}
       {type === 'role' && (
         availableRoles.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: '#72767d' }}>All roles already have overrides.</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>All roles already have overrides.</div>
         ) : (
           <select value={roleId} onChange={e => setRoleId(e.target.value)}
-            style={{ background: '#313338', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.5rem 0.65rem', color: '#dbdee1', fontSize: '0.875rem', outline: 'none' }}>
+            style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem 0.65rem', color: 'var(--text-secondary)', fontSize: '0.875rem', outline: 'none' }}>
             <option value="">— Select role —</option>
             {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
@@ -254,40 +254,40 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
               value={username} onChange={e => { setUsername(e.target.value); setResolvedUser(null); setLookupErr(null); }}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookupUser(); } }}
               placeholder="Username…" maxLength={64}
-              style={{ flex: 1, background: '#313338', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.5rem 0.65rem', color: '#dbdee1', fontSize: '0.875rem', outline: 'none' }}
-              onFocus={e => e.target.style.borderColor = '#5865f2'}
-              onBlur={e => e.target.style.borderColor = '#3b3d43'}
+              style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem 0.65rem', color: 'var(--text-secondary)', fontSize: '0.875rem', outline: 'none' }}
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
             <button onClick={lookupUser}
-              style={{ background: '#383a40', border: 'none', borderRadius: '6px', padding: '0.5rem 0.85rem', color: '#dbdee1', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.1s' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#404249'}
-              onMouseLeave={e => e.currentTarget.style.background = '#383a40'}>
+              style={{ background: 'var(--bg-input)', border: 'none', borderRadius: '6px', padding: '0.5rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.1s' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
               Look up
             </button>
           </div>
-          {lookupErr && <div style={{ fontSize: '0.78rem', color: '#f23f43' }}>{lookupErr}</div>}
-          {resolvedUser && <div style={{ fontSize: '0.78rem', color: '#23a55a' }}>✓ Found: {resolvedUser.username}</div>}
+          {lookupErr && <div style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{lookupErr}</div>}
+          {resolvedUser && <div style={{ fontSize: '0.78rem', color: 'var(--success)' }}>✓ Found: {resolvedUser.username}</div>}
         </div>
       )}
 
       {/* Permissions */}
       <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: '0.25rem' }}>
-        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#72767d', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>Permissions</div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>Permissions</div>
         <PermissionsEditor perms={perms} onChange={setPerms} disabled={busy} />
       </div>
 
-      {err && <div style={{ color: '#f23f43', fontSize: '0.8rem' }}>{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontSize: '0.8rem' }}>{err}</div>}
 
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
         <button onClick={onCancel} disabled={busy}
-          style={{ background: 'transparent', border: '1px solid #3b3d43', borderRadius: '6px', padding: '0.4rem 0.85rem', color: '#72767d', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#72767d'; e.currentTarget.style.color = '#dbdee1'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = '#3b3d43'; e.currentTarget.style.color = '#72767d'; }}>
+          style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.85rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
           Cancel
         </button>
         <button onClick={handleCreate} disabled={busy || (type === 'role' ? !roleId : !resolvedUser)}
           style={{
-            background: '#7c3aed', border: 'none', borderRadius: '6px',
+            background: 'var(--accent)', border: 'none', borderRadius: '6px',
             padding: '0.4rem 0.9rem', color: '#fff', fontSize: '0.8rem',
             fontWeight: 600, cursor: (busy || (type === 'role' ? !roleId : !resolvedUser)) ? 'default' : 'pointer',
             opacity: (busy || (type === 'role' ? !roleId : !resolvedUser)) ? 0.5 : 1,
@@ -330,16 +330,16 @@ export default function ChannelPermsTab({ guildId, channelId, canManage }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ fontSize: '0.82rem', color: '#72767d', lineHeight: 1.5 }}>
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
         Permission overrides let you customise what specific roles or members can do in this channel,
         overriding guild-wide defaults and role permissions.
       </div>
 
-      {loading && <div style={{ color: '#72767d', fontSize: '0.85rem' }}>Loading overrides…</div>}
-      {err && <div style={{ color: '#f23f43', fontSize: '0.83rem' }}>Failed to load: {err}</div>}
+      {loading && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading overrides…</div>}
+      {err && <div style={{ color: 'var(--danger)', fontSize: '0.83rem' }}>Failed to load: {err}</div>}
 
       {!loading && overrides.length === 0 && !showCreate && (
-        <div style={{ color: '#4f5660', fontSize: '0.85rem', padding: '0.5rem 0' }}>
+        <div style={{ color: 'var(--text-subtle)', fontSize: '0.85rem', padding: '0.5rem 0' }}>
           No overrides set for this channel yet.
         </div>
       )}
@@ -372,12 +372,12 @@ export default function ChannelPermsTab({ guildId, channelId, canManage }) {
       {canManage && !showCreate && (
         <button onClick={() => setShowCreate(true)}
           style={{
-            background: 'transparent', border: '1px dashed #3b3d43', borderRadius: '7px',
-            padding: '0.55rem 1rem', color: '#72767d', fontSize: '0.85rem', fontWeight: 600,
+            background: 'transparent', border: '1px dashed var(--border)', borderRadius: '7px',
+            padding: '0.55rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600,
             cursor: 'pointer', transition: 'all 0.15s', alignSelf: 'flex-start',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#b5bac1'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = '#3b3d43'; e.currentTarget.style.color = '#72767d'; }}>
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
           ＋ Add Permission Override
         </button>
       )}

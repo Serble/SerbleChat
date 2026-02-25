@@ -161,8 +161,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
 
     // CHANNEL ENDPOINTS
 
+    // this is ~6 queries
     [HttpGet("{guildId:int}/channel")]
-    public async Task<ActionResult<GuildChannel[]>> GetChannels(int guildId) {
+    public async Task<ActionResult<IEnumerable<GuildChannel>>> GetChannels(int guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -173,7 +174,13 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
 
-        return await guilds.GetGuildChannels(guildId);
+        Dictionary<int, GuildPermissions> perms = await guilds.GetUserPermissionsForGuild(userId, guildId);
+        Dictionary<int, GuildChannel> channelData = (await guilds.GetGuildChannels(guildId))
+            .ToDictionary(v => v.ChannelId);
+
+        return Ok(perms
+            .Where(p => p.Value.HasPerm(s => s.ViewChannel))
+            .Select(p => channelData[p.Key]));
     }
 
     [HttpPost("{guildId:int}/channel")]

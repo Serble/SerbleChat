@@ -14,6 +14,7 @@ const PERM_KEYS = [
   { key: 'kickMembers',    label: 'Kick Members',    desc: 'Remove members from the guild' },
   { key: 'banMembers',     label: 'Ban Members',     desc: 'Permanently ban members' },
   { key: 'createInvites',  label: 'Create Invites',  desc: 'Generate invite links' },
+  { key: 'viewChannel',    label: 'View Channel',    desc: 'See and read channels' },
   { key: 'sendMessages',   label: 'Send Messages',   desc: 'Post messages in channels' },
   { key: 'manageMessages', label: 'Manage Messages', desc: 'Delete others\' messages' },
   { key: 'joinVoice',      label: 'Join Voice',      desc: 'Connect to voice channels' },
@@ -31,10 +32,10 @@ function stateColor(s) { return s === 0 ? '#23a55a' : s === 1 ? '#f23f43' : '#72
 
 function PermToggle({ label, desc, value, onChange }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0', borderBottom: '1px solid #2b2d31' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dbdee1' }}>{label}</div>
-        <div style={{ fontSize: '0.72rem', color: '#72767d' }}>{desc}</div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{desc}</div>
       </div>
       <button
         onClick={() => onChange(cycleState(value))}
@@ -97,8 +98,8 @@ function RoleEditor({ guildId, role, onSaved, onDeleted }) {
         <label style={labelStyle}>Role Name</label>
         <input value={name} onChange={e => setName(e.target.value)} maxLength={64}
           style={inputStyle}
-          onFocus={e => e.target.style.borderColor = '#7c3aed'}
-          onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+          onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+          onBlur={e => e.target.style.borderColor = 'var(--border)'} />
       </div>
 
       <div>
@@ -108,10 +109,10 @@ function RoleEditor({ guildId, role, onSaved, onDeleted }) {
             style={{ width: 40, height: 32, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
           <input value={color} onChange={e => setColor(e.target.value)} maxLength={7}
             style={{ ...inputStyle, width: 90, flex: 'none' }}
-            onFocus={e => e.target.style.borderColor = '#7c3aed'}
-            onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           <button onClick={() => setColor('')}
-            style={{ background: 'transparent', border: '1px solid #3b3d43', borderRadius: '5px', padding: '0.3rem 0.6rem', color: '#72767d', fontSize: '0.78rem', cursor: 'pointer' }}>
+            style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '5px', padding: '0.3rem 0.6rem', color: 'var(--text-muted)', fontSize: '0.78rem', cursor: 'pointer' }}>
             Clear
           </button>
         </div>
@@ -122,15 +123,15 @@ function RoleEditor({ guildId, role, onSaved, onDeleted }) {
         <PermissionsEditor perms={perms} onChange={setPerms} />
       </div>
 
-      {err && <div style={{ color: '#f23f43', fontSize: '0.82rem' }}>{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontSize: '0.82rem' }}>{err}</div>}
 
       <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem' }}>
         <button onClick={save} disabled={busy || !name.trim()}
-          style={{ ...btnStyle('#7c3aed'), opacity: busy || !name.trim() ? 0.6 : 1 }}>
+          style={{ ...btnStyle('var(--accent)'), opacity: busy || !name.trim() ? 0.6 : 1 }}>
           {busy ? 'Saving…' : 'Save Role'}
         </button>
         <button onClick={del} disabled={busy}
-          style={{ ...btnStyle('transparent'), border: '1px solid #f23f43', color: '#f23f43', opacity: busy ? 0.6 : 1 }}>
+          style={{ ...btnStyle('transparent'), border: '1px solid var(--danger)', color: 'var(--danger)', opacity: busy ? 0.6 : 1 }}>
           Delete
         </button>
       </div>
@@ -172,20 +173,20 @@ export default function RolesTab({ guildId, canManage }) {
   return (
     <div style={{ display: 'flex', gap: '0', flex: 1, overflow: 'hidden' }}>
       {/* Left: role list */}
-      <div style={{ width: 160, flexShrink: 0, borderRight: '1px solid #3b3d43', overflowY: 'auto', padding: '0.5rem 0' }}>
-        {loading && <div style={{ color: '#72767d', fontSize: '0.82rem', padding: '0.5rem 0.75rem' }}>Loading…</div>}
+      <div style={{ width: 160, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto', padding: '0.5rem 0' }}>
+        {loading && <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', padding: '0.5rem 0.75rem' }}>Loading…</div>}
         {roles.map(r => (
           <button key={r.id} onClick={() => setSelected(r.id)}
             style={{
-              width: '100%', textAlign: 'left', background: selected === r.id ? '#404249' : 'transparent',
+              width: '100%', textAlign: 'left', background: selected === r.id ? 'var(--bg-active)' : 'transparent',
               border: 'none', padding: '0.4rem 0.75rem', borderRadius: '4px',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
-              color: selected === r.id ? '#f2f3f5' : '#b5bac1', fontSize: '0.875rem',
+              color: selected === r.id ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: '0.875rem',
               transition: 'background 0.1s',
             }}>
             <span style={{
               width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-              background: r.color || '#99aab5', border: '1px solid rgba(255,255,255,0.1)',
+              background: r.color || 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)',
             }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
           </button>
@@ -196,8 +197,8 @@ export default function RolesTab({ guildId, canManage }) {
             <input value={newName} onChange={e => setNewName(e.target.value)}
               placeholder="New role…" maxLength={64} disabled={creating}
               style={{ ...inputStyle, fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
-              onFocus={e => e.target.style.borderColor = '#7c3aed'}
-              onBlur={e => e.target.style.borderColor = '#3b3d43'} />
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           </form>
         )}
       </div>
@@ -215,15 +216,15 @@ export default function RolesTab({ guildId, canManage }) {
             />
           ) : (
             <div>
-              <div style={{ fontWeight: 700, color: '#f2f3f5', marginBottom: '0.35rem' }}>
-                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: selectedRole.color || '#99aab5', marginRight: '0.5rem' }} />
+              <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: selectedRole.color || 'var(--text-muted)', marginRight: '0.5rem' }} />
                 {selectedRole.name}
               </div>
-              <div style={{ color: '#72767d', fontSize: '0.82rem' }}>You don't have permission to edit roles.</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>You don't have permission to edit roles.</div>
             </div>
           )
         ) : (
-          <div style={{ color: '#4f5660', fontSize: '0.85rem' }}>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>
             {roles.length === 0 && !loading ? (canManage ? 'No roles yet. Type a name above and press Enter.' : 'No roles in this guild.') : 'Select a role to edit.'}
           </div>
         )}
@@ -234,19 +235,19 @@ export default function RolesTab({ guildId, canManage }) {
 
 const labelStyle = {
   display: 'block', fontSize: '0.72rem', fontWeight: 700,
-  color: '#72767d', textTransform: 'uppercase',
+  color: 'var(--text-muted)', textTransform: 'uppercase',
   letterSpacing: '0.07em', marginBottom: '0.35rem',
 };
 const inputStyle = {
-  width: '100%', background: '#1e1f22', border: '1px solid #3b3d43',
-  borderRadius: '6px', padding: '0.55rem 0.7rem', color: '#f2f3f5',
+  width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+  borderRadius: '6px', padding: '0.55rem 0.7rem', color: 'var(--text-primary)',
   fontSize: '0.875rem', outline: 'none', transition: 'border-color 0.15s',
   boxSizing: 'border-box',
 };
 function btnStyle(bg) {
   return {
     background: bg, border: 'none', borderRadius: '6px',
-    padding: '0.55rem 1.1rem', color: '#fff', fontSize: '0.875rem',
+    padding: '0.55rem 1.1rem', color: 'var(--text-primary)', fontSize: '0.875rem',
     fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s',
   };
 }

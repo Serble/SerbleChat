@@ -8,4 +8,6 @@ public interface IChannelRepo {
     Task UpdateChannel(Channel channel);
     Task DeleteChannel(int id);
     Task<List<Channel>> GetChannelsVisibleToUser(string userId);
+    Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages);
+    Task<IEnumerable<ChatUser>> GetChannelMembers(Channel channel);
 }
