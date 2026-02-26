@@ -22,7 +22,7 @@ public class FriendshipRepo(ChatDatabaseContext context) : IFriendshipRepo {
         return context.SaveChangesAsync();
     }
 
-    public Task RemoveFriendship(int id) {
+    public Task RemoveFriendship(long id) {
         Friendship? friendship = context.Friendships.Find(id);
         if (friendship == null) {
             return Task.CompletedTask;

@@ -6,11 +6,11 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class RoleRepo(ChatDatabaseContext context) : IRoleRepo {
     
-    public async Task<Role?> GetRole(int id) {
+    public async Task<Role?> GetRole(long id) {
         return await context.Roles.FindAsync(id);
     }
 
-    public Task<Role[]> GetGuildRoles(int guildId) {
+    public Task<Role[]> GetGuildRoles(long guildId) {
         return context.Roles.Where(r => r.GuildId == guildId).ToArrayAsync();
     }
 
@@ -24,11 +24,11 @@ public class RoleRepo(ChatDatabaseContext context) : IRoleRepo {
         return context.SaveChangesAsync();
     }
 
-    public Task DeleteRole(int id) {
+    public Task DeleteRole(long id) {
         return context.Roles.Where(r => r.Id == id).ExecuteDeleteAsync();
     }
 
-    public Task<Role[]> GetUserRolesInGuild(string userId, int guildId) {
+    public Task<Role[]> GetUserRolesInGuild(string userId, long guildId) {
         return context.UserRoleAssignments
             .Where(a => a.UserId == userId)
             .Join(context.Roles.Where(r => r.GuildId == guildId),
@@ -38,12 +38,12 @@ public class RoleRepo(ChatDatabaseContext context) : IRoleRepo {
             .ToArrayAsync();
     }
 
-    public Task AddUserRole(int roleId, string userId) {
+    public Task AddUserRole(long roleId, string userId) {
         context.UserRoleAssignments.Add(new UserRoleAssignment { RoleId = roleId, UserId = userId });
         return context.SaveChangesAsync();
     }
 
-    public Task RemoveUserRole(int roleId, string userId) {
+    public Task RemoveUserRole(long roleId, string userId) {
         return context.UserRoleAssignments
             .Where(a => a.RoleId == roleId && a.UserId == userId)
             .ExecuteDeleteAsync();

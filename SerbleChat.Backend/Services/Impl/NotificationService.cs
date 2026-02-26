@@ -68,7 +68,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         };
         Console.WriteLine(JsonConvert.SerializeObject(content));
 
-        List<int> badEndpoints = [];
+        List<long> badEndpoints = [];
             
         // now we should be sending no more SQL queries, we have everything we need
         foreach (UserWebNotificationHook hook in EndpointsIterator(redis, message, channel, mentions, endpoints, userData, channelPrefs, guildPrefs)) {

@@ -6,7 +6,7 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class Friendship {
     [Key]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     public DateTime CreatedAt { get; set; }
     

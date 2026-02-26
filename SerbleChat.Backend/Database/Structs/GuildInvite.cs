@@ -6,10 +6,10 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class GuildInvite {
     [Key]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [ForeignKey(nameof(GuildNavigation))]
-    public int GuildId { get; set; }
+    public long GuildId { get; set; }
     
     // Navigation Properties
     [JsonIgnore]

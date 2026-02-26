@@ -6,13 +6,13 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class GuildMember {
     [Key, JsonIgnore]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [ForeignKey(nameof(UserNavigation)), StringLength(64)]
     public string UserId { get; set; } = null!;
     
     [ForeignKey(nameof(GuildNavigation))]
-    public int GuildId { get; set; }
+    public long GuildId { get; set; }
     
     // Navigation Properties
     [JsonIgnore]

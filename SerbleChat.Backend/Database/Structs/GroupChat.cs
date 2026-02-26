@@ -6,7 +6,7 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class GroupChat {
     [Key, ForeignKey(nameof(ChannelNavigation))]
-    public int ChannelId { get; set; }
+    public long ChannelId { get; set; }
 
     [ForeignKey(nameof(OwnerNavigation)), StringLength(64)]
     public string OwnerId { get; set; } = null!;

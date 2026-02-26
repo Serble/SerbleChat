@@ -177,8 +177,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Guild not found");
         }
 
-        Dictionary<int, GuildPermissions> perms = await guilds.GetUserPermissionsForGuild(userId, guildId);
-        Dictionary<int, GuildChannel> channelData = (await guilds.GetGuildChannels(guildId))
+        Dictionary<long, GuildPermissions> perms = await guilds.GetUserPermissionsForGuild(userId, guildId);
+        Dictionary<long, GuildChannel> channelData = (await guilds.GetGuildChannels(guildId))
             .ToDictionary(v => v.ChannelId);
 
         return Ok(perms

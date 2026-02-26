@@ -10,11 +10,11 @@ namespace SerbleChat.Backend.Database.Structs;
 public class Message {
     [Key]
     [JsonProperty(PropertyName = "id")]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [ForeignKey(nameof(ChannelNavigation))]
     [JsonProperty(PropertyName = "channel_id")]
-    public int ChannelId { get; set; }
+    public long ChannelId { get; set; }
     
     [JsonProperty(PropertyName = "created_at")]
     public DateTime CreatedAt { get; set; }

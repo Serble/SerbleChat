@@ -180,12 +180,12 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return NotFound("User not found in local database");
         }
 
-        Dictionary<int, Channel> channelData = (await channels.GetChannelsVisibleToUser(userId)).ToDictionary(c => c.Id);
-        Dictionary<int, UserChannelNotificationPreferences> channelPrefs = await users.GetAllChannelNotificationPreferences(userId);
-        Dictionary<int, UserGuildNotificationPreferences> guildPrefs = await users.GetAllUserGuildNotificationPreferences(userId);
-        Dictionary<int, int> msgUnreadCounts = await unreads.GetChannelUnreadMessagesCounts(userId);
-        Dictionary<int, int> mentionUnreadCounts = await unreads.GetChannelUnreadMentionsCounts(userId);
-        Dictionary<int, int> response = new();
+        Dictionary<long, Channel> channelData = (await channels.GetChannelsVisibleToUser(userId)).ToDictionary(c => c.Id);
+        Dictionary<long, UserChannelNotificationPreferences> channelPrefs = await users.GetAllChannelNotificationPreferences(userId);
+        Dictionary<long, UserGuildNotificationPreferences> guildPrefs = await users.GetAllUserGuildNotificationPreferences(userId);
+        Dictionary<long, int> msgUnreadCounts = await unreads.GetChannelUnreadMessagesCounts(userId);
+        Dictionary<long, int> mentionUnreadCounts = await unreads.GetChannelUnreadMentionsCounts(userId);
+        Dictionary<long, int> response = new();
         foreach (int channelId in msgUnreadCounts.Keys.Union(mentionUnreadCounts.Keys)) {
             Channel channel = channelData[channelId];
             
@@ -195,7 +195,7 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
                 ? o.Preferences
                 : NotificationPreferences.DefaultPreferences;
             
-            int? guildId = channel.GuildId;
+            long? guildId = channel.GuildId;
             NotificationPreferences guildPref = guildId == null 
                 ? NotificationPreferences.DefaultPreferences 
                 : guildPrefs.TryGetValue(guildId.Value, out UserGuildNotificationPreferences? g) 

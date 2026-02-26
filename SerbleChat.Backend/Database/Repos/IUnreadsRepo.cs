@@ -1,11 +1,11 @@
 namespace SerbleChat.Backend.Database.Repos;
 
 public interface IUnreadsRepo {
-    Task MarkRead(string userId, int channelId, int messageId);
-    Task<int> GetUnreadMentionsCount(string userId, int channelId);
+    Task MarkRead(string userId, long channelId, long messageId);
+    Task<int> GetUnreadMentionsCount(string userId, long channelId);
     Task<int> GetUnreadMentionsCount(string userId);
-    Task<int> GetUnreadMessagesCount(string userId, int channelId);
-    Task<Dictionary<int, int>> GetChannelUnreadMentionsCounts(string userId);
-    Task<Dictionary<int, int>> GetChannelUnreadMessagesCounts(string userId);
-    Task AddUserMentions(int channelId, int messageId, IEnumerable<string> userIds);
+    Task<int> GetUnreadMessagesCount(string userId, long channelId);
+    Task<Dictionary<long, int>> GetChannelUnreadMentionsCounts(string userId);
+    Task<Dictionary<long, int>> GetChannelUnreadMessagesCounts(string userId);
+    Task AddUserMentions(long channelId, long messageId, IEnumerable<string> userIds);
 }

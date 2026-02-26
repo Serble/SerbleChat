@@ -9,7 +9,7 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis, IRoleRepo roles) : IGuildRepo {
     
-    public async Task<Guild?> GetGuild(int id) {
+    public async Task<Guild?> GetGuild(long id) {
         return await context.Guilds.FindAsync(id);
     }
 
@@ -24,7 +24,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         await context.SaveChangesAsync();
     }
 
-    public Task DeleteGuild(int id) {
+    public Task DeleteGuild(long id) {
         return context.Guilds.Where(g => g.Id == id).ExecuteDeleteAsync();
     }
 
@@ -33,7 +33,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         await context.SaveChangesAsync();
     }
 
-    public async Task AddGuildMember(int guildId, string userId) {
+    public async Task AddGuildMember(long guildId, string userId) {
         bool exists = await context.GuildMembers
             .AnyAsync(m => m.GuildId == guildId && m.UserId == userId);
         if (exists) return;
@@ -41,19 +41,19 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         await context.SaveChangesAsync();
     }
 
-    public Task<bool> IsGuildMember(int guildId, string userId) {
+    public Task<bool> IsGuildMember(long guildId, string userId) {
         return context.GuildMembers
             .AnyAsync(m => m.GuildId == guildId && m.UserId == userId);
     }
 
-    public Task<ChatUser[]> GetGuildMembers(int guildId) {
+    public Task<ChatUser[]> GetGuildMembers(long guildId) {
         return context.GuildMembers
             .Where(m => m.GuildId == guildId)
             .Select(m => m.UserNavigation)
             .ToArrayAsync();
     }
 
-    public Task<GuildChannel?> GetGuildChannel(int channelId) {
+    public Task<GuildChannel?> GetGuildChannel(long channelId) {
         return context.GuildChannels
             .Where(c => c.ChannelId == channelId)
             .Include(c => c.ChannelNavigation)
@@ -65,7 +65,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         await context.SaveChangesAsync();
     }
 
-    public Task DeleteGuildChannel(int id) {
+    public Task DeleteGuildChannel(long id) {
         return context.GuildChannels.Where(c => c.ChannelId == id).ExecuteDeleteAsync();
     }
 
@@ -74,14 +74,14 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return context.SaveChangesAsync();
     }
 
-    public Task<GuildChannel[]> GetGuildChannels(int guildId) {
+    public Task<GuildChannel[]> GetGuildChannels(long guildId) {
         return context.GuildChannels
             .Where(c => c.GuildId == guildId)
             .Include(c => c.ChannelNavigation)
             .ToArrayAsync();
     }
 
-    public Task<Channel[]> GetGuildChannelsAsChannels(int guildId) {
+    public Task<Channel[]> GetGuildChannelsAsChannels(long guildId) {
         return context.GuildChannels
             .Where(c => c.GuildId == guildId)
             .Select(c => c.ChannelNavigation)
@@ -102,7 +102,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
     /// </list>
     /// Permission resolution mirrors <see cref="GetUserPermissions"/> exactly.
     /// </summary>
-    private async Task<List<(ChatUser User, List<Role> Roles)>> GetVisibleMembersWithRoles(int channelId) {
+    private async Task<List<(ChatUser User, List<Role> Roles)>> GetVisibleMembersWithRoles(long channelId) {
         // Query 1: guild context via a single JOIN (GuildChannels → Guilds)
         var guildInfo = await context.GuildChannels
             .AsNoTracking()
@@ -116,7 +116,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
 
         if (guildInfo == null) return [];
 
-        int guildId = guildInfo.GuildId;
+        long guildId = guildInfo.GuildId;
 
         // Query 2: all guild members with their user rows
         ChatUser[] allMembers = await context.GuildMembers
@@ -185,13 +185,13 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return visible;
     }
 
-    public async Task<ChatUser[]> GetGuildChannelMembers(int channelId) {
+    public async Task<ChatUser[]> GetGuildChannelMembers(long channelId) {
         return (await GetVisibleMembersWithRoles(channelId))
             .Select(m => m.User)
             .ToArray();
     }
 
-    public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(int channelId) {
+    public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(long channelId) {
         List<(ChatUser User, List<Role> Roles)> members = await GetVisibleMembersWithRoles(channelId);
 
         List<GuildMemberResponse> result = new(members.Count);
@@ -210,13 +210,13 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return result.ToArray();
     }
 
-    public Task<ChannelPermissionOverride[]> GetChannelPermissionOverrides(int channelId) {
+    public Task<ChannelPermissionOverride[]> GetChannelPermissionOverrides(long channelId) {
         return context.ChannelPermissionOverrides
             .Where(o => o.ChannelId == channelId)
             .ToArrayAsync();
     }
 
-    public async Task<ChannelPermissionOverride?> GetChannelPermissionOverride(int id) {
+    public async Task<ChannelPermissionOverride?> GetChannelPermissionOverride(long id) {
         return await context.ChannelPermissionOverrides.FindAsync(id);
     }
 
@@ -225,7 +225,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return context.SaveChangesAsync();
     }
 
-    public Task DeleteChannelPermissionOverride(int id) {
+    public Task DeleteChannelPermissionOverride(long id) {
         return context.ChannelPermissionOverrides.Where(o => o.Id == id).ExecuteDeleteAsync();
     }
 
@@ -239,22 +239,22 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return context.SaveChangesAsync();
     }
 
-    public async Task<GuildInvite?> GetInvite(int id) {
+    public async Task<GuildInvite?> GetInvite(long id) {
         return await context.GuildInvites.FindAsync(id);
     }
 
-    public Task DeleteInvite(int id) {
+    public Task DeleteInvite(long id) {
         return context.GuildInvites.Where(i => i.Id == id).ExecuteDeleteAsync();
     }
 
-    public Task<GuildInvite[]> GetGuildInvites(int guildId) {
+    public Task<GuildInvite[]> GetGuildInvites(long guildId) {
         return context.GuildInvites
             .Where(i => i.GuildId == guildId)
             .ToArrayAsync();
     }
     
     // TODO: Redis cache result
-    public async Task<GuildPermissions> GetUserPermissions(string userId, int guildId, int channelId) {
+    public async Task<GuildPermissions> GetUserPermissions(string userId, long guildId, long channelId) {
         Guild guild = (await context.Guilds.FindAsync(guildId))!;
 
         if (guild.OwnerId == userId) {
@@ -300,13 +300,13 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return current;
     }
 
-    public async Task<Dictionary<int, GuildPermissions>> GetUserPermissionsForGuild(string userId, int guildId) {
+    public async Task<Dictionary<long, GuildPermissions>> GetUserPermissionsForGuild(string userId, long guildId) {
         // Query 1: guild context
         Guild? guild = await context.Guilds.FindAsync(guildId);
         if (guild == null) return [];
 
         // Query 2: all channel ids for this guild
-        int[] channelIds = await context.GuildChannels
+        long[] channelIds = await context.GuildChannels
             .Where(c => c.GuildId == guildId)
             .Select(c => c.ChannelId)
             .ToArrayAsync();
@@ -327,7 +327,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
             select r
         ).ToArrayAsync();
 
-        int[] userRoleIds = userRoles.Select(r => r.Id).ToArray();
+        long[] userRoleIds = userRoles.Select(r => r.Id).ToArray();
 
         // Query 4: all channel overrides for every channel in this guild that apply to
         // this user — single IN query, no per-channel round-trips
@@ -338,7 +338,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
             .ToArrayAsync();
 
         // Group overrides by channel for O(1) lookup in the resolution loop below
-        Dictionary<int, List<ChannelPermissionOverride>> overridesByChannel = allOverrides
+        Dictionary<long, List<ChannelPermissionOverride>> overridesByChannel = allOverrides
             .GroupBy(co => co.ChannelId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -349,16 +349,17 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
             .Select(GuildPermissions? (r) => r.Permissions)
             .ToList();
 
-        Dictionary<int, GuildPermissions> result = new(channelIds.Length);
+        Dictionary<long, GuildPermissions> result = new(channelIds.Length);
 
-        foreach (int channelId in channelIds) {
+        foreach (long channelId in channelIds) {
             // Append this channel's overrides after the role perms — same structure that
             // GetUserPermissions builds before its reverse-apply loop
             List<GuildPermissions?> permissions = new(baseRolePerms);
-            if (overridesByChannel.TryGetValue(channelId, out List<ChannelPermissionOverride>? channelOverrides))
+            if (overridesByChannel.TryGetValue(channelId, out List<ChannelPermissionOverride>? channelOverrides)) {
                 foreach (ChannelPermissionOverride co in channelOverrides) {
                     permissions.Add(co.Permissions);
                 }
+            }
 
             // Apply in reverse: lowest-priority entry first, highest-priority role wins
             GuildPermissions effective = guild.DefaultPermissions;

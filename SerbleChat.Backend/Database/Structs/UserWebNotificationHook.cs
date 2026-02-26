@@ -6,7 +6,7 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class UserWebNotificationHook {
     [Key]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [StringLength(64), ForeignKey(nameof(UserNavigation))]
     public string UserId { get; set; } = null!;

@@ -6,7 +6,7 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class DmChannel {
     [Key, ForeignKey(nameof(ChannelNavigation))]
-    public int ChannelId { get; set; }
+    public long ChannelId { get; set; }
     
     [ForeignKey(nameof(User1Navigation)), StringLength(64)]
     public string User1Id { get; set; } = null!;

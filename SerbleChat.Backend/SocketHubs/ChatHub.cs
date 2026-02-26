@@ -53,7 +53,7 @@ public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultip
         List<Channel> visible = await channels.GetChannelsVisibleToUser(userId);
 
         // Join channel groups
-        HashSet<int> guildIds = [];
+        HashSet<long> guildIds = [];
         foreach (Channel channel in visible) {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"channel-{channel.Id}");
             if (channel.GuildId.HasValue) {

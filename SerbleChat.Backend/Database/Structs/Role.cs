@@ -7,10 +7,10 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class Role {
     [Key]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [ForeignKey(nameof(GuildNavigation))]
-    public int GuildId { get; set; }
+    public long GuildId { get; set; }
     
     /// <summary>
     /// The position of the role in the role hierarchy. Higher numbers mean higher roles.

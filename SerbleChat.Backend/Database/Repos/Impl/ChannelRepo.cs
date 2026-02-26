@@ -7,7 +7,7 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 public class ChannelRepo(ChatDatabaseContext context, IGroupChatRepo groups, IDmChannelRepo dms, IUserRepo users, 
     IGuildRepo guilds) : IChannelRepo {
     
-    public async Task<Channel?> GetChannel(int id) {
+    public async Task<Channel?> GetChannel(long id) {
         return await context.Channels.FindAsync(id);
     }
 
@@ -21,7 +21,7 @@ public class ChannelRepo(ChatDatabaseContext context, IGroupChatRepo groups, IDm
         await context.SaveChangesAsync();
     }
 
-    public async Task DeleteChannel(int id) {
+    public async Task DeleteChannel(long id) {
         Channel? channel = await GetChannel(id);
         if (channel == null) {
             return;

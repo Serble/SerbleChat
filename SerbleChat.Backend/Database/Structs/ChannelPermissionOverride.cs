@@ -7,17 +7,17 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class ChannelPermissionOverride {
     [Key]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [ForeignKey(nameof(ChannelNavigation))]
-    public int ChannelId { get; set; }
+    public long ChannelId { get; set; }
     
     [ForeignKey(nameof(UserNavigation))]
     [StringLength(64)]
     public string? UserId { get; set; }
     
     [ForeignKey(nameof(RoleNavigation))]
-    public int? RoleId { get; set; }
+    public long? RoleId { get; set; }
 
     public GuildPermissions Permissions { get; set; } = null!;
     

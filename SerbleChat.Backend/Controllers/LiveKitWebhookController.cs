@@ -9,6 +9,7 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("livekit/webhook")]
 public class LiveKitWebhookController(IVoiceManager voiceManager, IOptions<LiveKitSettings> liveKitSettings) : ControllerBase {
+    
     [HttpPost]
     public async Task<IActionResult> HandleWebhook() {
         using StreamReader reader = new(Request.Body);

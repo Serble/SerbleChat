@@ -5,7 +5,7 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
     
-    public Task<List<GroupChatMember>> GetMembers(int channelId) {
+    public Task<List<GroupChatMember>> GetMembers(long channelId) {
         return context.GroupChatMembers
             .Where(g => g.GroupChatId == channelId)
             .Include(g => g.UserNavigation)
@@ -30,7 +30,7 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
         return dmChannels;
     }
     
-    public async Task<GroupChat?> GetGroupChat(int channelId) {
+    public async Task<GroupChat?> GetGroupChat(long channelId) {
         return await context.GroupChats
             .Where(g => g.ChannelId == channelId)
             .Include(a => a.ChannelNavigation)
@@ -43,7 +43,7 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
         return context.SaveChangesAsync();
     }
 
-    public async Task RemoveGroupChat(int channelId) {
+    public async Task RemoveGroupChat(long channelId) {
         await context.GroupChatMembers.Where(m => m.GroupChatId == channelId).ExecuteDeleteAsync();
         await context.GroupChats.Where(g => g.ChannelId == channelId).ExecuteDeleteAsync();
         await context.Channels.Where(c => c.Id == channelId).ExecuteDeleteAsync();
@@ -54,13 +54,13 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
         return context.SaveChangesAsync();
     }
     
-    public Task RemoveMember(int channelId, string userId) {
+    public Task RemoveMember(long channelId, string userId) {
         return context.GroupChatMembers
             .Where(g => g.GroupChatId == channelId && g.UserId == userId)
             .ExecuteDeleteAsync();
     }
     
-    public Task<bool> IsMemberInChat(int channelId, string userId) {
+    public Task<bool> IsMemberInChat(long channelId, string userId) {
         return Task.FromResult(context.GroupChatMembers
             .Any(g => g.GroupChatId == channelId && g.UserId == userId));
     }

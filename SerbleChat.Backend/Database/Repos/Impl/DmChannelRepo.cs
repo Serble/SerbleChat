@@ -40,7 +40,7 @@ public class DmChannelRepo(ChatDatabaseContext context) : IDmChannelRepo {
             .FirstOrDefaultAsync();
     }
 
-    public async Task<DmChannel?> GetDmChannel(int channelId) {
+    public async Task<DmChannel?> GetDmChannel(long channelId) {
         return await context.DmChannels
             .Where(dm => dm.ChannelId == channelId)
             .Include(dm => dm.ChannelNavigation)

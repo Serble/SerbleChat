@@ -5,7 +5,7 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
     
-    public async Task MarkRead(string userId, int channelId, int messageId) {
+    public async Task MarkRead(string userId, long channelId, long messageId) {
         ChannelRead? existing = context.ChannelReads.FirstOrDefault(x => x.ChannelId == channelId && x.UserId == userId);
         if (existing == null) {
             ChannelRead newRead = new() {
@@ -24,7 +24,7 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         await context.SaveChangesAsync();
     }
 
-    public async Task<int> GetUnreadMentionsCount(string userId, int channelId) {
+    public async Task<int> GetUnreadMentionsCount(string userId, long channelId) {
         return await (
             from m in context.Messages
             join mm in context.MessageMentions on m.Id equals mm.MessageId
@@ -53,7 +53,7 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         ).CountAsync();
     }
 
-    public Task<int> GetUnreadMessagesCount(string userId, int channelId) {
+    public Task<int> GetUnreadMessagesCount(string userId, long channelId) {
         return context.Messages
             .Where(m => m.ChannelId == channelId)
             .Join(context.ChannelReads.Where(cr => cr.UserId == userId && cr.ChannelId == channelId),
@@ -63,7 +63,7 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
             .CountAsync();
     }
 
-    public Task<Dictionary<int, int>> GetChannelUnreadMentionsCounts(string userId) {
+    public Task<Dictionary<long, int>> GetChannelUnreadMentionsCounts(string userId) {
         return (
             from m in context.Messages
             join mm in context.MessageMentions on m.Id equals mm.MessageId
@@ -82,7 +82,7 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         ).ToDictionaryAsync(o => o.ChannelId, o => o.UnreadMentionCount);
     }
 
-    public Task<Dictionary<int, int>> GetChannelUnreadMessagesCounts(string userId) {
+    public Task<Dictionary<long, int>> GetChannelUnreadMessagesCounts(string userId) {
         return context.Messages
             .Join(context.ChannelReads.Where(cr => cr.UserId == userId),
                 m => m.ChannelId, cr => cr.ChannelId, (m, cr) => new { Message = m, Read = cr })
@@ -94,7 +94,7 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
             }).ToDictionaryAsync(o => o.ChannelId, o => o.UnreadCount);
     }
 
-    public Task AddUserMentions(int channelId, int messageId, IEnumerable<string> userIds) {
+    public Task AddUserMentions(long channelId, long messageId, IEnumerable<string> userIds) {
         List<MessageMention> mentions = userIds.Select(userId => new MessageMention {
             UserId = userId,
             MessageId = messageId

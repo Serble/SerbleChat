@@ -77,31 +77,31 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
-    public async Task<UserChannelNotificationPreferences> GetChannelNotificationPreferences(string userId, int channelId) {
+    public async Task<UserChannelNotificationPreferences> GetChannelNotificationPreferences(string userId, long channelId) {
         return await context.UserChannelNotificationPreferences
             .FirstOrDefaultAsync(p => p.UserId == userId && p.ChannelId == channelId)
             ?? new UserChannelNotificationPreferences { UserId = userId, ChannelId = channelId };
     }
 
-    public Task<Dictionary<int, UserChannelNotificationPreferences>> GetAllChannelNotificationPreferences(string userId) {
+    public Task<Dictionary<long, UserChannelNotificationPreferences>> GetAllChannelNotificationPreferences(string userId) {
         return context.UserChannelNotificationPreferences
             .Where(p => p.UserId == userId)
             .ToDictionaryAsync(p => p.ChannelId);
     }
 
-    public async Task<UserGuildNotificationPreferences> GetUserGuildNotificationPreferences(string userId, int guildId) {
+    public async Task<UserGuildNotificationPreferences> GetUserGuildNotificationPreferences(string userId, long guildId) {
         return await context.UserGuildNotificationPreferences
             .FirstOrDefaultAsync(p => p.UserId == userId && p.GuildId == guildId)
             ?? new UserGuildNotificationPreferences { UserId = userId };
     }
 
-    public Task<Dictionary<int, UserGuildNotificationPreferences>> GetAllUserGuildNotificationPreferences(string userId) {
+    public Task<Dictionary<long, UserGuildNotificationPreferences>> GetAllUserGuildNotificationPreferences(string userId) {
         return context.UserGuildNotificationPreferences
             .Where(p => p.UserId == userId)
             .ToDictionaryAsync(p => p.GuildId);
     }
 
-    public async Task SetChannelNotificationPreferences(string userId, int channelId, UserChannelNotificationPreferences preferences) {
+    public async Task SetChannelNotificationPreferences(string userId, long channelId, UserChannelNotificationPreferences preferences) {
         int updated = await context.UserChannelNotificationPreferences
             .Where(p => p.UserId == userId && p.ChannelId == channelId)
             .ExecuteUpdateAsync(u => u
@@ -113,7 +113,7 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
-    public async Task SetUserGuildNotificationPreferences(string userId, int guildId, UserGuildNotificationPreferences preferences) {
+    public async Task SetUserGuildNotificationPreferences(string userId, long guildId, UserGuildNotificationPreferences preferences) {
         int updated = await context.UserGuildNotificationPreferences
             .Where(p => p.UserId == userId && p.GuildId == guildId)
             .ExecuteUpdateAsync(u => u
@@ -125,13 +125,13 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
-    public Task<Dictionary<string, UserChannelNotificationPreferences>> GetUsersChannelNotificationPreferences(IEnumerable<string> userIds, int channelId) {
+    public Task<Dictionary<string, UserChannelNotificationPreferences>> GetUsersChannelNotificationPreferences(IEnumerable<string> userIds, long channelId) {
         return context.UserChannelNotificationPreferences
             .Where(p => userIds.Contains(p.UserId) && p.ChannelId == channelId)
             .ToDictionaryAsync(p => p.UserId);
     }
 
-    public Task<Dictionary<string, UserGuildNotificationPreferences>> GetUsersGuildNotificationPreferences(IEnumerable<string> userIds, int guildId) {
+    public Task<Dictionary<string, UserGuildNotificationPreferences>> GetUsersGuildNotificationPreferences(IEnumerable<string> userIds, long guildId) {
         return context.UserGuildNotificationPreferences
             .Where(p => userIds.Contains(p.UserId) && p.GuildId == guildId)
             .ToDictionaryAsync(p => p.UserId);
@@ -148,7 +148,7 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
             .ToArrayAsync();
     }
 
-    public Task DeleteWebNotificationSubscriptions(params int[] subscriptionId) {
+    public Task DeleteWebNotificationSubscriptions(params long[] subscriptionId) {
         return context.UserWebNotificationHooks
             .Where(h => subscriptionId.Contains(h.Id))
             .ExecuteDeleteAsync();

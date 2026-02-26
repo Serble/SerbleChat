@@ -6,10 +6,10 @@ namespace SerbleChat.Backend.Database.Structs;
 
 public class GuildChannel {
     [Key, ForeignKey(nameof(ChannelNavigation))]
-    public int ChannelId { get; set; }
+    public long ChannelId { get; set; }
     
     [ForeignKey(nameof(GuildNavigation))]
-    public int GuildId { get; set; }
+    public long GuildId { get; set; }
     
     public int Index { get; set; }
     

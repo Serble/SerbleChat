@@ -8,14 +8,14 @@ namespace SerbleChat.Backend.Database.Structs;
 public class Channel {
     [Key]
     [JsonProperty(PropertyName = "id")]
-    public int Id { get; set; }
+    public long Id { get; set; }
     
     [JsonProperty(PropertyName = "created_at")]
     public DateTime CreatedAt { get; set; }
     
     [ForeignKey(nameof(GuildNavigation))]
     [JsonProperty(PropertyName = "guild_id")]
-    public int? GuildId { get; set; }
+    public long? GuildId { get; set; }
     
     [JsonProperty(PropertyName = "type")]
     public ChannelType Type { get; set; }
