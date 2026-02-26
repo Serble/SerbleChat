@@ -2,22 +2,7 @@ import { useState, useEffect } from 'react';
 import { getChannelMembers, getGuildChannelMembersDetails } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import { useApp } from '../context/AppContext.jsx';
-import { avatarBg } from '../userColor.js';
-
-function Avatar({ name, size = 32, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
+import Avatar from './Avatar.jsx';
 
 /**
  * Props:
@@ -157,7 +142,7 @@ function MemberRow({ member, ownerId, onClick }) {
       }}
     >
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <Avatar name={member.username} size={32} color={member.userColor} />
+        <Avatar userId={member.id} name={member.username} size={32} color={member.userColor} />
         <div style={{
           position: 'absolute', bottom: 0, right: 0,
           width: 10, height: 10, borderRadius: '50%',

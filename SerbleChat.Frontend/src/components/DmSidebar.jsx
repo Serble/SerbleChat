@@ -5,22 +5,7 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
-import { avatarBg } from '../userColor.js';
-
-function Avatar({ name, size = 32, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
+import Avatar from './Avatar.jsx';
 
 function SidebarItem({ icon, label, active, badge, onClick }) {
   const [hovered, setHovered] = useState(false);
@@ -70,6 +55,7 @@ function DmItem({ dm, currentChannelId }) {
 
   const active = String(currentChannelId) === String(dm.channelId);
   const name = otherUser?.username ?? '…';
+  const otherId = dm.user1Id === currentUser?.id ? dm.user2Id : dm.user1Id;
   const [hovered, setHovered] = useState(false);
   const unread = unreads[String(dm.channelId)] ?? 0;
 
@@ -95,7 +81,7 @@ function DmItem({ dm, currentChannelId }) {
           transition: 'background 0.1s, color 0.1s',
         }}
       >
-        <Avatar name={name} size={28} color={otherUser?.color} />
+        <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
         {unread > 0 && !active && (
           <span style={{
@@ -305,7 +291,7 @@ export default function DmSidebar() {
           flexShrink: 0,
         }}>
           <div style={{ position: 'relative' }}>
-            <Avatar name={currentUser.username} size={32} />
+            <Avatar userId={currentUser.id} name={currentUser.username} size={32} color={currentUser.color} />
             <div style={{
               position: 'absolute', bottom: 0, right: 0,
               width: 10, height: 10, borderRadius: '50%',

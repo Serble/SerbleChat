@@ -8,6 +8,8 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
+import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from '../api.js';
+import Avatar from './Avatar.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -453,6 +455,13 @@ function BlurbPreviewMarkdown({ content }) {
 function ProfileTab() {
   const { currentUser, updateUserDefaultPrefs } = useApp();
 
+  // ── Profile picture state ──────────────────────────────────────────────────
+  const [pfpKey, setPfpKey] = useState(0); // force re-render of avatar
+  const [pfpUploading, setPfpUploading] = useState(false);
+  const [pfpDeleting, setPfpDeleting] = useState(false);
+  const [pfpStatus, setPfpStatus] = useState(null);
+  const pfpInputRef = useRef(null);
+
   // ── Colour state ───────────────────────────────────────────────────────────
   const [colorDraft,       setColorDraft]       = useState(currentUser?.color ?? '');
   const [colorHex,         setColorHex]         = useState(
@@ -474,6 +483,58 @@ function ProfileTab() {
     setColorDraft(currentUser.color ?? '');
     setColorHex(currentUser.color && currentUser.color !== '' ? currentUser.color : '#5865f2');
   }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Profile picture handlers ───────────────────────────────────────────────
+  async function handlePfpUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // reset input
+
+    if (!file.type.startsWith('image/')) {
+      setPfpStatus('error-type');
+      setTimeout(() => setPfpStatus(null), 3000);
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPfpStatus('error-size');
+      setTimeout(() => setPfpStatus(null), 3000);
+      return;
+    }
+
+    setPfpUploading(true);
+    setPfpStatus('uploading');
+    try {
+      await uploadProfilePicture(file);
+      setPfpStatus('success');
+      setPfpKey(k => k + 1); // force avatar re-render
+      setTimeout(() => setPfpStatus(null), 2500);
+    } catch (err) {
+      console.error(err);
+      setPfpStatus('error');
+      setTimeout(() => setPfpStatus(null), 3000);
+    } finally {
+      setPfpUploading(false);
+    }
+  }
+
+  async function handlePfpDelete() {
+    if (!confirm('Delete your profile picture?')) return;
+    setPfpDeleting(true);
+    setPfpStatus('deleting');
+    try {
+      await deleteProfilePicture();
+      setPfpStatus('deleted');
+      setPfpKey(k => k + 1); // force avatar re-render
+      setTimeout(() => setPfpStatus(null), 2500);
+    } catch (err) {
+      console.error(err);
+      setPfpStatus('error');
+      setTimeout(() => setPfpStatus(null), 3000);
+    } finally {
+      setPfpDeleting(false);
+    }
+  }
 
   // ── Colour handlers ────────────────────────────────────────────────────────
   const hasCustomColor = colorDraft !== '';
@@ -548,6 +609,76 @@ function ProfileTab() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+
+      {/* ── Profile Picture ────────────────────────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Profile Picture
+      </div>
+
+      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.55 }}>
+        Upload a custom profile picture. If no picture is set, a colored circle with your initial will be shown.
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        {/* Avatar preview */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>Current</div>
+          <Avatar key={pfpKey} userId={currentUser?.id} name={previewName} size={80} color={currentUser?.color} />
+        </div>
+
+        {/* Upload/delete controls */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <input
+            ref={pfpInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handlePfpUpload}
+          />
+          <button
+            onClick={() => pfpInputRef.current?.click()}
+            disabled={pfpUploading || pfpDeleting}
+            style={{
+              background: 'var(--accent)', border: 'none', borderRadius: 6,
+              color: '#fff', padding: '0.5rem 1.2rem', fontSize: '0.83rem', fontWeight: 600,
+              cursor: pfpUploading || pfpDeleting ? 'default' : 'pointer',
+              opacity: pfpUploading || pfpDeleting ? 0.6 : 1,
+              transition: 'background 0.15s, opacity 0.15s',
+            }}
+            className="hov-accent"
+          >
+            {pfpUploading ? 'Uploading…' : 'Upload Picture'}
+          </button>
+          <button
+            onClick={handlePfpDelete}
+            disabled={pfpUploading || pfpDeleting}
+            style={{
+              background: 'transparent', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text-muted)',
+              padding: '0.5rem 1.2rem', fontSize: '0.83rem', fontWeight: 500,
+              cursor: pfpUploading || pfpDeleting ? 'default' : 'pointer',
+              opacity: pfpUploading || pfpDeleting ? 0.6 : 1,
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={e => { if (!pfpUploading && !pfpDeleting) { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = 'rgba(242,63,67,0.4)'; } }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+          >
+            {pfpDeleting ? 'Deleting…' : 'Remove Picture'}
+          </button>
+          {/* Status messages */}
+          {pfpStatus === 'uploading' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Uploading…</span>}
+          {pfpStatus === 'success' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Uploaded</span>}
+          {pfpStatus === 'deleting' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Deleting…</span>}
+          {pfpStatus === 'deleted' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Deleted</span>}
+          {pfpStatus === 'error' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed</span>}
+          {pfpStatus === 'error-type' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Only images allowed</span>}
+          {pfpStatus === 'error-size' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Max 5MB</span>}
+        </div>
+      </div>
 
       {/* ── Colour ─────────────────────────────────────────────────────────── */}
       <div style={{

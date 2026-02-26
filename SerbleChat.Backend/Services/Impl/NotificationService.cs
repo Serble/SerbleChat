@@ -66,7 +66,6 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             Urgency = PushMessageUrgency.Normal,
             Topic = "message:" + message.Id
         };
-        Console.WriteLine(JsonConvert.SerializeObject(content));
 
         List<long> badEndpoints = [];
             

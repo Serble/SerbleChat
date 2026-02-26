@@ -4,24 +4,9 @@ import { useApp } from '../context/AppContext.jsx';
 import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
-import { avatarBg } from '../userColor.js';
+import Avatar from './Avatar.jsx';
 
 const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
-
-function Avatar({ name, size = 40, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
 
 function Pill({ label, color = '#5865f2' }) {
   return (
@@ -117,7 +102,7 @@ function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
         onClick={e => onUserClick(e, otherId, user?.username)}
         style={{ cursor: 'pointer', flexShrink: 0 }}
       >
-        <Avatar name={user?.username} color={user?.color} />
+        <Avatar userId={otherId} name={user?.username} color={user?.color} />
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div
@@ -189,7 +174,7 @@ function BlockedRow({ user, onUnblock }) {
       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
-      <Avatar name={user?.username} color={user?.color} />
+      <Avatar userId={block.blockedUserId} name={user?.username} color={user?.color} />
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {user?.username ?? '…'}

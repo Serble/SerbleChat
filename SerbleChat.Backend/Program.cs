@@ -1,4 +1,6 @@
 using System.Text;
+using Amazon;
+using Amazon.S3;
 using Lib.Net.Http.WebPush;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -19,11 +21,12 @@ builder.Services.AddOptions<JwtSettings>().Bind(builder.Configuration.GetSection
 builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection("Api"));
 builder.Services.AddOptions<LiveKitSettings>().Bind(builder.Configuration.GetSection("LiveKit"));
 builder.Services.AddOptions<PushNotificationsSettings>().Bind(builder.Configuration.GetSection("PushNotifications"));
+builder.Services.AddOptions<S3Settings>().Bind(builder.Configuration.GetSection("S3"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
 ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
-LiveKitSettings liveKitSettings = builder.Configuration.GetSection("LiveKit").Get<LiveKitSettings>() ?? throw new Exception("LiveKit settings not found");
 PushNotificationsSettings pushSettings = builder.Configuration.GetSection("PushNotifications").Get<PushNotificationsSettings>() ?? throw new Exception("Push notifications settings not found");
+S3Settings s3Settings = builder.Configuration.GetSection("S3").Get<S3Settings>() ?? throw new Exception("S3 settings not found");
 
 builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -51,6 +54,15 @@ builder.Services.AddAuthentication(options => {
         }
     };
 });
+
+builder.Services.AddSingleton<IAmazonS3>(_ => {
+    AmazonS3Config config = new() {
+        ServiceURL = s3Settings.ServiceUrl,
+        ForcePathStyle = true
+    };
+    return new AmazonS3Client(s3Settings.AccessKey, s3Settings.SecretKey, config);
+});
+
 
 builder.Services.AddSignalR();
 builder.Services.AddAuthorization();
@@ -99,6 +111,7 @@ builder.Services.AddSingleton<INotificationService, NotificationService>();
 builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 builder.Services.AddScoped<IVoiceManager, VoiceManager>();
+builder.Services.AddScoped<IImagesService, ImagesService>();
 
 // push notifications
 builder.Services.AddMemoryCache();

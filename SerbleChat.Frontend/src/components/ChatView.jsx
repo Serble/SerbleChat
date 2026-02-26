@@ -15,7 +15,7 @@ import InviteCard from './InviteCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
-import { avatarBg } from '../userColor.js';
+import Avatar from './Avatar.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -104,21 +104,6 @@ function CtxBtn({ icon, label, onClick, danger, copied }) {
       <span style={{ width: '1.1em', textAlign: 'center', flexShrink: 0 }}>{copied ? '✓' : icon}</span>
       {copied ? 'Copied!' : label}
     </button>
-  );
-}
-
-function Avatar({ name, size = 40, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none', marginTop: 2,
-    }}>
-      {initial}
-    </div>
   );
 }
 
@@ -214,7 +199,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
         onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
         style={{ cursor: msg._pending ? 'default' : 'pointer', flexShrink: 0 }}
       >
-        <Avatar name={author?.username} size={40} color={author?.color} />
+        <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} style={{ marginTop: 2 }} />
       </div>
       <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>

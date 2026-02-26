@@ -5,6 +5,6 @@ TODO:
 - More live updates
   - Members changing (profiles)
 - Fix app making TOO MANY requests (cache them or something, react SWR)
-- File uploads (pfp, guild icons, group chat icons, attachments)
+- File uploads (Channel icons, group chat icons, attachments)
 - Webhooks for sending messages
-- Channel icons?
+- Bot library (self bots)

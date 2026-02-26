@@ -8,13 +8,14 @@ import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
   updateGuildChannel, updateGuild, deleteGuild,
   createGuildInvite, getGuildInvites, deleteGuildInvite,
-  reorderGuildChannel, FRONTEND_URL,
+  reorderGuildChannel, FRONTEND_URL, uploadGuildIcon, deleteGuildIcon, getGuildIconUrl,
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
 import ChannelPermsTab from './ChannelPermsTab.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
+import Avatar from './Avatar.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,7 +134,40 @@ function GuildNotifTab({ guildId }) {
 
 // ─── Guild Settings Modal ─────────────────────────────────────────────────────
 
-function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
+function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUpdatedEvent }) {
+  // ...existing code...
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [iconError, setIconError] = useState(null);
+  const [hasIcon, setHasIcon] = useState(false);
+  const iconFileRef = useRef(null);
+  const backdropRef = useRef(null);
+  const { isMobile } = useMobile();
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Check if guild icon exists when modal opens
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setHasIcon(true);
+    img.onerror = () => setHasIcon(false);
+    img.src = getGuildIconUrl(guild.id);
+  }, [guild.id]);
+
+  // Refresh icon preview when guild is updated
+  useEffect(() => {
+    if (!guildUpdatedEvent) return;
+    if (String(guildUpdatedEvent.guildId) === String(guild.id)) {
+      const img = new Image();
+      img.onload = () => setHasIcon(true);
+      img.onerror = () => setHasIcon(false);
+      img.src = getGuildIconUrl(guild.id) + '?t=' + guildUpdatedEvent.ts;
+    }
+  }, [guildUpdatedEvent]);
+
   const isOwner      = perms?.administrator === 0 && guild; // owner has all perms set Allow
   const canManageGuild = isOwner || allowed(perms, 'manageGuild');
   const canManageRoles = isOwner || allowed(perms, 'manageRoles');
@@ -149,14 +183,6 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
   const [invLoading, setInvLoading] = useState(false);
   const [creating, setCreating]     = useState(false);
   const [copied, setCopied]         = useState(null);
-  const backdropRef = useRef(null);
-  const { isMobile } = useMobile();
-
-  useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   useEffect(() => {
     if (tab !== 'invites') return;
@@ -198,6 +224,35 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
     navigator.clipboard.writeText(`${FRONTEND_URL}/invite/${inv.id}`);
     setCopied(inv.id);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleIconUpload(file) {
+    if (!file) return;
+    setUploadingIcon(true);
+    setIconError(null);
+    try {
+      await uploadGuildIcon(guild.id, file);
+      setError(null);
+      // GuildUpdated signal will handle refreshing the icon across all clients
+    } catch (err) {
+      setIconError(err.message);
+    } finally {
+      setUploadingIcon(false);
+    }
+  }
+
+  async function handleIconDelete() {
+    setUploadingIcon(true);
+    setIconError(null);
+    try {
+      await deleteGuildIcon(guild.id);
+      setError(null);
+      // GuildUpdated signal will handle refreshing the icon across all clients
+    } catch (err) {
+      setIconError(err.message);
+    } finally {
+      setUploadingIcon(false);
+    }
   }
 
   const tabStyle = active => ({
@@ -246,6 +301,102 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms }) {
                   onFocus={e => e.target.style.borderColor = 'var(--accent)'}
                   onBlur={e => e.target.style.borderColor = 'var(--border)'} />
               </div>
+
+              {/* Guild Icon Upload */}
+              {canManageGuild && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={labelStyle}>Guild Icon</label>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: 64, height: 64, borderRadius: '8px',
+                      background: 'var(--bg-secondary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '2rem', overflow: 'hidden', flexShrink: 0,
+                      border: '1px solid var(--border)',
+                    }}>
+                      {hasIcon ? (
+                        <img
+                          key={`guild-icon-${guild.id}-${guildUpdatedEvent?.ts || 0}`}
+                          src={getGuildIconUrl(guild.id) + (guildUpdatedEvent?.ts ? '?t=' + guildUpdatedEvent.ts : '')}
+                          alt="Guild icon"
+                          onError={() => setHasIcon(false)}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        guild.name?.[0]?.toUpperCase() ?? '?'
+                      )}
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <input
+                        ref={iconFileRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleIconUpload(file);
+                          if (e.target) e.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => iconFileRef.current?.click()}
+                        disabled={uploadingIcon}
+                        style={{
+                          background: 'var(--bg-active)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          padding: '0.45rem 0.75rem',
+                          color: 'var(--text-secondary)',
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          cursor: uploadingIcon ? 'default' : 'pointer',
+                          opacity: uploadingIcon ? 0.6 : 1,
+                          transition: 'background 0.15s, color 0.15s',
+                        }}
+                        className={!uploadingIcon ? 'hov-bg' : undefined}
+                      >
+                        {uploadingIcon ? 'Uploading…' : 'Upload Image'}
+                      </button>
+                      {hasIcon && (
+                        <button
+                          type="button"
+                          onClick={handleIconDelete}
+                          disabled={uploadingIcon}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                            padding: '0.45rem 0.75rem',
+                            color: 'var(--danger)',
+                            fontSize: '0.875rem',
+                            fontWeight: 600,
+                            cursor: uploadingIcon ? 'default' : 'pointer',
+                            opacity: uploadingIcon ? 0.6 : 1,
+                            transition: 'background 0.15s, color 0.15s',
+                          }}
+                          className={!uploadingIcon ? 'hov-danger-fill' : undefined}
+                        >
+                          Remove Icon
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {iconError && (
+                    <div style={{
+                      background: 'rgba(242,63,67,0.1)',
+                      border: '1px solid rgba(242,63,67,0.3)',
+                      borderRadius: '6px',
+                      padding: '0.5rem 0.75rem',
+                      color: 'var(--danger)',
+                      fontSize: '0.83rem'
+                    }}>
+                      {iconError}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {error && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{error}</div>}
               <button type="submit" disabled={busy || !name.trim()}
                 style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
@@ -951,15 +1102,7 @@ export default function GuildSidebar({ guildId }) {
           flexShrink: 0,
         }}>
           <div style={{ position: 'relative' }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: '50%',
-              background: `hsl(${(currentUser.username.charCodeAt(0) * 37 + currentUser.username.charCodeAt(currentUser.username.length - 1) * 17) % 360},45%,40%)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 700, fontSize: 13.44,
-              flexShrink: 0, userSelect: 'none',
-            }}>
-              {currentUser.username[0].toUpperCase()}
-            </div>
+            <Avatar userId={currentUser.id} name={currentUser.username} size={32} color={currentUser.color} />
             <div style={{
               position: 'absolute', bottom: 0, right: 0,
               width: 10, height: 10, borderRadius: '50%',
@@ -999,6 +1142,7 @@ export default function GuildSidebar({ guildId }) {
         <GuildSettingsModal
           guild={guild}
           perms={perms}
+          guildUpdatedEvent={guildUpdatedEvent}
           onClose={() => setShowSettings(false)}
           onSaved={() => refreshGuilds()}
           onDeleted={() => { refreshGuilds(); nav('/app/friends', { replace: true }); }}

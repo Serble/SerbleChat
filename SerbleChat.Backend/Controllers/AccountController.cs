@@ -1,9 +1,13 @@
 using System.Security.Claims;
+using Amazon.S3;
+using Amazon.S3.Model;
+using ImageMagick;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.Services;
 using StackExchange.Redis;
 
 namespace SerbleChat.Backend.Controllers;
@@ -11,7 +15,8 @@ namespace SerbleChat.Backend.Controllers;
 [Route("/account")]
 [ApiController]
 [Authorize]
-public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRepo channels, IConnectionMultiplexer redis) : ControllerBase {
+public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRepo channels, 
+    IConnectionMultiplexer redis, IImagesService images) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<UserAccountResponse>> Get() {
@@ -240,6 +245,32 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             CreatedAt = DateTime.UtcNow
         };
         await users.CreateWebNotificationSubscription(subscription);
+        return Ok();
+    }
+    
+    [HttpPut("pfp")]
+    public async Task<IActionResult> UploadProfilePicture(IFormFile file) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        if (!images.IsFileValid(file, out string? msg)) {
+            return BadRequest(msg);
+        }
+
+        await images.UploadImage(file, $"pfp/{userId}.webp");
+        return Ok();
+    }
+
+    [HttpDelete("pfp")]
+    public async Task<IActionResult> DeleteProfilePicture() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        await images.DeleteImage($"pfp/{userId}.webp");
         return Ok();
     }
 }

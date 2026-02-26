@@ -88,6 +88,34 @@ export async function getAccountByUsername(username) {
   return handle(res);
 }
 
+/** POST /account/pfp – upload profile picture */
+export async function uploadProfilePicture(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/account/pfp`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handle(res);
+}
+
+/** DELETE /account/pfp – delete profile picture */
+export async function deleteProfilePicture() {
+  const res = await fetch(`${BASE}/account/pfp`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** Helper: construct profile picture URL for a user */
+export function getProfilePictureUrl(userId) {
+  // S3 public URL - adjust based on your S3/MinIO setup
+  const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
+  return `${S3_PUBLIC_URL}/pfp/${encodeURIComponent(userId)}.webp`;
+}
+
 // ── Friends ───────────────────────────────────────────────────────────────────
 
 /** GET /friends  – list my friendships */
@@ -339,6 +367,33 @@ export async function deleteGuild(id) {
     headers: authHeaders(),
   });
   return handle(res);
+}
+
+/** PUT /guild/:id/icon – upload guild icon */
+export async function uploadGuildIcon(guildId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/icon`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:id/icon – delete guild icon */
+export async function deleteGuildIcon(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/icon`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** Helper: construct guild icon URL */
+export function getGuildIconUrl(guildId) {
+  const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
+  return `${S3_PUBLIC_URL}/guild-icons/${encodeURIComponent(guildId)}.webp`;
 }
 
 /** PATCH /guild/:id  – update guild (name and/or defaultPermissions) */

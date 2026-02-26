@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { avatarBg, bannerBg, nameTextColor } from '../userColor.js';
+import { bannerBg, nameTextColor } from '../userColor.js';
 import {
   getAccountById, getGuildRoles, getUserGuildRoles, addUserGuildRole, removeUserGuildRole,
   addFriend, removeFriend, getOrCreateDmChannel,
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
+import Avatar from './Avatar.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -66,21 +67,6 @@ function BlurbMarkdown({ content }) {
 
 const ONLINE  = { label: 'Online',  color: '#23a55a' };
 const OFFLINE = { label: 'Offline', color: '#747f8d' };
-
-function Avatar({ name, size = 64, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
 
 const sectionLabel = {
   fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
@@ -257,7 +243,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
       {/* Avatar row */}
       <div style={{ position: 'relative', padding: '0 1rem', flexShrink: 0 }}>
         <div style={{ position: 'absolute', top: -34, background: 'var(--bg-overlay)', borderRadius: '50%', padding: 3, outline: sm ? `3px solid ${sm.color}` : 'none', outlineOffset: 1 }}>
-          <Avatar name={displayName} size={60} color={user?.color} />
+          <Avatar userId={userId} name={displayName} size={60} color={user?.color} />
         </div>
       </div>
 

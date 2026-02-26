@@ -4,22 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { createGroupChat } from '../api.js';
 import { useMobile } from '../context/MobileContext.jsx';
-import { avatarBg } from '../userColor.js';
-
-function Avatar({ name, size = 32, color }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: avatarBg(name, color),
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
+import Avatar from './Avatar.jsx';
 
 export default function CreateGroupModal({ onClose }) {
   const { friends, currentUser, resolveUser, refreshDms } = useApp();
@@ -181,7 +166,7 @@ export default function CreateGroupModal({ onClose }) {
                     onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                   >
-                    <Avatar name={u?.username} size={32} color={u?.color} />
+                    <Avatar userId={otherId} name={u?.username} size={32} color={u?.color} />
                     <span style={{
                       flex: 1, color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: isSelected ? 600 : 400,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

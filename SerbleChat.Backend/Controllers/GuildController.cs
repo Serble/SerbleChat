@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.Services;
 using SerbleChat.Backend.SocketHubs;
 
 namespace SerbleChat.Backend.Controllers;
@@ -13,7 +14,13 @@ namespace SerbleChat.Backend.Controllers;
 [Route("guild")]
 [Authorize]
 public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo roles, IUserRepo users,
-    IHubContext<ChatHub> updates) : ControllerBase {
+    IHubContext<ChatHub> updates, IImagesService images) : ControllerBase {
+
+    private Task SignalGuildUpdated(long guildId) {
+        return updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
+            GuildId = guildId
+        });
+    }
 
     [HttpGet]
     public async Task<ActionResult<Guild[]>> GetMyGuilds() {
@@ -22,8 +29,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return await guilds.GetGuildsForUser(userId);
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<Guild>> GetGuildById(int id) {
+    [HttpGet("{id:long}")]
+    public async Task<ActionResult<Guild>> GetGuildById(long id) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
         Guild? guild = await guilds.GetGuild(id);
@@ -73,8 +80,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(guild);
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<ActionResult> DeleteGuild(int id) {
+    [HttpDelete("{id:long}")]
+    public async Task<ActionResult> DeleteGuild(long id) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -94,8 +101,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpPatch("{id:int}")]
-    public async Task<ActionResult> UpdateGuild(int id, GuildUpdateRequest request) {
+    [HttpPatch("{id:long}")]
+    public async Task<ActionResult> UpdateGuild(long id, GuildUpdateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -120,14 +127,12 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await guilds.UpdateGuild(guild);
-        await updates.Clients.Group("guild-" + id).SendAsync("GuildUpdated", new {
-            GuildId = guild.Id
-        });
+        await SignalGuildUpdated(guild.Id);
         return Ok();
     }
 
-    [HttpGet("{id:int}/my-permissions")]
-    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(int id) {
+    [HttpGet("{id:long}/my-permissions")]
+    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(long id) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
         Guild? guild = await guilds.GetGuild(id);
@@ -136,8 +141,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(perms);
     }
     
-    [HttpGet("{id:int}/channel/{channelId:int}/my-permissions")]
-    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(int id, int channelId) {
+    [HttpGet("{id:long}/channel/{channelId:long}/my-permissions")]
+    public async Task<ActionResult<GuildPermissions>> GetMyPermissions(long id, long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
         Guild? guild = await guilds.GetGuild(id);
@@ -146,8 +151,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(perms);
     }
 
-    [HttpGet("{guildId:int}/members")]
-    public async Task<ActionResult<GuildMemberResponse[]>> GetGuildMembers(int guildId) {
+    [HttpGet("{guildId:long}/members")]
+    public async Task<ActionResult<GuildMemberResponse[]>> GetGuildMembers(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
         Guild? guild = await guilds.GetGuild(guildId);
@@ -165,8 +170,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     // CHANNEL ENDPOINTS
 
     // this is ~6 queries
-    [HttpGet("{guildId:int}/channel")]
-    public async Task<ActionResult<IEnumerable<GuildChannel>>> GetChannels(int guildId) {
+    [HttpGet("{guildId:long}/channel")]
+    public async Task<ActionResult<IEnumerable<GuildChannel>>> GetChannels(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -186,8 +191,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             .Select(p => channelData[p.Key]));
     }
 
-    [HttpPost("{guildId:int}/channel")]
-    public async Task<ActionResult<Channel>> CreateChannel(int guildId, GuildChannelCreateRequest request) {
+    [HttpPost("{guildId:long}/channel")]
+    public async Task<ActionResult<Channel>> CreateChannel(long guildId, GuildChannelCreateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -227,8 +232,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(channel);
     }
 
-    [HttpDelete("{guildId:int}/channel/{channelId:int}")]
-    public async Task<ActionResult> DeleteChannel(int guildId, int channelId) {
+    [HttpDelete("{guildId:long}/channel/{channelId:long}")]
+    public async Task<ActionResult> DeleteChannel(long guildId, long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -258,8 +263,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpPatch("{guildId:int}/channel/{channelId:int}")]
-    public async Task<ActionResult> UpdateChannel(int guildId, int channelId, GuildChannelUpdateRequest request) {
+    [HttpPatch("{guildId:long}/channel/{channelId:long}")]
+    public async Task<ActionResult> UpdateChannel(long guildId, long channelId, GuildChannelUpdateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -290,14 +295,12 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await channels.UpdateChannel(channel);
-        await updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
-            GuildId = guildId
-        });
+        await SignalGuildUpdated(guildId);
         return Ok();
     }
 
-    [HttpPost("{guildId:int}/channel/{channelId:int}/reorder")]
-    public async Task<ActionResult> ReorderChannels(int guildId, int channelId, ChannelReorderRequest request) {
+    [HttpPost("{guildId:long}/channel/{channelId:long}/reorder")]
+    public async Task<ActionResult> ReorderChannels(long guildId, long channelId, ChannelReorderRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -341,9 +344,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             await guilds.UpdateGuildChannel(orderedChannels[i]);
         }
         
-        await updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
-            GuildId = guildId
-        });
+        await SignalGuildUpdated(guildId);
         return Ok();
     }
 
@@ -355,8 +356,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     /// <param name="guildId"></param>
     /// <param name="channelId"></param>
     /// <returns></returns>
-    [HttpGet("{guildId:int}/channel/{channelId:int}/members")]
-    public async Task<ActionResult<GuildMemberResponse[]>> GetChannelMembers(int guildId, int channelId) {
+    [HttpGet("{guildId:long}/channel/{channelId:long}/members")]
+    public async Task<ActionResult<GuildMemberResponse[]>> GetChannelMembers(long guildId, long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -375,9 +376,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(await guilds.GetGuildChannelMembersDetails(channelId));
     }
 
-    [HttpGet("{guildId:int}/channel/{channelId:int}/permission-overrides")]
-    public async Task<ActionResult<ChannelPermissionOverride[]>> GetChannelPermissionOverrides(int guildId,
-        int channelId) {
+    [HttpGet("{guildId:long}/channel/{channelId:long}/permission-overrides")]
+    public async Task<ActionResult<ChannelPermissionOverride[]>> GetChannelPermissionOverrides(long guildId,
+        long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -396,8 +397,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return await guilds.GetChannelPermissionOverrides(channelId);
     }
 
-    [HttpDelete("{guildId:int}/channel/{channelId:int}/permission-overrides/{overrideId:int}")]
-    public async Task<ActionResult> DeleteChannelPermissionOverride(int guildId, int channelId, int overrideId) {
+    [HttpDelete("{guildId:long}/channel/{channelId:long}/permission-overrides/{overrideId:long}")]
+    public async Task<ActionResult> DeleteChannelPermissionOverride(long guildId, long channelId, long overrideId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -425,8 +426,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpPost("{guildId:int}/channel/{channelId:int}/permission-overrides")]
-    public async Task<ActionResult> CreateChannelPermissionOverride(int guildId, int channelId,
+    [HttpPost("{guildId:long}/channel/{channelId:long}/permission-overrides")]
+    public async Task<ActionResult> CreateChannelPermissionOverride(long guildId, long channelId,
         ChannelPermissionOverrideCreateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
@@ -470,8 +471,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
     
-    [HttpPatch("{guildId:int}/channel/{channelId:int}/permission-overrides/{overrideId:int}")]
-    public async Task<ActionResult> UpdateChannelPermissionOverride(int guildId, int channelId, int overrideId,
+    [HttpPatch("{guildId:long}/channel/{channelId:long}/permission-overrides/{overrideId:long}")]
+    public async Task<ActionResult> UpdateChannelPermissionOverride(long guildId, long channelId, long overrideId,
         ChannelPermissionOverrideModifyRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
@@ -508,8 +509,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
 
     // INVITES
 
-    [HttpPost("{guildId:int}/invite")]
-    public async Task<ActionResult<GuildInvite>> CreateInvite(int guildId) {
+    [HttpPost("{guildId:long}/invite")]
+    public async Task<ActionResult<GuildInvite>> CreateInvite(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -532,8 +533,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(invite);
     }
     
-    [HttpDelete("invite/{inviteId:int}")]
-    public async Task<ActionResult> DeleteInvite(int inviteId) {
+    [HttpDelete("invite/{inviteId:long}")]
+    public async Task<ActionResult> DeleteInvite(long inviteId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -558,8 +559,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
     
-    [HttpGet("{guildId:int}/invite")]
-    public async Task<ActionResult<GuildInvite[]>> GetInvites(int guildId) {
+    [HttpGet("{guildId:long}/invite")]
+    public async Task<ActionResult<GuildInvite[]>> GetInvites(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -579,8 +580,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(invites);
     }
 
-    [HttpPost("invite/{inviteId:int}/accept")]
-    public async Task<ActionResult<Guild>> AcceptInvite(int inviteId) {
+    [HttpPost("invite/{inviteId:long}/accept")]
+    public async Task<ActionResult<Guild>> AcceptInvite(long inviteId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -606,8 +607,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     
     // ROLES
 
-    [HttpGet("{guildId:int}/roles")]
-    public async Task<ActionResult<Role[]>> GetRoles(int guildId) {
+    [HttpGet("{guildId:long}/roles")]
+    public async Task<ActionResult<Role[]>> GetRoles(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -621,8 +622,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(await roles.GetGuildRoles(guildId));
     }
 
-    [HttpPost("{guildId:int}/roles")]
-    public async Task<ActionResult<Role>> CreateRole(int guildId, RoleCreateRequest request) {
+    [HttpPost("{guildId:long}/roles")]
+    public async Task<ActionResult<Role>> CreateRole(long guildId, RoleCreateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -653,8 +654,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(role);
     }
 
-    [HttpDelete("{guildId:int}/roles/{roleId:int}")]
-    public async Task<ActionResult> DeleteRole(int guildId, int roleId) {
+    [HttpDelete("{guildId:long}/roles/{roleId:long}")]
+    public async Task<ActionResult> DeleteRole(long guildId, long roleId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -683,8 +684,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpPatch("{guildId:int}/roles/{roleId:int}")]
-    public async Task<ActionResult> UpdateRole(int guildId, int roleId, RoleUpdateRequest request) {
+    [HttpPatch("{guildId:long}/roles/{roleId:long}")]
+    public async Task<ActionResult> UpdateRole(long guildId, long roleId, RoleUpdateRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -733,8 +734,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpPost("{guildId:int}/members/{userId}/roles/{roleId:int}")]
-    public async Task<ActionResult> AddRoleToUser(int guildId, int roleId, string userId) {
+    [HttpPost("{guildId:long}/members/{userId}/roles/{roleId:long}")]
+    public async Task<ActionResult> AddRoleToUser(long guildId, long roleId, string userId) {
         string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (requesterId == null) {
             return Unauthorized();
@@ -765,8 +766,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
 
-    [HttpGet("{guildId:int}/members/{userId}/roles")]
-    public async Task<ActionResult<Role[]>> GetUserRoles(int guildId, string userId) {
+    [HttpGet("{guildId:long}/members/{userId}/roles")]
+    public async Task<ActionResult<Role[]>> GetUserRoles(long guildId, string userId) {
         string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (requesterId == null) {
             return Unauthorized();
@@ -780,8 +781,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(await roles.GetUserRolesInGuild(userId, guildId));
     }
 
-    [HttpDelete("{guildId:int}/members/{userId}/roles/{roleId:int}")]
-    public async Task<ActionResult> RemoveRoleFromUser(int guildId, int roleId, string userId) {
+    [HttpDelete("{guildId:long}/members/{userId}/roles/{roleId:long}")]
+    public async Task<ActionResult> RemoveRoleFromUser(long guildId, long roleId, string userId) {
         string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (requesterId == null) {
             return Unauthorized();
@@ -814,8 +815,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     
     // NOTIFICATION PREFERENCES
     
-    [HttpGet("{guildId:int}/notification-preferences")]
-    public async Task<ActionResult<UserGuildNotificationPreferences>> GetGuildNotificationPreferences(int guildId) {
+    [HttpGet("{guildId:long}/notification-preferences")]
+    public async Task<ActionResult<UserGuildNotificationPreferences>> GetGuildNotificationPreferences(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -829,8 +830,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(await users.GetUserGuildNotificationPreferences(userId, guildId));
     }
 
-    [HttpPut("{guildId:int}/notification-preferences")]
-    public async Task<ActionResult> SetGuildNotificationPreferences(int guildId, [FromBody] NotificationPreferences preferences) {
+    [HttpPut("{guildId:long}/notification-preferences")]
+    public async Task<ActionResult> SetGuildNotificationPreferences(long guildId, [FromBody] NotificationPreferences preferences) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -847,6 +848,54 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             Preferences = preferences
         };
         await users.SetUserGuildNotificationPreferences(userId, guildId, notifPrefs);
+        return Ok();
+    }
+
+    [HttpPut("{guildId:long}/icon")]
+    public async Task<ActionResult> UpdateGuildIcon(long guildId, IFormFile file) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
+        if (!perms.HasPerm(p => p.ManageGuild)) {
+            return Forbid();
+        }
+
+        if (!images.IsFileValid(file, out string? msg)) {
+            return BadRequest(msg);
+        }
+
+        await images.UploadImage(file, $"guild-icons/{guildId}.webp");
+        await SignalGuildUpdated(guildId);
+        return Ok();
+    }
+
+    [HttpDelete("{guildId:long}/icon")]
+    public async Task<ActionResult> DeleteGuildIcon(long guildId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(userId, guildId);
+        if (!perms.HasPerm(p => p.ManageGuild)) {
+            return Forbid();
+        }
+
+        await images.DeleteImage($"guild-icons/{guildId}.webp");
+        await SignalGuildUpdated(guildId);
         return Ok();
     }
 }

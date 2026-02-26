@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
 import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { getGuildIconUrl } from '../api.js';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
@@ -38,12 +39,20 @@ function StripButton({ title, active, onClick, children }) {
   );
 }
 
-function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
+function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRefreshKey }) {
   const [hov, setHov] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const imgRef = useRef(null);
   const hue = guild.name
     ? (guild.name.charCodeAt(0) * 37 + guild.name.charCodeAt(guild.name.length - 1) * 17) % 360
     : 200;
   const initial = guild.name ? guild.name[0].toUpperCase() : '?';
+  const hasIcon = !imageError;
+
+  // Reset image error when imageRefreshKey changes (signals guild was updated)
+  useEffect(() => {
+    setImageError(false);
+  }, [imageRefreshKey]);
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -56,7 +65,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
         style={{
           width: 48, height: 48,
           borderRadius: active || hov ? '30%' : '50%',
-          background: active
+          background: hasIcon ? 'transparent' : active
             ? `hsl(${hue},50%,48%)`
             : hov
             ? `hsl(${hue},45%,42%)`
@@ -65,10 +74,29 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
           cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.2rem',
           transition: 'border-radius 0.2s, background 0.2s',
           userSelect: 'none', border: 'none', flexShrink: 0,
-          boxShadow: active ? `0 0 0 3px hsl(${hue},50%,55%)` : 'none',
+          boxShadow: active ? `0 0 0 3px ${hasIcon ? 'rgba(124,58,237,0.4)' : `hsl(${hue},50%,55%)`}` : 'none',
+          overflow: 'hidden',
+          position: 'relative',
+          padding: 0,
         }}
       >
-        {initial}
+        {hasIcon && (
+          <img
+            ref={imgRef}
+            key={imageRefreshKey}
+            src={getGuildIconUrl(guild.id) + '?t=' + imageRefreshKey}
+            alt={guild.name}
+            onError={() => setImageError(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: 'inherit',
+              display: 'block',
+            }}
+          />
+        )}
+        {!hasIcon && initial}
       </button>
       {unreadCount > 0 && !active && (
         <div style={{
@@ -92,13 +120,24 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount }) {
 
 export default function ServerStrip() {
   const nav = useNavigate();
-  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads } = useApp();
+  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads, guildUpdatedEvent } = useApp();
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null); // { guildId, guildName, x, y }
+  const [guildRefreshKeys, setGuildRefreshKeys] = useState({}); // { guildId: key }
 
   const onHome = !activeGuildId;
+
+  // When a guild is updated, increment its refresh key to trigger image reload
+  useEffect(() => {
+    if (!guildUpdatedEvent) return;
+    const guildId = String(guildUpdatedEvent.guildId);
+    setGuildRefreshKeys(prev => ({
+      ...prev,
+      [guildId]: (prev[guildId] || 0) + 1,
+    }));
+  }, [guildUpdatedEvent]);
 
   function handleGuildContextMenu(e, guild) {
     e.preventDefault();
@@ -143,6 +182,7 @@ export default function ServerStrip() {
           onClick={() => handleGuildClick(g)}
           onContextMenu={e => handleGuildContextMenu(e, g)}
           unreadCount={guildUnreads?.[String(g.id)] ?? 0}
+          imageRefreshKey={guildRefreshKeys[String(g.id)] ?? 0}
         />
       ))}
 
