@@ -530,6 +530,8 @@ export default function ChatView() {
     if (!rolesUpdatedEvent || !isGuildChannel || !channel?.guildId) return;
     if (String(rolesUpdatedEvent.guildId) === String(channel.guildId)) {
       loadGuildMemberColors(channel.guildId, channelId);
+      // Also reload channel permissions since roles affect permissions
+      loadChannelPermissions(channel.guildId, channelId);
     }
   }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -13,7 +13,7 @@ import { resubscribeIfEnabled } from '../push.js';
 
 const Ctx = createContext(null);
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://100.115.82.61:5210';
+const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5210';
 
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser]   = useState(null);
@@ -45,6 +45,8 @@ export function AppProvider({ children }) {
   const [rolesUpdatedEvent, setRolesUpdatedEvent] = useState(null);
   // last UserUpdated event payload { userId } — MemberList / ChatView watches this
   const [userUpdatedEvent, setUserUpdatedEvent] = useState(null);
+  // last GuildUpdated event payload { guildId } — GuildSidebar watches this
+  const [guildUpdatedEvent, setGuildUpdatedEvent] = useState(null);
   // channelId (string) -> string[] (userIds) for voice presence
   const [voiceUsersByChannel, setVoiceUsersByChannel] = useState({});
   const voiceUsersByChannelRef = useRef({});
@@ -569,8 +571,16 @@ export function AppProvider({ children }) {
       if (!guildId) return;
       // Refresh our own permissions
       loadGuildPermissions(guildId).catch(console.error);
-      // Signal MemberList / ChatView to refresh colors
+      // Signal components to refresh colors and channels
       setRolesUpdatedEvent({ guildId, ts: Date.now() });
+    });
+
+    conn.on('GuildUpdated', ({ guildId }) => {
+      if (!guildId) return;
+      // Reload guild list to get updated guild info
+      reloadGuilds().catch(console.error);
+      // Signal components (like GuildSidebar) to refresh their data
+      setGuildUpdatedEvent({ guildId, ts: Date.now() });
     });
 
     conn.on('UserUpdated', ({ id }) => {
@@ -675,6 +685,7 @@ export function AppProvider({ children }) {
       guildMemberColors, loadGuildMemberColors, getMemberColor,
       rolesUpdatedEvent,
       userUpdatedEvent,
+      guildUpdatedEvent,
       userStatuses,
       // Unread counts & notification preferences
       unreads,

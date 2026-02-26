@@ -120,6 +120,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await guilds.UpdateGuild(guild);
+        await updates.Clients.Group("guild-" + id).SendAsync("GuildUpdated", new {
+            GuildId = guild.Id
+        });
         return Ok();
     }
 
@@ -252,7 +255,6 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         await updates.Clients.Group($"channel-{channelId}").SendAsync("ChannelDeleted", new {
             ChannelId = channelId
         });
-        
         return Ok();
     }
 
@@ -288,6 +290,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await channels.UpdateChannel(channel);
+        await updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
+            GuildId = guildId
+        });
         return Ok();
     }
 
@@ -336,6 +341,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             await guilds.UpdateGuildChannel(orderedChannels[i]);
         }
         
+        await updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
+            GuildId = guildId
+        });
         return Ok();
     }
 
@@ -411,6 +419,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await guilds.DeleteChannelPermissionOverride(overrideId);
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
         return Ok();
     }
 
@@ -453,6 +464,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         };
         
         await guilds.CreateChannelPermissionOverride(permissionOverride);
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
         return Ok();
     }
     
@@ -486,6 +500,9 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
 
         permissionOverride.Permissions = request.Permissions;
         await guilds.UpdateChannelPermissionOverride(permissionOverride);
+        await updates.Clients.Group("guild-" + guildId).SendAsync("RolesUpdated", new {
+            GuildId = guildId
+        });
         return Ok();
     }
 

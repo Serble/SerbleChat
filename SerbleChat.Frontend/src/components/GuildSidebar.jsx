@@ -783,7 +783,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
 // ─── Main GuildSidebar ────────────────────────────────────────────────────────
 
 export default function GuildSidebar({ guildId }) {
-  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected } = useApp();
+  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent } = useApp();
   const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
@@ -835,6 +835,23 @@ export default function GuildSidebar({ guildId }) {
       setChannels(p => p.filter(c => String(c.id) !== String(guildChannelEvent.channelId)));
     }
   }, [guildChannelEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // React to GuildUpdated event - reload channels and guild info
+  useEffect(() => {
+    if (!guildUpdatedEvent) return;
+    if (String(guildUpdatedEvent.guildId) === String(guildId)) {
+      loadChannels();
+    }
+  }, [guildUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // React to RolesUpdated event - reload channels to refresh permissions
+  useEffect(() => {
+    if (!rolesUpdatedEvent) return;
+    if (String(rolesUpdatedEvent.guildId) === String(guildId)) {
+      loadChannels();
+      loadGuildPermissions(guildId);
+    }
+  }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleReorder(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
