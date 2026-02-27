@@ -7,3 +7,4 @@ riderModule.iml
 *.user
 node_modules/
 .env
+**/dist

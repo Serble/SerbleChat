@@ -133,7 +133,20 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 video.srcObject = new MediaStream([track.mediaStreamTrack]);
                 video.autoplay = true;
                 video.muted = true; // Mute video element (audio comes from audio track)
+                video.playsInline = true; // Important for mobile devices
                 session.trackElements[track.sid] = video;
+                
+                // Explicitly call play() to ensure video starts playing
+                // This is especially important when re-subscribing to tracks after navigation
+                video.play().catch(err => {
+                    console.warn('Auto-play failed for video track, will retry:', err);
+                    // If autoplay fails, try again after a short delay
+                    setTimeout(() => {
+                        video.play().catch(retryErr => {
+                            console.error('Video play retry failed:', retryErr);
+                        });
+                    }, 100);
+                });
                 
                 // Call the callback with video element and participant identity
                 if (onRemoteScreenShare) {

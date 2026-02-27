@@ -254,6 +254,29 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
     });
   }, [userIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Ensure all video elements are playing when component mounts or screen shares update
+  // This fixes the issue where streams freeze when navigating away and back
+  useEffect(() => {
+    if (allScreenShares.length === 0) return;
+
+    // Small delay to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      allScreenShares.forEach(share => {
+        if (share.videoElement && share.videoElement.tagName === 'VIDEO') {
+          const videoEl = share.videoElement;
+          // Check if video is paused and has a valid source
+          if (videoEl.paused && videoEl.srcObject) {
+            videoEl.play().catch(err => {
+              console.log('Failed to resume video playback:', err);
+            });
+          }
+        }
+      });
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [allScreenShares, expandedShare]); // Re-run when shares change or expansion state changes
+
   // Fullscreen handling
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -553,14 +576,30 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
   useEffect(() => {
     const container = containerRef.current;
     if (!hidden && container && share.videoElement && share.videoElement instanceof HTMLElement) {
+      // Clear container first
       container.innerHTML = '';
+      
+      // Set video element styles
       share.videoElement.style.width = '100%';
       share.videoElement.style.height = '100%';
       share.videoElement.style.objectFit = 'contain';
       share.videoElement.style.borderRadius = '8px';
+      
+      // Append the video element
       container.appendChild(share.videoElement);
+      
+      // Force the video to play if it's paused (fixes frozen stream issue)
+      if (share.videoElement.tagName === 'VIDEO') {
+        const videoEl = share.videoElement;
+        // Check if the video is paused and has a valid srcObject
+        if (videoEl.paused && videoEl.srcObject) {
+          videoEl.play().catch(err => {
+            console.log('Failed to auto-play video after navigation:', err);
+          });
+        }
+      }
     }
-  }, [share.videoElement, hidden]);
+  }, [share.videoElement, hidden, share.participantIdentity]);
 
   const username = share.isLocal ? share.username || 'Your Screen' : (user?.username || users[share.participantIdentity]?.username || share.participantIdentity);
 

@@ -1116,7 +1116,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin
 
 export default function GuildSidebar({ guildId }) {
   const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent, channelUpdatedEvent } = useApp();
-  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, voiceStatus, voiceError } = useVoice();
+  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
@@ -1282,6 +1282,7 @@ export default function GuildSidebar({ guildId }) {
           onLeave={leaveVoice}
           onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
+          localScreenShare={localScreenShare}
         />
       )}
 

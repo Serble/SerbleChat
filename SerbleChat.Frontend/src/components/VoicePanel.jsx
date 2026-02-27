@@ -16,6 +16,7 @@ export default function VoicePanel({
   onToggleDeafen,
   onLeave,
   remoteScreenShares = [],
+  localScreenShare = null,
   voiceStatus = 'connected',
   voiceError,
   onRetry,
@@ -23,7 +24,8 @@ export default function VoicePanel({
   const { resolveUser, currentUser } = useApp();
   const { setLocalScreenShare } = useVoice();
   const [userDetails, setUserDetails] = useState({});
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  // Derive isScreenSharing from localScreenShare prop instead of local state
+  const isScreenSharing = Boolean(localScreenShare);
   const [showQualityModal, setShowQualityModal] = useState(false);
   const [qualitySettings, setQualitySettings] = useState(() => {
     // Load saved quality settings from localStorage
@@ -60,7 +62,6 @@ export default function VoicePanel({
         await stopScreenShare(voiceSession, () => {
           setLocalScreenShare(null);
         });
-        setIsScreenSharing(false);
       } else {
         await startScreenShare(voiceSession, (videoElement) => {
           setLocalScreenShare({ 
@@ -68,11 +69,9 @@ export default function VoicePanel({
             username: currentUser?.username || 'Your Screen'
           });
         }, qualitySettings);
-        setIsScreenSharing(true);
       }
     } catch (error) {
       console.error('Screen sharing error:', error);
-      setIsScreenSharing(false);
       setLocalScreenShare(null);
     }
   };
@@ -107,7 +106,6 @@ export default function VoicePanel({
           }, newSettings);
         } catch (restartError) {
           console.error('Failed to restart screen share:', restartError);
-          setIsScreenSharing(false);
           setLocalScreenShare(null);
         }
       }

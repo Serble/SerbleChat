@@ -312,7 +312,7 @@ function SectionHeader({ label }) {
 
 export default function DmSidebar() {
   const { currentUser, dmChannels, groupChats, isConnected, friends, channelLastActive } = useApp();
-  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, voiceStatus, voiceError } = useVoice();
+  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -424,6 +424,7 @@ export default function DmSidebar() {
           onLeave={leaveVoice}
           onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
+          localScreenShare={localScreenShare}
         />
       )}
 
