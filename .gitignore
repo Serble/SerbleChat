@@ -8,3 +8,4 @@ riderModule.iml
 node_modules/
 .env
 **/dist
+**/dist-electron

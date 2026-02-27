@@ -15,6 +15,10 @@ export const OPTION_DEFAULTS = {
     voiceIsolation: false,
     micVolume: 100, // 0-200, default 100 (100% = normal)
   },
+  keybinds: {
+    toggleMute: 'CommandOrControl+Shift+M',
+    toggleDeafen: 'CommandOrControl+Shift+D',
+  },
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -28,6 +32,7 @@ export function ClientOptionsProvider({ children }) {
   const [blockedMessageMode, setBlockedModeState] = useState(OPTION_DEFAULTS.blockedMessageMode);
   const [voiceParticipantSettings, setVoiceParticipantSettingsState] = useState(OPTION_DEFAULTS.voiceParticipantSettings);
   const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
+  const [keybinds, setKeybindsState] = useState(OPTION_DEFAULTS.keybinds);
 
   // Refs so the debounced save callback always has the latest values without
   // needing to be recreated on every render.
@@ -35,6 +40,7 @@ export function ClientOptionsProvider({ children }) {
   const blockedModeRef     = useRef(OPTION_DEFAULTS.blockedMessageMode);
   const voiceSettingsRef   = useRef(OPTION_DEFAULTS.voiceParticipantSettings);
   const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
+  const keybindsRef        = useRef(OPTION_DEFAULTS.keybinds);
   const themeRef           = useRef({ activeId: theme.activeId, customThemes: theme.customThemes });
   const pendingLoad   = useRef(true);   // skip saves until the initial load is done
   const saveTimerRef  = useRef(null);
@@ -88,6 +94,17 @@ export function ClientOptionsProvider({ children }) {
         voiceAudioOptionsRef.current = parsed.voiceAudioOptions;
         setVoiceAudioOptionsState(parsed.voiceAudioOptions);
       }
+      if (parsed.keybinds && typeof parsed.keybinds === 'object') {
+        keybindsRef.current = { ...OPTION_DEFAULTS.keybinds, ...parsed.keybinds };
+        setKeybindsState(keybindsRef.current);
+        
+        // Sync to Electron if running in Electron
+        if (typeof window !== 'undefined' && window.electron?.setKeybinds) {
+          window.electron.setKeybinds(keybindsRef.current).catch(e => {
+            console.warn('[ClientOptions] Failed to sync keybinds to Electron:', e);
+          });
+        }
+      }
     } catch (e) {
       console.warn('[ClientOptions] Failed to load from backend:', e);
     } finally {
@@ -108,6 +125,7 @@ export function ClientOptionsProvider({ children }) {
           blockedMessageMode: blockedModeRef.current,
           voiceParticipantSettings: voiceSettingsRef.current,
           voiceAudioOptions: voiceAudioOptionsRef.current,
+          keybinds: keybindsRef.current,
           theme: themeRef.current,
         });
         await setClientOptions(payload);
@@ -183,6 +201,20 @@ export function ClientOptionsProvider({ children }) {
     if (!pendingLoad.current) scheduleSave();
   }
 
+  function setKeybinds(newKeybinds) {
+    keybindsRef.current = { ...keybindsRef.current, ...newKeybinds };
+    setKeybindsState(keybindsRef.current);
+    
+    // Sync to Electron
+    if (typeof window !== 'undefined' && window.electron?.setKeybinds) {
+      window.electron.setKeybinds(keybindsRef.current).catch(e => {
+        console.warn('[ClientOptions] Failed to sync keybinds to Electron:', e);
+      });
+    }
+    
+    if (!pendingLoad.current) scheduleSave();
+  }
+
   return (
     <ClientOptionsCtx.Provider value={{
       messageLinesLimit,
@@ -194,6 +226,8 @@ export function ClientOptionsProvider({ children }) {
       getVoiceParticipantSetting,
       voiceAudioOptions,
       setVoiceAudioOption,
+      keybinds,
+      setKeybinds,
     }}>
       {children}
     </ClientOptionsCtx.Provider>

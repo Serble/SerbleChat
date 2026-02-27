@@ -1750,15 +1750,294 @@ function NotificationsTab() {
   );
 }
 
+// ─── Keybinds Tab (Electron only) ────────────────────────────────────────────
+
+function KeybindInput({ label, value, onChange, disabled }) {
+  const [isRecording, setIsRecording] = useState(false);
+  const [error, setError] = useState(null);
+  const inputRef = useRef(null);
+
+  // Format keybind for display (show uppercase letters, replace CommandOrControl with Ctrl)
+  function formatKeybindForDisplay(keybind) {
+    if (!keybind) return 'Not set';
+    return keybind.split('+').map(part => {
+      // Replace CommandOrControl with Ctrl for display
+      if (part === 'CommandOrControl') return 'Ctrl';
+      // Uppercase single letter keys for display
+      if (part.length === 1) return part.toUpperCase();
+      return part;
+    }).join('+');
+  }
+
+  async function handleRecord() {
+    if (disabled) return;
+    setIsRecording(true);
+    setError(null);
+  }
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    function handleKeyDown(e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const keys = [];
+      if (e.ctrlKey || e.metaKey) keys.push('CommandOrControl');
+      if (e.shiftKey) keys.push('Shift');
+      if (e.altKey) keys.push('Alt');
+
+      // Get the actual key
+      let key = e.key;
+      
+      // Handle all special keys
+      if (key === ' ') key = 'Space';
+      else if (key === 'Pause') key = 'Pause';
+      else if (key === 'ScrollLock') key = 'ScrLk';
+      else if (/^F\d+$/.test(key)) key = key.toUpperCase(); // F1, F2, etc.
+      else if (key === 'ArrowUp') key = 'Up';
+      else if (key === 'ArrowDown') key = 'Down';
+      else if (key === 'ArrowLeft') key = 'Left';
+      else if (key === 'ArrowRight') key = 'Right';
+      else if (key === 'Enter') key = 'Return';
+      else if (key === 'Backspace') key = 'Backspace';
+      else if (key === 'Delete') key = 'Delete';
+      else if (key === 'Insert') key = 'Insert';
+      else if (key === 'Home') key = 'Home';
+      else if (key === 'End') key = 'End';
+      else if (key === 'PageUp') key = 'PageUp';
+      else if (key === 'PageDown') key = 'PageDown';
+      else if (key === 'Escape') key = 'Escape';
+      else if (key === 'Tab') key = 'Tab';
+      else if (key === 'CapsLock') key = 'CapsLock';
+      else if (key === 'NumLock') key = 'NumLock';
+      else if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') {
+        // Modifier only, wait for actual key
+        return;
+      }
+      // Keep single char keys as-is - don't convert case
+
+      // Allow single key without modifiers, or key with modifiers
+      const accelerator = keys.length > 0 ? keys.join('+') + '+' + key : key;
+
+      // Validate with Electron
+      if (window.electron?.validateKeybind) {
+        window.electron.validateKeybind(accelerator).then(result => {
+          if (result.valid) {
+            onChange(accelerator);
+            setIsRecording(false);
+            setError(null);
+          } else {
+            setError(result.error || 'Invalid keybind');
+            setTimeout(() => setError(null), 2000);
+          }
+        });
+      } else {
+        onChange(accelerator);
+        setIsRecording(false);
+      }
+    }
+
+    function handleBlur() {
+      setIsRecording(false);
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [isRecording, onChange]);
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', fontWeight: 500 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={isRecording ? 'Press keys...' : formatKeybindForDisplay(value)}
+          readOnly
+          disabled={disabled}
+          onClick={handleRecord}
+          style={{
+            flex: 1,
+            background: isRecording ? 'var(--accent)' : 'var(--bg-input)',
+            border: `1px solid ${error ? 'var(--danger)' : 'var(--border)'}`,
+            borderRadius: 6,
+            color: isRecording ? '#fff' : 'var(--text-primary)',
+            padding: '0.6rem 0.75rem',
+            fontSize: '0.875rem',
+            fontFamily: 'monospace',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            outline: 'none',
+            opacity: disabled ? 0.5 : 1,
+          }}
+        />
+        {value && !disabled && (
+          <button
+            onClick={() => onChange('')}
+            style={{
+              background: 'var(--bg-active)',
+              border: 'none',
+              borderRadius: 6,
+              color: 'var(--text-muted)',
+              padding: '0.6rem 0.75rem',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
+            className="hov-color-danger"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {error && (
+        <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.3rem' }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KeybindsTab({ isActive }) {
+  const { keybinds, setKeybinds } = useClientOptions();
+  const [localKeybinds, setLocalKeybinds] = useState(keybinds);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const unregisterableKeys = ['pause', 'scrolllock', 'numlock', 'capslock'];
+  
+  function hasUnregisterableKey(keybind) {
+    return unregisterableKeys.some(k => keybind.toLowerCase().includes(k));
+  }
+
+  useEffect(() => {
+    setLocalKeybinds(keybinds);
+  }, [keybinds]);
+
+  function handleChange(key, value) {
+    const newKeybinds = { ...localKeybinds, [key]: value };
+    setLocalKeybinds(newKeybinds);
+    setHasChanges(true);
+  }
+
+  function handleSave() {
+    setKeybinds(localKeybinds);
+    setHasChanges(false);
+  }
+
+  function handleReset() {
+    setLocalKeybinds(keybinds);
+    setHasChanges(false);
+  }
+
+  return (
+    <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+      <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+        Keybinds
+      </h3>
+      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+        Configure global keyboard shortcuts for voice chat controls. These shortcuts work even when the app is not focused.
+      </p>
+
+      <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: '1.25rem', marginBottom: '1.5rem' }}>
+        <KeybindInput
+          label="Toggle Mute"
+          value={localKeybinds.toggleMute}
+          onChange={(val) => handleChange('toggleMute', val)}
+        />
+
+        <KeybindInput
+          label="Toggle Deafen"
+          value={localKeybinds.toggleDeafen}
+          onChange={(val) => handleChange('toggleDeafen', val)}
+        />
+      </div>
+
+      <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+        <strong style={{ color: 'var(--text-muted)' }}>Tips:</strong>
+        <ul style={{ margin: '0.5rem 0 0 1.2rem', padding: 0 }}>
+          <li>Click on a keybind field and press your desired key combination</li>
+          <li>Use modifiers like Ctrl/Cmd, Shift, and Alt with letter keys</li>
+          <li>Example: CommandOrControl+Shift+M (Ctrl+Shift+M on Windows/Linux, Cmd+Shift+M on Mac)</li>
+        </ul>
+      </div>
+
+      {(hasUnregisterableKey(localKeybinds.toggleMute) || hasUnregisterableKey(localKeybinds.toggleDeafen)) && (
+        <div style={{
+          fontSize: '0.8rem',
+          color: '#fff',
+          background: 'rgba(255, 193, 7, 0.2)',
+          border: '1px solid rgba(255, 193, 7, 0.5)',
+          borderRadius: 6,
+          padding: '0.75rem',
+          marginBottom: '1.5rem',
+          lineHeight: 1.5
+        }}>
+          <strong style={{ color: 'var(--warning)' }}>⚠️ Warning:</strong> This key combination cannot be registered as a global shortcut due to OS limitations. The binding will be saved but may not work as a global hotkey.
+        </div>
+      )}
+
+      {hasChanges && (
+        <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={handleSave}
+            style={{
+              background: 'var(--accent)',
+              border: 'none',
+              borderRadius: 6,
+              color: '#fff',
+              padding: '0.6rem 1.5rem',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+            className="hov-accent"
+          >
+            Save Changes
+          </button>
+          <button
+            onClick={handleReset}
+            style={{
+              background: 'var(--bg-active)',
+              border: 'none',
+              borderRadius: 6,
+              color: 'var(--text-secondary)',
+              padding: '0.6rem 1.5rem',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
+            className="hov-bg"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
-const TABS = [
+import { isElectron } from '../electron-utils.js';
+
+const BASE_TABS = [
   { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
   { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
   { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
   { id: 'voiceAudio',    icon: '🎙️', label: 'Voice Audio',   section: 'APP SETTINGS' },
   { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
 ];
+
+// Add keybinds tab only in Electron
+const TABS = isElectron() 
+  ? [...BASE_TABS, { id: 'keybinds', icon: '⌨️', label: 'Keybinds', section: 'APP SETTINGS' }]
+  : BASE_TABS;
 
 const SECTIONS = [...new Set(TABS.map(t => t.section))];
 
@@ -1789,6 +2068,7 @@ export default function SettingsModal({ onClose }) {
         background: 'rgba(0,0,0,0.7)',
         display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center',
       }}
+      data-keybinds-open={activeTab === 'keybinds' ? 'true' : 'false'}
     >
       <div style={{
         background: 'var(--bg-overlay)', border: isMobile ? 'none' : '1px solid var(--border)',
@@ -1863,6 +2143,7 @@ export default function SettingsModal({ onClose }) {
             {activeTab === 'chat'          && <ChatTab />}
             {activeTab === 'voiceAudio'    && <VoiceAudioTab />}
             {activeTab === 'notifications' && <NotificationsTab />}
+            {activeTab === 'keybinds'      && <KeybindsTab isActive={activeTab === 'keybinds'} />}
           </div>
         </div>
       </div>

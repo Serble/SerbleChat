@@ -1,0 +1,34 @@
+{
+  "appId": "net.serble.chat",
+  "productName": "Serble Chat",
+  "directories": {
+    "output": "dist-electron",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "electron/main.cjs"
+  },
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "public/icons/icon-512x512.svg"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "icon": "public/icons/icon-512x512.svg",
+    "category": "public.app-category.social-networking"
+  },
+  "linux": {
+    "target": ["AppImage", "deb", "snap"],
+    "icon": "public/icons/icon-512x512.svg",
+    "category": "Network;InstantMessaging"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}

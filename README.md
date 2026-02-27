@@ -3,6 +3,11 @@ This is the source code for the Serble Chat platform, a chat app
 that supports creating 'guilds' where you can invite users and give them
 role, have multiple channels, and chat with friends.
 
+Available as:
+- **Web Application** - Browser-based chat
+- **Progressive Web App (PWA)** - Installable web app
+- **Desktop Application** - Native Windows, Mac, and Linux apps via Electron
+
 ## Running
 
 ### Backend
@@ -44,6 +49,29 @@ Because of CORS, notifications and voice chat won't work properly unless
 the site is served over https (which means the backend must be too),
 so keep that in mind. For testing I use tailscale to provision a certificate
 and then I use a local nginx instance to forward requests.
+
+**Running as Web/PWA:**
+```bash
+cd SerbleChat.Frontend
+npm install
+npm run dev
+
+# Build the app (to /dist)
+npm run build
+```
+
+**Running as Desktop App:**
+```bash
+cd SerbleChat.Frontend
+npm install
+npm run electron:dev
+
+# Build the app
+npm run electron:build        # Current platform
+npm run electron:build:win    # Windows
+npm run electron:build:mac    # macOS
+npm run electron:build:linux  # Linux
+```
 
 ## Contributing
 Bug reports as issues and pull requests are appreciated.

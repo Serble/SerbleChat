@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume, setMicVolume } from '../voice.js';
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
+import { isElectron } from '../electron-utils.js';
 
 const VoiceContext = createContext();
 
@@ -20,6 +21,17 @@ export function VoiceProvider({ children }) {
   const [voiceError, setVoiceError] = useState(null); // { message, context, timestamp }
 
   const activeJoinIdRef = useRef(0);
+  
+  // Refs to access latest state in keybind handlers
+  const voiceSessionRef = useRef(voiceSession);
+  const voiceMutedRef = useRef(voiceMuted);
+  const voiceDeafenedRef = useRef(voiceDeafened);
+  
+  useEffect(() => {
+    voiceSessionRef.current = voiceSession;
+    voiceMutedRef.current = voiceMuted;
+    voiceDeafenedRef.current = voiceDeafened;
+  }, [voiceSession, voiceMuted, voiceDeafened]);
 
   function describeVoiceError(err, context) {
     if (err?.message) return err.message;
@@ -162,6 +174,10 @@ export function VoiceProvider({ children }) {
   // Global keyboard shortcut: M to toggle mute
   useEffect(() => {
     function handleKeyDown(e) {
+      // Disable voice shortcuts if keybinds menu is open
+      const keybindsOpen = document.querySelector('[data-keybinds-open="true"]');
+      if (keybindsOpen) return;
+      
       // Only trigger if we're in voice, not typing in an input/textarea, and M is pressed
       if (!voiceSession || voiceStatus !== 'connected') return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -176,6 +192,55 @@ export function VoiceProvider({ children }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [voiceSession, voiceStatus, voiceMuted, voiceDeafened]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Electron global keybinds listener
+  useEffect(() => {
+    if (!isElectron() || !window.electron?.onKeybindTriggered) return;
+
+    const unsubscribe = window.electron.onKeybindTriggered((action) => {
+      // Use refs to get current state without recreating the listener
+      const session = voiceSessionRef.current;
+      const status = voiceStatus;
+
+      // Don't trigger keybinds if the keybinds settings are open
+      const settingsModal = document.querySelector('[data-keybinds-open="true"]');
+      if (settingsModal) return;
+
+      if (!session || status !== 'connected') return;
+
+      if (action === 'toggleMute') {
+        const nextMuted = !voiceMutedRef.current;
+        applyVoiceMuted(session, nextMuted).then(() => {
+          setVoiceMuted(nextMuted);
+        }).catch(err => {
+          console.error('Keybind mute failed:', err);
+        });
+      } else if (action === 'toggleDeafen') {
+        const nextDeafened = !voiceDeafenedRef.current;
+        const shouldUnmuteAfterUndeafen = !nextDeafened && session.wasUnmutedBeforeDeafen === true;
+        
+        applyVoiceDeafened(session, nextDeafened).then(() => {
+          setVoiceDeafened(nextDeafened);
+          
+          if (nextDeafened) {
+            if (!voiceMutedRef.current) {
+              setVoiceMuted(true);
+            }
+          } else {
+            if (shouldUnmuteAfterUndeafen) {
+              setVoiceMuted(false);
+            }
+          }
+        }).catch(err => {
+          console.error('Keybind deafen failed:', err);
+        });
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [voiceStatus]); // Only depend on voiceStatus since we use refs for other state
 
   // Apply saved participant settings when participants change
   useEffect(() => {
