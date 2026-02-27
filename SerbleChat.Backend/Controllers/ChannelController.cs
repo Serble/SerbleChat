@@ -20,59 +20,17 @@ namespace SerbleChat.Backend.Controllers;
 [Authorize]
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
-    IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications) : ControllerBase {
+    IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications,
+    IImagesService images) : ControllerBase {
 
-    private async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
-        switch (channel.Type) {
-            case ChannelType.Group:
-                return await groups.IsMemberInChat(channel.Id, userId);
-            
-            case ChannelType.Dm: {
-                DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
-                if (dmChannel == null) {
-                    return false;
-                }
-
-                if (!(dmChannel.User1Id == userId || dmChannel.User2Id == userId)) {
-                    return false;
-                }
-
-                if (sendMessages) {
-                    bool blocked = await users.AreUsersBlocked(dmChannel.User1Id, dmChannel.User2Id);
-                    if (blocked) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-
-            case ChannelType.Guild: {
-                if (!channel.GuildId.HasValue) {
-                    return false;
-                }
-
-                if (!await guilds.IsGuildMember(channel.GuildId.Value, userId)) {
-                    return false;
-                }
-
-                if (sendMessages) {
-                    GuildPermissions perms = await guilds.GetUserPermissions(userId, channel.GuildId.Value, channel.Id);
-                    if (!perms.HasPerm(p => p.SendMessages)) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-            
-            default:
-                return false;
-        }
+    private Task SignalChannelUpdated(long channelId) {
+        return updates.Clients.Group("channel-" + channelId).SendAsync("ChannelUpdated", new {
+            ChannelId = channelId
+        });
     }
 
-    [HttpPost("{channelId:int}")]
-    public async Task<ActionResult> PostMessage(int channelId, [FromBody] SendMessageBody body) {
+    [HttpPost("{channelId:long}")]
+    public async Task<ActionResult> PostMessage(long channelId, [FromBody] SendMessageBody body) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -122,8 +80,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok();
     }
 
-    [HttpDelete("{channelId:int}/message/{messageId:int}")]
-    public async Task<ActionResult> DeleteMessage(int channelId, int messageId) {
+    [HttpDelete("{channelId:long}/message/{messageId:long}")]
+    public async Task<ActionResult> DeleteMessage(long channelId, long messageId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -156,8 +114,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok();
     }
 
-    [HttpGet("{channelId:int}/messages")]
-    public async Task<ActionResult<IEnumerable<Message>>> GetMessages(int channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0) {
+    [HttpGet("{channelId:long}/messages")]
+    public async Task<ActionResult<IEnumerable<Message>>> GetMessages(long channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -177,9 +135,34 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         await unreads.MarkRead(userId, channelId, messages.FirstOrDefault()?.Id ?? 0);
         return Ok(messages);
     }
+
+    [HttpGet("{channelId:long}/messages/{messageId:long}")]
+    public async Task<ActionResult<Message>> GetMessage(long channelId, long messageId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
     
-    [HttpGet("{channelId:int}")]
-    public async Task<ActionResult<Channel>> GetChannel(int channelId) {
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+        
+        // permission check
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
+            return Forbid();
+        }
+    
+        Message? message = await msgs.GetMessage(messageId);
+        if (message == null) {
+            return NotFound("Message not found");
+        }
+        
+        return Ok(message);
+    }
+
+    [HttpGet("{channelId:long}")]
+    public async Task<ActionResult<Channel>> GetChannel(long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -200,8 +183,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
 
     // This is expensive, for redis this is O(n), where n is member count.
     // But for MySQL this is O(1).
-    [HttpGet("{channelId:int}/members")]
-    public async Task<ActionResult<IEnumerable<PublicUserResponse>>> GetChannelMembers(int channelId) {
+    [HttpGet("{channelId:long}/members")]
+    public async Task<ActionResult<IEnumerable<PublicUserResponse>>> GetChannelMembers(long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -226,8 +209,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(response);
     }
 
-    [HttpGet("{channelId:int}/unreads")]
-    public async Task<ActionResult<UnreadsResponse>> GetChannelUnreads(int channelId) {
+    [HttpGet("{channelId:long}/unreads")]
+    public async Task<ActionResult<UnreadsResponse>> GetChannelUnreads(long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -290,8 +273,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(dmChannels);
     }
     
-    [HttpGet("group/{groupId:int}")]
-    public async Task<ActionResult<GroupChat>> GetGroupChat(int groupId) {
+    [HttpGet("group/{groupId:long}")]
+    public async Task<ActionResult<GroupChat>> GetGroupChat(long groupId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -309,8 +292,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(chat);
     }
     
-    [HttpPost("group/{groupId:int}/members")]
-    public async Task<ActionResult> AddMembersToGroupChat(int groupId, [FromBody] AddGroupChatMembersBody body) {
+    [HttpPost("group/{groupId:long}/members")]
+    public async Task<ActionResult> AddMembersToGroupChat(long groupId, [FromBody] AddGroupChatMembersBody body) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -338,8 +321,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok();
     }
     
-    [HttpDelete("group/{groupId:int}")]
-    public async Task<ActionResult> DeleteOrLeaveGroupChat(int groupId) {
+    [HttpDelete("group/{groupId:long}")]
+    public async Task<ActionResult> DeleteOrLeaveGroupChat(long groupId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -448,8 +431,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(dmChannels);
     }
 
-    [HttpPost("{channelId:int}/voice")]
-    public async Task<ActionResult<LiveKitTokenResponse>> GetVoiceToken(int channelId) {
+    [HttpPost("{channelId:long}/voice")]
+    public async Task<ActionResult<LiveKitTokenResponse>> GetVoiceToken(long channelId) {
         Result<string, ActionResult<LiveKitTokenResponse>> result = 
             await CheckVoicePerms<LiveKitTokenResponse>(channelId, false);
         if (result.GetErr(out ActionResult<LiveKitTokenResponse> error)) {
@@ -468,8 +451,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(new LiveKitTokenResponse { Token = token.ToJwt() });
     }
 
-    [HttpGet("{channelId:int}/voice")]
-    public async Task<ActionResult<UsersInVoiceResponse>> GetUsersInVoice(int channelId) {
+    [HttpGet("{channelId:long}/voice")]
+    public async Task<ActionResult<UsersInVoiceResponse>> GetUsersInVoice(long channelId) {
         Result<string, ActionResult<UsersInVoiceResponse>> result = 
             await CheckVoicePerms<UsersInVoiceResponse>(channelId, false);
         if (result.GetErr(out ActionResult<UsersInVoiceResponse> error)) {
@@ -481,7 +464,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         });
     }
     
-    private async Task<Result<string, ActionResult<T>>> CheckVoicePerms<T>(int channelId, bool joining) {
+    private async Task<Result<string, ActionResult<T>>> CheckVoicePerms<T>(long channelId, bool joining) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Result<string, ActionResult<T>>.Err(Unauthorized());
@@ -510,8 +493,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Result<string, ActionResult<T>>.Ok(userId);
     }
     
-    [HttpGet("{channelId:int}/notification-preferences")]
-    public async Task<ActionResult<NotificationPreferences>> GetNotificationPreferences(int channelId) {
+    [HttpGet("{channelId:long}/notification-preferences")]
+    public async Task<ActionResult<NotificationPreferences>> GetNotificationPreferences(long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
 
@@ -523,8 +506,8 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok(prefs.Preferences);
     }
 
-    [HttpPut("{channelId:int}/notification-preferences")]
-    public async Task<ActionResult> SetNotificationPreferences(int channelId, [FromBody] SetNotificationPreferencesBody body) {
+    [HttpPut("{channelId:long}/notification-preferences")]
+    public async Task<ActionResult> SetNotificationPreferences(long channelId, [FromBody] SetNotificationPreferencesBody body) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) return Unauthorized();
 
@@ -538,6 +521,54 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         if (body.Notifications.HasValue) prefs.Preferences.Notifications = body.Notifications.Value;
         if (body.Unreads.HasValue) prefs.Preferences.Unreads = body.Unreads.Value;
         await users.SetChannelNotificationPreferences(userId, channelId, prefs);
+        return Ok();
+    }
+    
+    [HttpPut("{channelId:long}/icon")]
+    public async Task<ActionResult> SetChannelIcon(long channelId, IFormFile file) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+
+        if (!await channels.UserHasAccessToChannel(userId, channel, false, 
+                true, g => g.ManageChannels)) {
+            return Forbid();
+        }
+
+        if (!images.IsFileValid(file, out string? msg)) {
+            return BadRequest(msg);
+        }
+
+        await images.UploadImage(file, $"channel-icons/{channelId}.webp");
+        await SignalChannelUpdated(channelId);
+        return Ok();
+    }
+
+    [HttpDelete("{channelId:long}/icon")]
+    public async Task<ActionResult> DeleteChannelIcon(long channelId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+
+        if (!await channels.UserHasAccessToChannel(userId, channel, false, 
+                true, g => g.ManageChannels)) {
+            return Forbid();
+        }
+
+        await images.DeleteImage($"channel-icons/{channelId}.webp");
+        await SignalChannelUpdated(channelId);
         return Ok();
     }
 

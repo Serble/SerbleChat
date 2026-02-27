@@ -4,9 +4,12 @@ import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
+import GroupChatSettingsModal from './GroupChatSettingsModal.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
 import UserPopout from './UserPopout.jsx';
+import UserInteraction from './UserInteraction.jsx';
+import { getGroupChatIconUrl } from '../api.js';
 
 function SidebarItem({ icon, label, active, badge, onClick }) {
   const [hovered, setHovered] = useState(false);
@@ -39,6 +42,71 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
         </span>
       )}
     </button>
+  );
+}
+
+function VoiceParticipantsBelow({ channelId }) {
+  const [users, setUsers] = useState({});
+  const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
+  const userIds = voiceUsersByChannel[String(channelId)] ?? [];
+
+  useEffect(() => {
+    primeVoiceUsers(channelId);
+  }, [channelId, primeVoiceUsers]);
+
+  useEffect(() => {
+    userIds.forEach(id => {
+      if (!users[id]) {
+        resolveUser(id).then(user => {
+          setUsers(prev => ({ ...prev, [id]: user }));
+        });
+      }
+    });
+  }, [userIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (userIds.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{
+      paddingLeft: '2.5rem',
+      paddingRight: '0.6rem',
+      paddingTop: '0.2rem',
+      paddingBottom: '0.2rem',
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '0.35rem',
+      alignItems: 'center',
+    }}>
+      {userIds.map(id => {
+        const user = users[id];
+        const name = user?.username ?? id.slice(0, 10);
+        
+        return (
+          <UserInteraction key={id} userId={user?.id} username={name}>
+            <div
+              title={name}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.2rem 0.35rem',
+                borderRadius: '3px',
+                background: 'rgba(124,58,237,0.08)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>
+                {name}
+              </span>
+            </div>
+          </UserInteraction>
+        );
+      })}
+    </div>
   );
 }
 
@@ -102,53 +170,113 @@ function DmItem({ dm, currentChannelId }) {
           onClose={() => setCtxMenu(null)}
         />
       )}
+      <VoiceParticipantsBelow channelId={dm.channelId} />
     </>
   );
 }
 
 function GroupItem({ chat, currentChannelId }) {
-  const { unreads } = useApp();
+  const { unreads, currentUser, channelUpdatedEvent } = useApp();
   const nav = useNavigate();
   const active = String(currentChannelId) === String(chat.channelId);
   const name = chat.channel?.name ?? `Group ${chat.channelId}`;
   const [hovered, setHovered] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);
+  const [hasIcon, setHasIcon] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const unread = unreads[String(chat.channelId)] ?? 0;
+  const isOwner = chat.ownerId === currentUser?.id;
+
+  // Check if group chat icon exists
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setHasIcon(true);
+    img.onerror = () => setHasIcon(false);
+    img.src = getGroupChatIconUrl(chat.channelId);
+  }, [chat.channelId]);
+
+  // Refresh icon when channel is updated
+  useEffect(() => {
+    if (!channelUpdatedEvent) return;
+    if (String(channelUpdatedEvent.channelId) === String(chat.channelId)) {
+      const img = new Image();
+      img.onload = () => setHasIcon(true);
+      img.onerror = () => setHasIcon(false);
+      img.src = getGroupChatIconUrl(chat.channelId) + '?t=' + channelUpdatedEvent.ts;
+    }
+  }, [channelUpdatedEvent, chat.channelId]);
 
   function handleContextMenu(e) {
     e.preventDefault();
+    // Always show notification settings on right-click
     setCtxMenu({ x: e.clientX, y: e.clientY });
   }
 
   return (
     <>
-      <button
-        onClick={() => nav(`/app/channel/${chat.channelId}`)}
-        onContextMenu={handleContextMenu}
+      <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: '0.6rem',
-          padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-          border: 'none', cursor: 'pointer', textAlign: 'left',
-          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-          fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
-          transition: 'background 0.1s, color 0.1s',
+          display: 'flex', alignItems: 'center', gap: '0.25rem',
+          padding: '0 0.1rem',
         }}
       >
-        <Avatar name={name} size={28} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
-        {unread > 0 && !active && (
-          <span style={{
-            background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
-            padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
-            minWidth: 18, textAlign: 'center', flexShrink: 0,
-          }}>
-            {unread > 99 ? '99+' : unread}
-          </span>
+        <button
+          onClick={() => nav(`/app/channel/${chat.channelId}`)}
+          onContextMenu={handleContextMenu}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.6rem',
+            padding: '0.35rem 0.6rem', borderRadius: '6px', flex: 1,
+            background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
+            border: 'none', cursor: 'pointer', textAlign: 'left',
+            color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+            fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
+            transition: 'background 0.1s, color 0.1s',
+            minWidth: 0,
+          }}
+        >
+          {/* Group chat icon or avatar */}
+          {hasIcon ? (
+            <img
+              key={`group-icon-${chat.channelId}-${channelUpdatedEvent?.ts || 0}`}
+              src={getGroupChatIconUrl(chat.channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+              alt="Group icon"
+              onError={() => setHasIcon(false)}
+              style={{
+                width: 28, height: 28, borderRadius: '4px', flexShrink: 0,
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <Avatar name={name} size={28} />
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
+          {unread > 0 && !active && (
+            <span style={{
+              background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
+              padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
+              minWidth: 18, textAlign: 'center', flexShrink: 0,
+            }}>
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </button>
+
+        {/* Settings icon — only visible to owners on hover */}
+        {isOwner && hovered && (
+          <span
+            title="Group Settings"
+            onClick={e => { e.stopPropagation(); setShowSettings(true); }}
+            style={{ 
+              cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', 
+              padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, 
+              flexShrink: 0, transition: 'color 0.1s' 
+            }}
+            className="hov-text-primary"
+          >⚙</span>
         )}
-      </button>
+      </div>
       {ctxMenu && (
         <ChannelNotifContextMenu
           channelId={chat.channelId}
@@ -157,6 +285,14 @@ function GroupItem({ chat, currentChannelId }) {
           onClose={() => setCtxMenu(null)}
         />
       )}
+      {showSettings && isOwner && (
+        <GroupChatSettingsModal
+          chat={chat}
+          onClose={() => setShowSettings(false)}
+          channelUpdatedEvent={channelUpdatedEvent}
+        />
+      )}
+      <VoiceParticipantsBelow channelId={chat.channelId} />
     </>
   );
 }
@@ -176,7 +312,7 @@ function SectionHeader({ label }) {
 
 export default function DmSidebar() {
   const { currentUser, dmChannels, groupChats, isConnected, friends, channelLastActive } = useApp();
-  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants, remoteScreenShares } = useVoice();
+  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, voiceStatus, voiceError } = useVoice();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -274,14 +410,19 @@ export default function DmSidebar() {
       </div>
 
       {/* Voice Panel - shown when connected to voice */}
-      {voiceSession && (
+      {(voiceSession || voiceStatus !== 'idle' || voiceError) && (
         <VoicePanel
           channelId={voiceChannelId}
           voiceSession={voiceSession}
           participants={voiceParticipants}
           voiceMuted={voiceMuted}
+          voiceDeafened={voiceDeafened}
+          voiceStatus={voiceStatus}
+          voiceError={voiceError}
           onToggleMute={toggleMute}
+          onToggleDeafen={toggleDeafen}
           onLeave={leaveVoice}
+          onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
         />
       )}

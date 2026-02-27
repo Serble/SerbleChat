@@ -768,14 +768,7 @@ function ProfileTab() {
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700 }}>Preview</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)', minWidth: 200 }}>
             {/* Mini avatar */}
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-              background: previewBg(previewName, previewColor),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 700, fontSize: 15, userSelect: 'none',
-            }}>
-              {previewInitial}
-            </div>
+            <Avatar key={pfpKey} userId={currentUser?.id} name={previewName} size={36} color={previewColor} />
             <span style={{ fontWeight: 600, fontSize: '0.9rem', color: previewNameColor(previewName, previewColor) }}>
               {previewName}
             </span>
@@ -796,14 +789,7 @@ function ProfileTab() {
                 position: 'absolute', top: -22,
                 background: 'var(--bg-overlay)', borderRadius: '50%', padding: 2,
               }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: '50%',
-                  background: previewBg(previewName, previewColor),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: 16,
-                }}>
-                  {previewInitial}
-                </div>
+                <Avatar key={pfpKey} userId={currentUser?.id} name={previewName} size={38} color={previewColor} />
               </div>
             </div>
             <div style={{ padding: '1.6rem 0.75rem 0.6rem' }}>
@@ -1208,6 +1194,115 @@ function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNot
   );
 }
 
+// ─── Voice Audio Tab ──────────────────────────────────────────────────────────
+
+function VoiceAudioTab() {
+  const { voiceAudioOptions, setVoiceAudioOption } = useClientOptions();
+
+  const options = [
+    {
+      key: 'echoCancellation',
+      label: 'Echo Cancellation',
+      icon: '🔊',
+      description: 'Reduces echo from speakers through the microphone.',
+    },
+    {
+      key: 'noiseSuppression',
+      label: 'Noise Suppression',
+      icon: '🔇',
+      description: 'Filters out background noise to improve audio clarity.',
+    },
+    {
+      key: 'autoGainControl',
+      label: 'Auto Gain Control',
+      icon: '📊',
+      description: 'Automatically adjusts microphone volume to maintain consistent levels.',
+    },
+    {
+      key: 'voiceIsolation',
+      label: 'Voice Isolation',
+      icon: '🎯',
+      description: 'Isolates your voice while suppressing other sounds.',
+    },
+  ];
+
+  function handleToggle(key) {
+    setVoiceAudioOption(key, !voiceAudioOptions[key]);
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+      {/* ── Audio Processing Options ─────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Audio Processing
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {options.map(opt => {
+          const enabled = voiceAudioOptions[opt.key] ?? false;
+          return (
+            <div
+              key={opt.key}
+              onClick={() => handleToggle(opt.key)}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '0.85rem',
+                padding: '0.75rem 1rem', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${enabled ? 'var(--accent)' : 'var(--border)'}`,
+                background: enabled ? 'rgba(124,58,237,0.08)' : 'var(--bg-secondary)',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+              className={!enabled ? 'hov-bg' : undefined}
+            >
+              {/* Toggle switch */}
+              <div style={{
+                width: 36, height: 20, borderRadius: 10, flexShrink: 0, marginTop: 2,
+                background: enabled ? 'var(--accent)' : 'var(--bg-tertiary)',
+                display: 'flex', alignItems: 'center', padding: '0 2px',
+                transition: 'background 0.15s',
+              }}>
+                <div style={{
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                  transition: 'transform 0.15s',
+                  transform: enabled ? 'translateX(16px)' : 'translateX(0)',
+                }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                  <span style={{ fontSize: '0.95rem' }}>{opt.icon}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: enabled ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                    {opt.label}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', background: 'var(--bg-active)', color: 'var(--text-muted)', borderRadius: 4, padding: '0.1rem 0.4rem', fontWeight: 600 }}>
+                    {enabled ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  {opt.description}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Info ──────────────────────────────────────────────────── */}
+      <div style={{
+        marginTop: '1.5rem', padding: '0.75rem 1rem', borderRadius: 8,
+        background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+      }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          💡 <strong>Tip:</strong> These audio processing features can improve voice quality during calls.
+          If you experience issues, try disabling these options one by one to find the best settings for your setup.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab() {
   const { currentUser, updateUserDefaultPrefs } = useApp();
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
@@ -1485,6 +1580,7 @@ const TABS = [
   { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
   { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
   { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
+  { id: 'voiceAudio',    icon: '🎙️', label: 'Voice Audio',   section: 'APP SETTINGS' },
   { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
 ];
 
@@ -1493,6 +1589,7 @@ const SECTIONS = [...new Set(TABS.map(t => t.section))];
 export default function SettingsModal({ onClose }) {
   const [activeTab, setActiveTab] = useState('profile');
   const backdropRef = useRef(null);
+  const backdropMouseDownRef = useRef(false);
   const { isMobile } = useMobile();
 
   useEffect(() => {
@@ -1504,7 +1601,13 @@ export default function SettingsModal({ onClose }) {
   return createPortal(
     <div
       ref={backdropRef}
-      onClick={e => { if (e.target === backdropRef.current) onClose(); }}
+      onMouseDown={e => { backdropMouseDownRef.current = e.target === backdropRef.current; }}
+      onClick={e => {
+        if (backdropMouseDownRef.current && e.target === backdropRef.current) {
+          onClose();
+        }
+        backdropMouseDownRef.current = false;
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.7)',
@@ -1582,6 +1685,7 @@ export default function SettingsModal({ onClose }) {
             {activeTab === 'profile'       && <ProfileTab />}
             {activeTab === 'appearance'    && <AppearanceTab />}
             {activeTab === 'chat'          && <ChatTab />}
+            {activeTab === 'voiceAudio'    && <VoiceAudioTab />}
             {activeTab === 'notifications' && <NotificationsTab />}
           </div>
         </div>

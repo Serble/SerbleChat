@@ -95,7 +95,12 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
     }
 
     public Task AddUserMentions(long channelId, long messageId, IEnumerable<string> userIds) {
-        List<MessageMention> mentions = userIds.Select(userId => new MessageMention {
+        string[] validUserIds = context.Users
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => u.Id)
+            .ToArray();
+        
+        List<MessageMention> mentions = validUserIds.Select(userId => new MessageMention {
             UserId = userId,
             MessageId = messageId
         }).ToList();

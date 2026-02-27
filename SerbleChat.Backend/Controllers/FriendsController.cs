@@ -11,7 +11,7 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("/friends")]
 [Authorize]
-public class FriendsController(IFriendshipRepo friendships, IHubContext<ChatHub> updates) : ControllerBase {
+public class FriendsController(IFriendshipRepo friendships, IUserRepo users, IHubContext<ChatHub> updates) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<Friendship[]>> Get() {
@@ -32,6 +32,16 @@ public class FriendsController(IFriendshipRepo friendships, IHubContext<ChatHub>
         
         if (userId == friendId) {
             return BadRequest("Cannot add yourself as a friend");
+        }
+        
+        ChatUser? otherUser = await users.GetUserById(friendId);
+        if (otherUser == null) {
+            return NotFound("User not found");
+        }
+
+        bool blocked = await users.AreUsersBlocked(friendId, userId);
+        if (blocked) {
+            return BadRequest("Cannot send friend request to this user");
         }
         
         Friendship? existing = await friendships.GetFriendship(userId, friendId);

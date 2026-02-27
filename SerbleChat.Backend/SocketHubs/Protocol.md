@@ -97,3 +97,10 @@
     "guildId": int
 }
 ```
+
+`ChannelUpdated`:
+```json
+{
+    "channelId": int
+}
+```

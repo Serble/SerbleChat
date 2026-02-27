@@ -58,10 +58,23 @@ public class ChannelRepo(ChatDatabaseContext context, IGroupChatRepo groups, IDm
         return channels;
     }
     
-    public async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages) {
+    public async Task<bool> UserHasAccessToChannel(string userId, Channel channel, bool sendMessages, 
+        bool requireGroupOwner, Func<GuildPermissions, PermissionState>? guildPermission) {
         switch (channel.Type) {
-            case ChannelType.Group:
+            case ChannelType.Group: {
+                if (requireGroupOwner) {
+                    GroupChat? groupChat = await groups.GetGroupChat(channel.Id);
+                    if (groupChat == null) {
+                        return false;
+                    }
+                    
+                    if (groupChat.OwnerId != userId) {
+                        return false;
+                    }
+                }
+                
                 return await groups.IsMemberInChat(channel.Id, userId);
+            }
             
             case ChannelType.Dm: {
                 DmChannel? dmChannel = await dms.GetDmChannel(channel.Id);
@@ -98,6 +111,10 @@ public class ChannelRepo(ChatDatabaseContext context, IGroupChatRepo groups, IDm
                 }
                 
                 if (sendMessages && !perms.HasPerm(p => p.SendMessages)) {
+                    return false;
+                }
+
+                if (guildPermission != null && !perms.HasPerm(guildPermission)) {
                     return false;
                 }
                 

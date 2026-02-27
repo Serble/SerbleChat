@@ -268,6 +268,12 @@ export async function getMessages(channelId, limit = 50, offset = 0) {
   return handle(res);
 }
 
+/** GET /channel/:channelId/messages/:messageId  – get a single message */
+export async function getMessage(channelId, messageId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, { headers: authHeaders() });
+  return handle(res);
+}
+
 /** DELETE /channel/:channelId/message/:messageId  – delete a message */
 export async function deleteMessage(channelId, messageId) {
   const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/message/${encodeURIComponent(messageId)}`, {
@@ -334,6 +340,33 @@ export async function getGroupChats() {
 export async function getGroupChat(groupId) {
   const res = await fetch(`${BASE}/channel/group/${encodeURIComponent(groupId)}`, { headers: authHeaders() });
   return handle(res);
+}
+
+/** PUT /channel/group/:groupId/icon – upload group chat icon (owner only) */
+export async function uploadGroupChatIcon(groupId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(groupId)}/icon`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handle(res);
+}
+
+/** DELETE /channel/group/:groupId/icon – delete group chat icon (owner only) */
+export async function deleteGroupChatIcon(groupId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(groupId)}/icon`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** Helper: construct group chat icon URL */
+export function getGroupChatIconUrl(groupId) {
+  const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
+  return `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(groupId)}.webp`;
 }
 
 // ── Guilds ────────────────────────────────────────────────────────────────────
@@ -448,6 +481,33 @@ export async function updateGuildChannel(guildId, channelId, patch) {
     body: JSON.stringify(body),
   });
   return handle(res);
+}
+
+/** PUT /guild/:guildId/channel/:channelId/icon – upload channel icon */
+export async function uploadChannelIcon(guildId, channelId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/icon`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/channel/:channelId/icon – delete channel icon */
+export async function deleteChannelIcon(guildId, channelId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/icon`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** Helper: construct channel icon URL */
+export function getChannelIconUrl(guildId, channelId) {
+  const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
+  return `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(channelId)}.webp`;
 }
 
 /** GET /guild/:guildId/my-permissions – get the current user's resolved permissions */

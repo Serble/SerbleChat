@@ -1,22 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
-
-function Avatar({ name, size = 24 }) {
-  const initial = name ? name[0].toUpperCase() : '?';
-  const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: `hsl(${hue},45%,40%)`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.42,
-      flexShrink: 0, userSelect: 'none',
-    }}>
-      {initial}
-    </div>
-  );
-}
+import Avatar from './Avatar.jsx';
+import UserInteraction from './UserInteraction.jsx';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -105,6 +91,18 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   ] : [];
 
   const getMinPanelHeight = () => (allScreenShares.length > 0 ? 200 : 100);
+
+  // Clear expanded view if the share disappears or index is invalid.
+  useEffect(() => {
+    if (expandedShare === null) return;
+    if (allScreenShares.length === 0) {
+      setExpandedShare(null);
+      return;
+    }
+    if (expandedShare >= allScreenShares.length) {
+      setExpandedShare(null);
+    }
+  }, [allScreenShares.length, expandedShare]);
 
   // Recalculate grid layout when streams or panel size changes
   useEffect(() => {
@@ -336,16 +334,18 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                 const user = users[id];
                 const name = user?.username ?? id.slice(0, 10);
                 return (
-                  <div key={id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    fontSize: '0.8rem',
-                    color: 'var(--text-secondary)',
-                  }}>
-                    <Avatar name={name} size={16} />
-                    <span>{name}</span>
-                  </div>
+                  <UserInteraction key={id} userId={user?.id} username={name}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-secondary)',
+                    }}>
+                      <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
+                      <span>{name}</span>
+                    </div>
+                  </UserInteraction>
                 );
               })}
             </div>
@@ -473,24 +473,25 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
               const user = users[id];
               const name = user?.username ?? id.slice(0, 10);
               return (
-                <div
-                  key={id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
-                    padding: '0.3rem 0.5rem',
-                    borderRadius: '4px',
-                    background: 'rgba(124,58,237,0.08)',
-                    fontSize: '0.8rem',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  <Avatar name={name} size={20} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {name}
-                  </span>
-                </div>
+                <UserInteraction key={id} userId={user?.id} username={name}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.3rem 0.5rem',
+                      borderRadius: '4px',
+                      background: 'rgba(124,58,237,0.08)',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <Avatar userId={user?.id} name={name} size={20} color={user?.color} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {name}
+                    </span>
+                  </div>
+                </UserInteraction>
               );
             })}
           </div>

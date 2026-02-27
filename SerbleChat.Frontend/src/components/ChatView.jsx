@@ -3,8 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
-         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL } from '../api.js';
+         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
+         getChannelIconUrl, getGroupChatIconUrl } from '../api.js';
 import UserPopout from './UserPopout.jsx';
+import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
@@ -12,6 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import InviteCard from './InviteCard.jsx';
+import MessageCard from './MessageCard.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
@@ -21,6 +24,10 @@ import Avatar from './Avatar.jsx';
 // Intentionally origin-agnostic so that links shared from a different
 // hostname/port (or after a Vite port reassignment on reload) still work.
 const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/(\d+)/g;
+
+// Regex that matches message links: /app/channel/:channelId?message=:messageId
+// Also origin-agnostic for the same reasons as invite links.
+const MESSAGE_RE = () => /https?:\/\/[^\s/]+\/app\/channel\/(\d+)\?message=(\d+)/g;
 
 /** Extract unique invite IDs from a message string */
 function extractInviteIds(content) {
@@ -34,11 +41,28 @@ function extractInviteIds(content) {
   return ids;
 }
 
+/** Extract unique message links (channelId, messageId pairs) from a message string */
+function extractMessageLinks(content) {
+  const links = [];
+  const seen = new Set();
+  let m;
+  const re = MESSAGE_RE();
+  while ((m = re.exec(content)) !== null) {
+    const key = `${m[1]}-${m[2]}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      links.push({ channelId: m[1], messageId: m[2] });
+    }
+  }
+  return links;
+}
+
+
 // Markdown component overrides styled for the dark chat theme
 const mdComponents = {
   p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
-    if (href && INVITE_RE().test(href)) {
+    if (href && (INVITE_RE().test(href) || MESSAGE_RE().test(href))) {
       return <span style={{ color: 'var(--text-link)' }}>{children}</span>;
     }
     return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', textDecoration: 'underline' }}>{children}</a>;
@@ -131,7 +155,7 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, highlighted }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, highlighted, guildId }) {
   const [author, setAuthor] = useState(null);
 
   // Group consecutive messages from the same author
@@ -144,6 +168,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
 
   // Memoize invite ID extraction — only re-runs when message content changes
   const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
+  const messageLinks = useMemo(() => extractMessageLinks(msg.content), [msg.content]);
 
   // Resolve color: role color > user profile color > generated hue
   const nameColor = getColor(msg.authorId, author?.username, author?.color);
@@ -182,6 +207,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
           ))}
+          {messageLinks.map(link => (
+            <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
+          ))}
         </div>
       </div>
     );
@@ -195,26 +223,27 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
       style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
       className="hov-bg"
     >
-      <div
-        onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
-        style={{ cursor: msg._pending ? 'default' : 'pointer', flexShrink: 0 }}
-      >
-        <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} style={{ marginTop: 2 }} />
-      </div>
+      <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
+        <div style={{ flexShrink: 0 }}>
+          <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} style={{ marginTop: 2 }} />
+        </div>
+      </UserInteraction>
       <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
-          <span
-            onClick={e => !msg._pending && onUserClick(e, msg.authorId, author?.username)}
-            style={{ fontWeight: 600, color: nameColor, fontSize: '0.9rem', cursor: msg._pending ? 'default' : 'pointer' }}
-          >
-            {author?.username ?? msg.authorId.slice(0, 10)}
-          </span>
+          <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
+            <span style={{ fontWeight: 600, color: nameColor, fontSize: '0.9rem' }}>
+              {author?.username ?? msg.authorId.slice(0, 10)}
+            </span>
+          </UserInteraction>
           <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{tsHeader}</span>
         </div>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
           <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
           {inviteIds.map(id => (
             <InviteCard key={id} inviteId={id} />
+          ))}
+          {messageLinks.map(link => (
+            <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
           ))}
         </div>
       </div>
@@ -263,7 +292,7 @@ function BlockedInputBanner({ username, userId, unblockUser }) {
   );
 }
 
-function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData }) {
+function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, guildId }) {
   const [expanded, setExpanded] = useState(false);
   const [author, setAuthor] = useState(null);
 
@@ -289,6 +318,7 @@ function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, on
             getColor={getColor}
             mentionData={mentionData}
             highlighted={false}
+            guildId={guildId}
           />
         ))}
         <div
@@ -345,7 +375,7 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent } = useApp();
   const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted, remoteScreenShares } = useVoice();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
@@ -355,6 +385,7 @@ export default function ChatView() {
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [otherUser, setOtherUser]   = useState(null);
+  const [hasChannelIcon, setHasChannelIcon] = useState(false);
   const [ctxMenu, setCtxMenu]       = useState(null);
   const [copiedCtx, setCopiedCtx]   = useState(null); // 'text' | 'link' | 'id' | null
   const [popout,  setPopout]        = useState(null);
@@ -526,6 +557,24 @@ export default function ChatView() {
     loadGuildMemberColors(channel.guildId, channelId);
   }, [userUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh icon when channel is updated
+  useEffect(() => {
+    if (!channelUpdatedEvent || !channel) return;
+    if (String(channelUpdatedEvent.channelId) === String(channel.id)) {
+      if (channel.type === 0) {
+        const img = new Image();
+        img.onload = () => setHasChannelIcon(true);
+        img.onerror = () => setHasChannelIcon(false);
+        img.src = getChannelIconUrl(channel.guildId, channel.id) + '?t=' + channelUpdatedEvent.ts;
+      } else if (channel.type === 2) {
+        const img = new Image();
+        img.onload = () => setHasChannelIcon(true);
+        img.onerror = () => setHasChannelIcon(false);
+        img.src = getGroupChatIconUrl(channel.id) + '?t=' + channelUpdatedEvent.ts;
+      }
+    }
+  }, [channelUpdatedEvent, channel]);
+
   async function handleLeave() {
     if (leaveBusy) return;
     const confirmed = isOwner
@@ -669,6 +718,44 @@ export default function ChatView() {
     const otherId = dm.user1Id === currentUser.id ? dm.user2Id : dm.user1Id;
     resolveUser(otherId).then(setOtherUser);
   }, [channel, dmChannels, currentUser, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check if channel has an icon (guild or group chat)
+  useEffect(() => {
+    if (!channel) return;
+    if (channel.type === 0) {
+      // Guild channel icon
+      const img = new Image();
+      img.onload = () => setHasChannelIcon(true);
+      img.onerror = () => setHasChannelIcon(false);
+      img.src = getChannelIconUrl(channel.guildId, channel.id);
+    } else if (channel.type === 2) {
+      // Group chat icon
+      const img = new Image();
+      img.onload = () => setHasChannelIcon(true);
+      img.onerror = () => setHasChannelIcon(false);
+      img.src = getGroupChatIconUrl(channel.id);
+    } else {
+      setHasChannelIcon(false);
+    }
+  }, [channel]);
+
+  // Refresh icon when channel is updated via signal
+  useEffect(() => {
+    if (!channelUpdatedEvent || !channel) return;
+    if (String(channelUpdatedEvent.channelId) === String(channel.id)) {
+      if (channel.type === 0) {
+        const img = new Image();
+        img.onload = () => setHasChannelIcon(true);
+        img.onerror = () => setHasChannelIcon(false);
+        img.src = getChannelIconUrl(channel.guildId, channel.id) + '?t=' + channelUpdatedEvent.ts;
+      } else if (channel.type === 2) {
+        const img = new Image();
+        img.onload = () => setHasChannelIcon(true);
+        img.onerror = () => setHasChannelIcon(false);
+        img.src = getGroupChatIconUrl(channel.id) + '?t=' + channelUpdatedEvent.ts;
+      }
+    }
+  }, [channelUpdatedEvent, channel]);
 
   // When a new message arrives and the user is already near the bottom, keep them there.
   // We intentionally do NOT run this on the initial load — that's handled by the
@@ -861,9 +948,39 @@ export default function ChatView() {
               }}
             >☰</button>
           )}
-          <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
-          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {channelDisplayName}
+          {/* Channel icon display */}
+          {isGroupChannel && hasChannelIcon ? (
+            // Group chat: show icon as avatar
+            <img
+              key={`header-group-icon-${channelId}-${channelUpdatedEvent?.ts || 0}`}
+              src={getGroupChatIconUrl(channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+              alt="Group icon"
+              onError={() => setHasChannelIcon(false)}
+              style={{
+                width: 32, height: 32, borderRadius: '6px', flexShrink: 0,
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
+          )}
+          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            {/* Guild channel icon (if exists) */}
+            {isGuildChannel && hasChannelIcon && (
+              <img
+                key={`header-channel-icon-${channelId}-${channelUpdatedEvent?.ts || 0}`}
+                src={getChannelIconUrl(channel.guildId, channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+                alt="Channel icon"
+                onError={() => setHasChannelIcon(false)}
+                style={{
+                  width: 20, height: 20, borderRadius: '4px', flexShrink: 0,
+                  objectFit: 'cover',
+                }}
+              />
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {channelDisplayName}
+            </span>
           </span>
           {isDmChannel && otherUser && !isMobile && (
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Direct Message</span>
@@ -927,6 +1044,7 @@ export default function ChatView() {
                   onUserClick={handleUserClick}
                   getColor={getColor}
                   mentionData={mentionData}
+                  guildId={guildIdForColor}
                 />
               );
             }
@@ -942,6 +1060,7 @@ export default function ChatView() {
                 getColor={getColor}
                 mentionData={mentionData}
                 highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
+                guildId={guildIdForColor}
               />
             );
           })}

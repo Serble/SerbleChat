@@ -9,6 +9,7 @@ import {
   updateGuildChannel, updateGuild, deleteGuild,
   createGuildInvite, getGuildInvites, deleteGuildInvite,
   reorderGuildChannel, FRONTEND_URL, uploadGuildIcon, deleteGuildIcon, getGuildIconUrl,
+  getChannelIconUrl, uploadChannelIcon, deleteChannelIcon,
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
@@ -16,6 +17,7 @@ import ChannelPermsTab from './ChannelPermsTab.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
+import UserInteraction from './UserInteraction.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -135,7 +137,6 @@ function GuildNotifTab({ guildId }) {
 // ─── Guild Settings Modal ─────────────────────────────────────────────────────
 
 function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUpdatedEvent }) {
-  // ...existing code...
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [iconError, setIconError] = useState(null);
   const [hasIcon, setHasIcon] = useState(false);
@@ -629,12 +630,16 @@ function Toggle({ on }) {
 
 // ─── Channel Settings Modal ───────────────────────────────────────────────────
 
-function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated, onDeleted }) {
+function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated, onDeleted, channelUpdatedEvent }) {
   const [tab, setTab]               = useState('overview');
   const [name, setName]             = useState(channel.name);
   const [voiceCapable, setVoiceCapable] = useState(channel.voiceCapable ?? false);
   const [busy, setBusy]             = useState(false);
   const [err, setErr]               = useState(null);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [iconError, setIconError] = useState(null);
+  const [hasIcon, setHasIcon] = useState(false);
+  const iconFileRef = useRef(null);
   const backdropRef                 = useRef(null);
   const { isMobile }                = useMobile();
 
@@ -643,6 +648,25 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Check if channel icon exists when modal opens
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setHasIcon(true);
+    img.onerror = () => setHasIcon(false);
+    img.src = getChannelIconUrl(guildId, channel.id);
+  }, [channel.id, guildId]);
+
+  // Refresh icon preview when channel is updated
+  useEffect(() => {
+    if (!channelUpdatedEvent) return;
+    if (String(channelUpdatedEvent.channelId) === String(channel.id)) {
+      const img = new Image();
+      img.onload = () => setHasIcon(true);
+      img.onerror = () => setHasIcon(false);
+      img.src = getChannelIconUrl(guildId, channel.id) + '?t=' + channelUpdatedEvent.ts;
+    }
+  }, [channelUpdatedEvent, channel.id, guildId]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -667,6 +691,35 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
       onDeleted();
       onClose();
     } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  async function handleIconUpload(file) {
+    if (!file) return;
+    setUploadingIcon(true);
+    setIconError(null);
+    try {
+      await uploadChannelIcon(guildId, channel.id, file);
+      setErr(null);
+      // ChannelUpdated signal will handle refreshing the icon
+    } catch (err) {
+      setIconError(err.message);
+    } finally {
+      setUploadingIcon(false);
+    }
+  }
+
+  async function handleIconDelete() {
+    setUploadingIcon(true);
+    setIconError(null);
+    try {
+      await deleteChannelIcon(guildId, channel.id);
+      setErr(null);
+      // ChannelUpdated signal will handle refreshing the icon
+    } catch (err) {
+      setIconError(err.message);
+    } finally {
+      setUploadingIcon(false);
+    }
   }
 
   const tabStyle = active => ({
@@ -723,6 +776,101 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
                 </div>
                 <Toggle on={voiceCapable} />
               </div>
+
+              {/* Channel Icon Upload */}
+              {canManage && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={labelStyle}>Channel Icon</label>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: 64, height: 64, borderRadius: '8px',
+                      background: 'var(--bg-secondary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '2rem', overflow: 'hidden', flexShrink: 0,
+                      border: '1px solid var(--border)',
+                    }}>
+                      {hasIcon ? (
+                        <img
+                          key={`channel-icon-${channel.id}-${channelUpdatedEvent?.ts || 0}`}
+                          src={getChannelIconUrl(guildId, channel.id) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+                          alt="Channel icon"
+                          onError={() => setHasIcon(false)}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        '#'
+                      )}
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <input
+                        ref={iconFileRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleIconUpload(file);
+                          if (e.target) e.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => iconFileRef.current?.click()}
+                        disabled={uploadingIcon}
+                        style={{
+                          background: 'var(--bg-active)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          padding: '0.45rem 0.75rem',
+                          color: 'var(--text-secondary)',
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          cursor: uploadingIcon ? 'default' : 'pointer',
+                          opacity: uploadingIcon ? 0.6 : 1,
+                          transition: 'background 0.15s, color 0.15s',
+                        }}
+                        className={!uploadingIcon ? 'hov-bg' : undefined}
+                      >
+                        {uploadingIcon ? 'Uploading…' : 'Upload Image'}
+                      </button>
+                      {hasIcon && (
+                        <button
+                          type="button"
+                          onClick={handleIconDelete}
+                          disabled={uploadingIcon}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: '6px',
+                            padding: '0.45rem 0.75rem',
+                            color: 'var(--danger)',
+                            fontSize: '0.875rem',
+                            fontWeight: 600,
+                            cursor: uploadingIcon ? 'default' : 'pointer',
+                            opacity: uploadingIcon ? 0.6 : 1,
+                            transition: 'background 0.15s, color 0.15s',
+                          }}
+                          className={!uploadingIcon ? 'hov-danger-fill' : undefined}
+                        >
+                          Remove Icon
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {iconError && (
+                    <div style={{
+                      background: 'rgba(242,63,67,0.1)',
+                      border: '1px solid rgba(242,63,67,0.3)',
+                      borderRadius: '6px',
+                      padding: '0.5rem 0.75rem',
+                      color: 'var(--danger)',
+                      fontSize: '0.83rem',
+                    }}>
+                      {iconError}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {err && <div style={{ background: 'rgba(242,63,67,0.1)', border: '1px solid rgba(242,63,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: 'var(--danger)', fontSize: '0.83rem' }}>{err}</div>}
               {canManage && (
@@ -790,55 +938,60 @@ function VoiceParticipantsBelow({ channelId }) {
       {userIds.map(id => {
         const user = users[id];
         const name = user?.username ?? id.slice(0, 10);
-        const initial = name ? name[0].toUpperCase() : '?';
-        const hue = name ? (name.charCodeAt(0) * 37 + name.charCodeAt(name.length - 1) * 17) % 360 : 200;
         
         return (
-          <div
-            key={id}
-            title={name}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              padding: '0.2rem 0.35rem',
-              borderRadius: '3px',
-              background: 'rgba(124,58,237,0.08)',
-              fontSize: '0.75rem',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <div style={{
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: `hsl(${hue},45%,40%)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: '0.6rem',
-              flexShrink: 0,
-            }}>
-              {initial}
+          <UserInteraction key={id} userId={user?.id} username={name}>
+            <div
+              title={name}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.2rem 0.35rem',
+                borderRadius: '3px',
+                background: 'rgba(124,58,237,0.08)',
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>
+                {name}
+              </span>
             </div>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>
-              {name}
-            </span>
-          </div>
+          </UserInteraction>
         );
       })}
     </div>
   );
 }
 
-function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
+function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin,
                        onDragStart, onDragEnter, onDragEnd, isDragOver }) {
-  const { unreads } = useApp();
+  const { unreads, channelUpdatedEvent } = useApp();
   const [hovered, setHovered] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y }
+  const [hasIcon, setHasIcon] = useState(false);
   const unread = unreads[String(ch.id)] ?? 0;
+
+  // Check if channel icon exists
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setHasIcon(true);
+    img.onerror = () => setHasIcon(false);
+    img.src = getChannelIconUrl(ch.guildId, ch.id);
+  }, [ch.id, ch.guildId]);
+
+  // Refresh icon when channel is updated
+  useEffect(() => {
+    if (!channelUpdatedEvent) return;
+    if (String(channelUpdatedEvent.channelId) === String(ch.id)) {
+      const img = new Image();
+      img.onload = () => setHasIcon(true);
+      img.onerror = () => setHasIcon(false);
+      img.src = getChannelIconUrl(ch.guildId, ch.id) + '?t=' + channelUpdatedEvent.ts;
+    }
+  }, [channelUpdatedEvent, ch.id, ch.guildId]);
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -889,9 +1042,23 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
             minWidth: 0,
           }}
         >
-          <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
-            {ch.voiceCapable ? '🔊' : '#'}
-          </span>
+          {/* Channel icon or default symbol */}
+          {hasIcon ? (
+            <img
+              key={`channel-icon-${ch.id}-${channelUpdatedEvent?.ts || 0}`}
+              src={getChannelIconUrl(ch.guildId, ch.id) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+              alt="Channel icon"
+              onError={() => setHasIcon(false)}
+              style={{
+                width: 16, height: 16, borderRadius: '4px', flexShrink: 0,
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
+              {ch.voiceCapable ? '🔊' : '#'}
+            </span>
+          )}
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
           {unread > 0 && !active && (
             <span style={{
@@ -903,6 +1070,20 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
             </span>
           )}
         </button>
+
+        {ch.voiceCapable && onVoiceJoin && (
+          <button
+            title="Join Voice"
+            onClick={e => { e.stopPropagation(); onVoiceJoin(); }}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
+              padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1,
+              fontSize: '0.9rem', flexShrink: 0, transition: 'color 0.1s',
+            }}
+            className="hov-text-primary"
+          >🎙️</button>
+        )}
 
         {/* Settings icon — only visible to managers on hover */}
         {canManage && hovered && (
@@ -934,8 +1115,8 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
 // ─── Main GuildSidebar ────────────────────────────────────────────────────────
 
 export default function GuildSidebar({ guildId }) {
-  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent } = useApp();
-  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants, remoteScreenShares } = useVoice();
+  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent, channelUpdatedEvent } = useApp();
+  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, voiceStatus, voiceError } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
@@ -1067,6 +1248,10 @@ export default function GuildSidebar({ guildId }) {
           <ChannelRow key={ch.id} ch={ch} canManage={canManageChannels}
             active={String(currentChannelId) === String(ch.id)}
             onNavigate={() => nav(`/app/channel/${ch.id}`)}
+            onVoiceJoin={() => {
+              nav(`/app/channel/${ch.id}`);
+              joinVoice(Number(ch.id));
+            }}
             onSettings={() => setChannelSettings(ch)}
             isDragOver={dragOverIndex === i}
             onDragStart={() => { dragIndexRef.current = i; }}
@@ -1083,14 +1268,19 @@ export default function GuildSidebar({ guildId }) {
       </div>
 
       {/* Voice Panel - shown when connected to voice */}
-      {voiceSession && (
+      {(voiceSession || voiceStatus !== 'idle' || voiceError) && (
         <VoicePanel
           channelId={voiceChannelId}
           voiceSession={voiceSession}
           participants={voiceParticipants}
           voiceMuted={voiceMuted}
+          voiceDeafened={voiceDeafened}
+          voiceStatus={voiceStatus}
+          voiceError={voiceError}
           onToggleMute={toggleMute}
+          onToggleDeafen={toggleDeafen}
           onLeave={leaveVoice}
+          onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
         />
       )}
@@ -1180,6 +1370,7 @@ export default function GuildSidebar({ guildId }) {
             if (String(currentChannelId) === String(channelSettings.id)) nav(`/app/guild/${guildId}`, { replace: true });
             setChannelSettings(null);
           }}
+          channelUpdatedEvent={channelUpdatedEvent}
         />
       )}
     </div>

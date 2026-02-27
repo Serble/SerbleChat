@@ -9,7 +9,7 @@ namespace SerbleChat.Backend.Services.Impl;
 public class VoiceManager(IOptions<LiveKitSettings> liveKitSettings, IHubContext<ChatHub> updates) : IVoiceManager {
     private RoomServiceClient roomService = new(liveKitSettings.Value.Host, liveKitSettings.Value.Key, liveKitSettings.Value.Secret);
 
-    public async Task<List<string>> GetConnectedUsers(int channelId) {
+    public async Task<List<string>> GetConnectedUsers(long channelId) {
         ListParticipantsResponse result = await roomService.ListParticipants(
             new ListParticipantsRequest { Room = $"channel:{channelId}" });
         

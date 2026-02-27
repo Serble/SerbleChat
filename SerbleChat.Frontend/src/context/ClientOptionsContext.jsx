@@ -7,6 +7,13 @@ import { getClientOptions, setClientOptions } from '../api.js';
 export const OPTION_DEFAULTS = {
   messageLinesLimit: 28,
   blockedMessageMode: 'masked', // 'masked' | 'visible' | 'hidden'
+  voiceParticipantSettings: {}, // { [participantIdentity]: { muted: boolean, volume: number } }
+  voiceAudioOptions: {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    voiceIsolation: false,
+  },
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -18,11 +25,15 @@ export function ClientOptionsProvider({ children }) {
 
   const [messageLinesLimit, setMsgLimitState] = useState(OPTION_DEFAULTS.messageLinesLimit);
   const [blockedMessageMode, setBlockedModeState] = useState(OPTION_DEFAULTS.blockedMessageMode);
+  const [voiceParticipantSettings, setVoiceParticipantSettingsState] = useState(OPTION_DEFAULTS.voiceParticipantSettings);
+  const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
 
   // Refs so the debounced save callback always has the latest values without
   // needing to be recreated on every render.
   const msgLimitRef        = useRef(OPTION_DEFAULTS.messageLinesLimit);
   const blockedModeRef     = useRef(OPTION_DEFAULTS.blockedMessageMode);
+  const voiceSettingsRef   = useRef(OPTION_DEFAULTS.voiceParticipantSettings);
+  const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
   const themeRef           = useRef({ activeId: theme.activeId, customThemes: theme.customThemes });
   const pendingLoad   = useRef(true);   // skip saves until the initial load is done
   const saveTimerRef  = useRef(null);
@@ -68,6 +79,14 @@ export function ClientOptionsProvider({ children }) {
         blockedModeRef.current = parsed.blockedMessageMode;
         setBlockedModeState(parsed.blockedMessageMode);
       }
+      if (parsed.voiceParticipantSettings && typeof parsed.voiceParticipantSettings === 'object') {
+        voiceSettingsRef.current = parsed.voiceParticipantSettings;
+        setVoiceParticipantSettingsState(parsed.voiceParticipantSettings);
+      }
+      if (parsed.voiceAudioOptions && typeof parsed.voiceAudioOptions === 'object') {
+        voiceAudioOptionsRef.current = parsed.voiceAudioOptions;
+        setVoiceAudioOptionsState(parsed.voiceAudioOptions);
+      }
     } catch (e) {
       console.warn('[ClientOptions] Failed to load from backend:', e);
     } finally {
@@ -86,6 +105,8 @@ export function ClientOptionsProvider({ children }) {
         const payload = JSON.stringify({
           messageLinesLimit: msgLimitRef.current,
           blockedMessageMode: blockedModeRef.current,
+          voiceParticipantSettings: voiceSettingsRef.current,
+          voiceAudioOptions: voiceAudioOptionsRef.current,
           theme: themeRef.current,
         });
         await setClientOptions(payload);
@@ -101,6 +122,13 @@ export function ClientOptionsProvider({ children }) {
     if (pendingLoad.current) return;
     scheduleSave();
   }, [theme.activeId, theme.customThemes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Watch voice audio options changes and persist ───────────────────────────
+
+  useEffect(() => {
+    if (pendingLoad.current) return;
+    scheduleSave();
+  }, [voiceAudioOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Public setters ───────────────────────────────────────────────────────────
 
@@ -118,12 +146,47 @@ export function ClientOptionsProvider({ children }) {
     if (!pendingLoad.current) scheduleSave();
   }
 
+  function setVoiceParticipantSetting(participantIdentity, setting) {
+    const current = voiceSettingsRef.current[participantIdentity] || { muted: false, volume: 1 };
+    const updated = { ...current, ...setting };
+    
+    // Remove if both are defaults
+    if (!updated.muted && updated.volume === 1) {
+      const newSettings = { ...voiceSettingsRef.current };
+      delete newSettings[participantIdentity];
+      voiceSettingsRef.current = newSettings;
+      setVoiceParticipantSettingsState(newSettings);
+    } else {
+      voiceSettingsRef.current = { ...voiceSettingsRef.current, [participantIdentity]: updated };
+      setVoiceParticipantSettingsState(voiceSettingsRef.current);
+    }
+    
+    if (!pendingLoad.current) scheduleSave();
+  }
+
+  function getVoiceParticipantSetting(participantIdentity) {
+    return voiceSettingsRef.current[participantIdentity] || { muted: false, volume: 1 };
+  }
+
+  function setVoiceAudioOption(optionName, value) {
+    const valid = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation'];
+    if (!valid.includes(optionName)) return;
+    voiceAudioOptionsRef.current = { ...voiceAudioOptionsRef.current, [optionName]: value };
+    setVoiceAudioOptionsState(voiceAudioOptionsRef.current);
+    if (!pendingLoad.current) scheduleSave();
+  }
+
   return (
     <ClientOptionsCtx.Provider value={{
       messageLinesLimit,
       setMessageLinesLimit,
       blockedMessageMode,
       setBlockedMessageMode,
+      voiceParticipantSettings,
+      setVoiceParticipantSetting,
+      getVoiceParticipantSetting,
+      voiceAudioOptions,
+      setVoiceAudioOption,
     }}>
       {children}
     </ClientOptionsCtx.Provider>

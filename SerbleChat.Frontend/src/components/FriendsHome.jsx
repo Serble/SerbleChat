@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } from '../api.js';
-import UserPopout from './UserPopout.jsx';
+import UserInteraction from './UserInteraction.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
 
@@ -43,7 +43,7 @@ function ActionBtn({ label, color, onClick, disabled }) {
   );
 }
 
-function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
+function FriendRow({ friendship, currentUserId, onRefresh }) {
   const { resolveUser } = useApp();
   const nav = useNavigate();
   const [user, setUser] = useState(null);
@@ -98,19 +98,17 @@ function FriendRow({ friendship, currentUserId, onRefresh, onUserClick }) {
       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
-      <div
-        onClick={e => onUserClick(e, otherId, user?.username)}
-        style={{ cursor: 'pointer', flexShrink: 0 }}
-      >
-        <Avatar userId={otherId} name={user?.username} color={user?.color} />
-      </div>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div
-          onClick={e => onUserClick(e, otherId, user?.username)}
-          style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', display: 'inline-block', maxWidth: '100%' }}
-        >
-          {user?.username ?? '…'}
+      <UserInteraction userId={otherId} username={user?.username}>
+        <div style={{ flexShrink: 0 }}>
+          <Avatar userId={otherId} name={user?.username} color={user?.color} />
         </div>
+      </UserInteraction>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <UserInteraction userId={otherId} username={user?.username}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: '100%' }}>
+            {user?.username ?? '…'}
+          </div>
+        </UserInteraction>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
           {isIncoming ? 'Incoming friend request' :
            isOutgoing ? 'Friend request sent' :
@@ -193,13 +191,6 @@ export default function FriendsHome() {
   const [addInput, setAddInput] = useState('');
   const [addStatus, setAddStatus] = useState(null);
   const [addBusy, setAddBusy]   = useState(false);
-  const [popout, setPopout]     = useState(null); // { userId, username, anchorRect }
-
-  function handleUserClick(e, userId, username) {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setPopout({ userId, username: username ?? userId, anchorRect: rect });
-  }
 
   if (!currentUser) return null;
 
@@ -300,7 +291,7 @@ export default function FriendsHome() {
               <EmptyState icon="🤝" title="No friends yet" text="Add friends to start chatting." />
             ) : (
               accepted.map(f => (
-                <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
+                <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
               ))
             )}
           </div>
@@ -319,7 +310,7 @@ export default function FriendsHome() {
                       Incoming — {incoming.length}
                     </div>
                     {incoming.map(f => (
-                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
+                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
                     ))}
                   </>
                 )}
@@ -329,7 +320,7 @@ export default function FriendsHome() {
                       Outgoing — {outgoing.length}
                     </div>
                     {outgoing.map(f => (
-                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} onUserClick={handleUserClick} />
+                      <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
                     ))}
                   </>
                 )}
@@ -409,15 +400,6 @@ export default function FriendsHome() {
           </div>
         )}
       </div>
-
-      {popout && (
-        <UserPopout
-          userId={popout.userId}
-          username={popout.username}
-          anchorRect={popout.anchorRect}
-          onClose={() => setPopout(null)}
-        />
-      )}
     </div>
   );
 }

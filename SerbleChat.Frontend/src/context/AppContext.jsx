@@ -47,6 +47,8 @@ export function AppProvider({ children }) {
   const [userUpdatedEvent, setUserUpdatedEvent] = useState(null);
   // last GuildUpdated event payload { guildId } — GuildSidebar watches this
   const [guildUpdatedEvent, setGuildUpdatedEvent] = useState(null);
+  // last ChannelUpdated event payload { channelId } — DmSidebar/ChatView watches this
+  const [channelUpdatedEvent, setChannelUpdatedEvent] = useState(null);
   // channelId (string) -> string[] (userIds) for voice presence
   const [voiceUsersByChannel, setVoiceUsersByChannel] = useState({});
   const voiceUsersByChannelRef = useRef({});
@@ -583,6 +585,12 @@ export function AppProvider({ children }) {
       setGuildUpdatedEvent({ guildId, ts: Date.now() });
     });
 
+    conn.on('ChannelUpdated', ({ channelId }) => {
+      if (!channelId) return;
+      // Signal components to refresh channel data (icons, etc.)
+      setChannelUpdatedEvent({ channelId, ts: Date.now() });
+    });
+
     conn.on('UserUpdated', ({ id }) => {
       // A guild member's roles changed — refresh member colors/list
       setUserUpdatedEvent({ userId: id, ts: Date.now() });
@@ -698,6 +706,7 @@ export function AppProvider({ children }) {
       rolesUpdatedEvent,
       userUpdatedEvent,
       guildUpdatedEvent,
+      channelUpdatedEvent,
       userStatuses,
       // Unread counts & notification preferences
       unreads,
