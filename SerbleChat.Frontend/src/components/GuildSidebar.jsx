@@ -935,7 +935,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings,
 
 export default function GuildSidebar({ guildId }) {
   const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent } = useApp();
-  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants } = useVoice();
+  const { voiceSession, voiceMuted, toggleMute, leaveVoice, voiceChannelId, voiceParticipants, remoteScreenShares } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
@@ -1091,6 +1091,7 @@ export default function GuildSidebar({ guildId }) {
           voiceMuted={voiceMuted}
           onToggleMute={toggleMute}
           onLeave={leaveVoice}
+          remoteScreenShares={remoteScreenShares}
         />
       )}
 

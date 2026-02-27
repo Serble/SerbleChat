@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.jsx';
+import { useVoice } from '../context/VoiceContext.jsx';
+import { startScreenShare, stopScreenShare } from '../voice.js';
 
 function Avatar({ name, size = 24 }) {
   const initial = name ? name[0].toUpperCase() : '?';
@@ -23,10 +25,13 @@ export default function VoicePanel({
   participants = [],
   voiceMuted, 
   onToggleMute, 
-  onLeave 
+  onLeave,
+  remoteScreenShares = []
 }) {
-  const { resolveUser } = useApp();
+  const { resolveUser, currentUser } = useApp();
+  const { setLocalScreenShare } = useVoice();
   const [userDetails, setUserDetails] = useState({});
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   // Resolve usernames for all participants whenever the list changes
   useEffect(() => {
@@ -38,6 +43,29 @@ export default function VoicePanel({
       }
     });
   }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleToggleScreenShare = async () => {
+    try {
+      if (isScreenSharing) {
+        await stopScreenShare(voiceSession, () => {
+          setLocalScreenShare(null);
+        });
+        setIsScreenSharing(false);
+      } else {
+        await startScreenShare(voiceSession, (videoElement) => {
+          setLocalScreenShare({ 
+            videoElement, 
+            username: currentUser?.username || 'Your Screen'
+          });
+        });
+        setIsScreenSharing(true);
+      }
+    } catch (error) {
+      console.error('Screen sharing error:', error);
+      setIsScreenSharing(false);
+      setLocalScreenShare(null);
+    }
+  };
 
   if (!voiceSession) return null;
 
@@ -155,6 +183,36 @@ export default function VoicePanel({
       >
         <span style={{ fontSize: '1rem' }}>{voiceMuted ? '🔇' : '🎙️'}</span>
         <span>{voiceMuted ? 'Unmute' : 'Mute'}</span>
+      </button>
+
+      {/* Screen share button */}
+      <button
+        onClick={handleToggleScreenShare}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          background: isScreenSharing ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)',
+          border: 'none',
+          borderRadius: '6px',
+          padding: '0.4rem',
+          cursor: 'pointer',
+          color: isScreenSharing ? 'var(--success)' : 'var(--text-primary)',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = isScreenSharing ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.15)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = isScreenSharing ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)';
+        }}
+        title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
+      >
+        <span style={{ fontSize: '1rem' }}>{isScreenSharing ? '🛑' : '📺'}</span>
+        <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
       </button>
     </div>
   );

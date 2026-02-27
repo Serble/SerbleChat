@@ -346,7 +346,7 @@ export default function ChatView() {
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta } = useApp();
-  const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted } = useVoice();
+  const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted, remoteScreenShares } = useVoice();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [input, setInput]           = useState('');

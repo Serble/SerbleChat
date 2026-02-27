@@ -10,6 +10,8 @@ export function VoiceProvider({ children }) {
   const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | connecting | connected | error
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
+  const [remoteScreenShares, setRemoteScreenShares] = useState([]);
+  const [localScreenShare, setLocalScreenShare] = useState(null); // { videoElement, username }
 
   async function handleJoinVoice(channelId) {
     if (voiceBusy || voiceStatus === 'connecting') return;
@@ -27,6 +29,12 @@ export function VoiceProvider({ children }) {
       const session = await joinChannel({ channelId }, (participants) => {
         console.log(participants);
         setVoiceParticipants(participants);
+      }, (videoElement, participantIdentity) => {
+        // Handle remote screen share
+        setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity }]);
+      }, (participantIdentity) => {
+        // Handle remote screen share stop
+        setRemoteScreenShares(prev => prev.filter(s => s.participantIdentity !== participantIdentity));
       });
       setVoiceSession(session ?? {});
       setVoiceStatus('connected');
@@ -55,6 +63,8 @@ export function VoiceProvider({ children }) {
       setVoiceBusy(false);
       setVoiceChannelId(null);
       setVoiceParticipants([]);
+      setRemoteScreenShares([]);
+      setLocalScreenShare(null);
     }
   }
 
@@ -93,6 +103,9 @@ export function VoiceProvider({ children }) {
       voiceStatus,
       voiceBusy,
       voiceParticipants,
+      remoteScreenShares,
+      localScreenShare,
+      setLocalScreenShare,
       joinVoice: handleJoinVoice,
       leaveVoice: handleLeaveVoice,
       toggleMute: handleToggleMute,

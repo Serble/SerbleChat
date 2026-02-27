@@ -1,5 +1,5 @@
 import {getChannelVoiceToken} from "./api.js";
-import {createLocalAudioTrack, LocalAudioTrack, Room, RoomEvent} from "https://unpkg.com/livekit-client@2.17.2/dist/livekit-client.esm.mjs";
+import {createLocalAudioTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent} from "https://unpkg.com/livekit-client@2.17.2/dist/livekit-client.esm.mjs";
 
 class VoiceSession {
     constructor(room, onParticipantsChange) {
@@ -9,10 +9,12 @@ class VoiceSession {
 
     /** @type {Room} */
     room;
-    /** @type {HTMLElement[]} */
-    trackElements = [];
+    /** @type {Object<string, HTMLElement>} */
+    trackElements = {};
     /** @type {LocalAudioTrack} */
     micTrack;
+    /** @type {LocalVideoTrack} */
+    streamTrack;
     /** @type {Function} */
     onParticipantsChange;
     
@@ -57,32 +59,50 @@ class VoiceSession {
     }
 }
 
-export async function joinChannel(channelId, onParticipantsChange) {
+export async function joinChannel(channelId, onParticipantsChange, onRemoteScreenShare, onRemoteUnScreenShare) {
     let token = await getChannelVoiceToken(channelId.channelId);
     token = token.token;
 
     let room = new Room();
-    let session = new VoiceSession(room, onParticipantsChange);
+    let session = new VoiceSession(room, onParticipantsChange, onRemoteScreenShare);
 
     // Play remote tracks
-    room.on(RoomEvent.TrackSubscribed, (track) => {
+    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         console.log(`Subscribed to track type: ${track.kind}`);
         if (track.kind === "audio") {
             const audio = document.createElement("audio");
             audio.srcObject = new MediaStream([track.mediaStreamTrack]);
             audio.autoplay = true;
             document.body.appendChild(audio);
-            session.trackElements.push(audio);
+            session.trackElements[track.sid] = audio;
             // Update participants when audio track is subscribed
             if (onParticipantsChange) onParticipantsChange(session.getParticipants());
         }
         else if (track.kind === "video") {
+            // TODO: Detect if this is a screen share track or regular video
+            // Check track metadata or source to determine if it's a screen share
+            // For screen shares, call onRemoteScreenShare(videoElement, participantIdentity)
+            // For regular video, continue with current behavior
+            
             const video = document.createElement("video");
             video.srcObject = new MediaStream([track.mediaStreamTrack]);
             video.autoplay = true;
-            video.controls = true;
-            document.body.appendChild(video);
-            session.trackElements.push(video);
+            video.muted = true; // Mute video element (audio comes from audio track)
+            session.trackElements[track.sid] = video;
+            
+            // Call the callback with video element and participant identity
+            if (onRemoteScreenShare) {
+                onRemoteScreenShare(video, participant.identity);
+            }
+        }
+    });
+
+    // Handle track unsubscribed (when remote participant stops sharing)
+    room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        console.log(`Unsubscribed from track type: ${track.kind}`);
+        if (track.kind === "video" && onRemoteUnScreenShare) {
+            // TODO: You can add additional checks here to verify it's a screen share
+            onRemoteUnScreenShare(participant.identity);
         }
     });
     
@@ -150,10 +170,10 @@ export async function joinChannel(channelId, onParticipantsChange) {
 
 /**
  * @param {VoiceSession} session
- * @returns {void}
+ * @returns {Promise<void>}
  */
 export async function leaveChannel(session) {
-    for (const element of session.trackElements) {
+    for (const element of Object.values(session.trackElements)) {
         element.remove();
     }
 
@@ -163,7 +183,7 @@ export async function leaveChannel(session) {
 /**
  * @param {VoiceSession} session
  * @param {boolean} nextMuted
- * @returns {void}
+ * @returns {Promise<void>}
  */
 export async function setMuted(session, nextMuted) {
     if (nextMuted) {
@@ -171,4 +191,45 @@ export async function setMuted(session, nextMuted) {
     } else {
         await session.micTrack.unmute();
     }
+}
+
+/**
+ * Start screen sharing
+ * @param {VoiceSession} session
+ * @param {Function} onScreenTrack - Callback that receives the video element to display the screen share. Called with (videoElement)
+ * @returns {Promise<void>}
+ */
+export async function startScreenShare(session, onScreenTrack) {
+    try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true // optional: can capture system audio in some browsers
+        });
+
+        session.streamTrack = new LocalVideoTrack(screenStream.getTracks()[0]);
+        await session.room.localParticipant.publishTrack(session.streamTrack);
+        
+        // Create video element to display the local screen share
+        const video = document.createElement("video");
+        video.srcObject = new MediaStream([session.streamTrack.mediaStreamTrack]);
+        video.autoplay = true;
+        
+        onScreenTrack(video);
+
+        console.log("Screen shared!");
+    } catch (err) {
+        console.error("Screen share failed:", err);
+    }
+}
+
+/**
+ * Stop screen sharing
+ * @param {VoiceSession} session
+ * @param {Function} onScreenTrackRemoved - Callback that's called when screen share is stopped
+ * @returns {Promise<void>}
+ */
+export async function stopScreenShare(session, onScreenTrackRemoved) {
+    await session.room.localParticipant.unpublishTrack(session.streamTrack);
+    session.streamTrack = null;
+    onScreenTrackRemoved();
 }
