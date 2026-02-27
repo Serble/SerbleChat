@@ -6,6 +6,7 @@ import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
+import UserPopout from './UserPopout.jsx';
 
 function SidebarItem({ icon, label, active, badge, onClick }) {
   const [hovered, setHovered] = useState(false);
@@ -179,6 +180,7 @@ export default function DmSidebar() {
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [userPopout, setUserPopout] = useState(null); // { userId, username, anchorRect }
 
   const currentChannelId = loc.pathname.match(/\/channel\/(\d+)/)?.[1];
   const onFriends = loc.pathname === '/app/friends';

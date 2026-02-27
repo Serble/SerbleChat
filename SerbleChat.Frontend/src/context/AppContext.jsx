@@ -657,6 +657,18 @@ export function AppProvider({ children }) {
     return result;
   }, [unreads, channelToGuild]);
 
+  /** Total unread count for DM and group chat channels (non-guild channels) */
+  const homeUnreads = useMemo(() => {
+    let total = 0;
+    for (const [channelId, count] of Object.entries(unreads)) {
+      // If channel is not in a guild, it's a DM or group chat
+      if (!channelToGuild[channelId]) {
+        total += count;
+      }
+    }
+    return total;
+  }, [unreads, channelToGuild]);
+
   return (
     <Ctx.Provider value={{
       currentUser,
@@ -690,6 +702,7 @@ export function AppProvider({ children }) {
       // Unread counts & notification preferences
       unreads,
       guildUnreads,
+      homeUnreads,
       markChannelRead,
       setActiveChannelId,
       registerChannelMeta,

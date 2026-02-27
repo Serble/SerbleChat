@@ -120,7 +120,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
 
 export default function ServerStrip() {
   const nav = useNavigate();
-  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads, guildUpdatedEvent } = useApp();
+  const { guilds, refreshGuilds, activeGuildId, setActiveGuildId, guildUnreads, homeUnreads, guildUpdatedEvent } = useApp();
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -166,9 +166,27 @@ export default function ServerStrip() {
       borderRight: '1px solid var(--border)', overflowY: 'auto',
     }}>
       {/* Home */}
-      <StripButton title="Home" active={onHome} onClick={handleHomeClick}>
-        🏠
-      </StripButton>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <StripButton title="Home" active={onHome} onClick={handleHomeClick}>
+          🏠
+        </StripButton>
+        {homeUnreads > 0 && !onHome && (
+          <div style={{
+            position: 'absolute', bottom: -2, right: -2,
+            minWidth: 18, height: 18,
+            background: 'var(--danger, #ed4245)',
+            borderRadius: 9,
+            border: '2px solid var(--bg-tertiary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.65rem', fontWeight: 700, color: '#fff',
+            padding: '0 4px',
+            pointerEvents: 'none',
+            lineHeight: 1,
+          }}>
+            {homeUnreads > 99 ? '99+' : homeUnreads}
+          </div>
+        )}
+      </div>
 
       {/* Divider */}
       <div style={{ width: 32, height: 2, background: 'var(--bg-active)', borderRadius: 1, flexShrink: 0 }} />
