@@ -66,7 +66,7 @@ function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
 
 export default function VoiceParticipantPreview({ channelId, compact = false }) {
   const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
-  const { voiceChannelId, remoteScreenShares, localScreenShare } = useVoice();
+  const { voiceChannelId, remoteScreenShares, localScreenShare, voiceParticipants } = useVoice();
   const [users, setUsers] = useState({});
   const [showTooltip, setShowTooltip] = useState(false);
   const [expandedShare, setExpandedShare] = useState(null); // null or index of expanded share
@@ -78,6 +78,12 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   const panelRef = useRef(null);
   const contentRef = useRef(null);
   const userIds = voiceUsersByChannel[String(channelId)] ?? [];
+  
+  // Create a map of participant identity to participant data for easy lookup
+  const participantMap = {};
+  voiceParticipants.forEach(p => {
+    participantMap[p.identity] = p;
+  });
 
   const getMaxPanelHeight = () => Math.max(200, window.innerHeight - 320);
 
@@ -356,6 +362,10 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
               {userIds.map(id => {
                 const user = users[id];
                 const name = user?.username ?? id.slice(0, 10);
+                const participant = participantMap[id];
+                const isSpeaking = participant?.isSpeaking ?? false;
+                const isMuted = participant?.isMuted ?? false;
+                
                 return (
                   <UserInteraction key={id} userId={user?.id} username={name}>
                     <div style={{
@@ -366,7 +376,24 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                       color: 'var(--text-secondary)',
                     }}>
                       <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
-                      <span>{name}</span>
+                      <span style={{ flex: 1 }}>{name}</span>
+                      {isSpeaking && !isMuted && (
+                        <span 
+                          style={{ 
+                            fontSize: '0.7rem', 
+                            color: 'var(--success)',
+                            animation: 'pulse 1.5s ease-in-out infinite',
+                          }} 
+                          title="Speaking"
+                        >
+                          🎤
+                        </span>
+                      )}
+                      {isMuted && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
+                          🔇
+                        </span>
+                      )}
                     </div>
                   </UserInteraction>
                 );
@@ -495,6 +522,10 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
             {userIds.map(id => {
               const user = users[id];
               const name = user?.username ?? id.slice(0, 10);
+              const participant = participantMap[id];
+              const isSpeaking = participant?.isSpeaking ?? false;
+              const isMuted = participant?.isMuted ?? false;
+              
               return (
                 <UserInteraction key={id} userId={user?.id} username={name}>
                   <div
@@ -507,12 +538,31 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                       background: 'rgba(124,58,237,0.08)',
                       fontSize: '0.8rem',
                       color: 'var(--text-secondary)',
+                      border: isSpeaking && !isMuted ? '1px solid rgba(34,197,94,0.6)' : '1px solid transparent',
+                      transition: 'border 0.15s ease-in-out',
                     }}
                   >
                     <Avatar userId={user?.id} name={name} size={20} color={user?.color} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
+                    {isSpeaking && !isMuted && (
+                      <span 
+                        style={{ 
+                          fontSize: '0.7rem', 
+                          color: 'var(--success)',
+                          animation: 'pulse 1.5s ease-in-out infinite',
+                        }} 
+                        title="Speaking"
+                      >
+                        🎤
+                      </span>
+                    )}
+                    {isMuted && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
+                        🔇
+                      </span>
+                    )}
                   </div>
                 </UserInteraction>
               );

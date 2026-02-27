@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume } from '../voice.js';
+import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume, setMicVolume } from '../voice.js';
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
 
@@ -193,6 +193,13 @@ export function VoiceProvider({ children }) {
       }
     });
   }, [voiceParticipants, voiceSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply microphone volume setting when it changes
+  useEffect(() => {
+    if (!voiceSession) return;
+    const micVolume = voiceAudioOptions.micVolume ?? 100;
+    setMicVolume(voiceSession, micVolume);
+  }, [voiceAudioOptions.micVolume, voiceSession]);
 
   return (
     <VoiceContext.Provider value={{

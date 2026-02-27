@@ -229,6 +229,8 @@ export default function VoicePanel({
                     padding: '0.25rem 0.35rem',
                     borderRadius: '4px',
                     background: p.isLocal ? 'rgba(124,58,237,0.08)' : 'transparent',
+                    border: p.isSpeaking ? '1px solid rgba(34,197,94,0.5)' : '1px solid transparent',
+                    transition: 'border 0.15s ease-in-out',
                   }}
                 >
                   <Avatar userId={user?.id} name={name} size={20} color={user?.color} />
@@ -243,6 +245,18 @@ export default function VoicePanel({
                     {name}
                     {p.isLocal && <span style={{ color: 'var(--text-muted)', marginLeft: '0.3rem' }}>(you)</span>}
                   </span>
+                  {p.isSpeaking && !p.isMuted && (
+                    <span 
+                      style={{ 
+                        fontSize: '0.75rem', 
+                        color: 'var(--success)',
+                        animation: 'pulse 1.5s ease-in-out infinite',
+                      }} 
+                      title="Speaking"
+                    >
+                      🎤
+                    </span>
+                  )}
                   {p.isMuted && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }} title="Muted">
                       🔇

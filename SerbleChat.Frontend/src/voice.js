@@ -6,14 +6,35 @@ class VoiceSession {
         this.room = room;
         this.onParticipantsChange = onParticipantsChange;
         this.isActive = true;
+        this.audioContext = null;
+        this.audioAnalyzers = {};
+        this.speakingStates = {};
+        this.speakingCheckInterval = null;
+        this.micGainNode = null;
+        this.micSourceNode = null;
+        this.participantMutedStates = {};
+        this.participantMuteGainNodes = {}; // Maps participant identity to mute gain node
     }
-
     /** @type {Room} */
     room;
     /** @type {Object<string, HTMLElement>} */
     trackElements = {};
     /** @type {Object<string, HTMLAudioElement>} */
     participantAudioElements = {}; // Maps participant identity to audio element
+    /** @type {AudioContext} */
+    audioContext;
+    /** @type {Object<string, {analyzer: AnalyserNode, dataArray: Uint8Array, source: MediaElementAudioSourceNode}>} */
+    audioAnalyzers;
+    /** @type {Object<string, boolean>} */
+    speakingStates;
+    /** @type {number} */
+    speakingCheckInterval;
+    /** @type {GainNode} */
+    micGainNode;
+    /** @type {MediaStreamAudioSourceNode} */
+    micSourceNode;
+    /** @type {Object<string, GainNode>} */
+    participantGainNodes = {}; // Maps participant identity to gain node for volume control
     /** @type {LocalAudioTrack} */
     micTrack;
     /** @type {LocalVideoTrack} */
@@ -43,7 +64,7 @@ class VoiceSession {
             
             return {
                 identity: p.identity,
-                isSpeaking: p.isSpeaking,
+                isSpeaking: this.speakingStates[p.identity] || false, // Use our detected speaking state
                 isMuted: isMuted
             };
         });
@@ -59,13 +80,171 @@ class VoiceSession {
             
             participants.unshift({
                 identity: local.identity,
-                isSpeaking: local.isSpeaking,
+                isSpeaking: this.speakingStates[local.identity] || false, // Use our detected speaking state
                 isMuted: localMuted,
                 isLocal: true
             });
         }
         
         return participants;
+    }
+    
+    setupAudioAnalyzer(participantIdentity, audioElement) {
+        // Don't setup if already exists
+        if (this.audioAnalyzers[participantIdentity]) {
+            console.log('Audio analyzer already exists for:', participantIdentity);
+            return;
+        }
+        
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        try {
+            // Ensure audio context is running
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+            
+            // Create analyzer for this participant
+            const analyzer = this.audioContext.createAnalyser();
+            analyzer.fftSize = 256;
+            const bufferLength = analyzer.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            // Connect audio element to analyzer
+            // Note: createMediaElementSource can only be called once per element
+            const source = this.audioContext.createMediaElementSource(audioElement);
+            
+            // Create gain node for volume control
+            const volumeGain = this.audioContext.createGain();
+            volumeGain.gain.value = 1.0; // Default to full volume
+            
+            // Create a separate mute gain node (will be set to 0 when muted)
+            const muteGain = this.audioContext.createGain();
+            muteGain.gain.value = 1.0; // 1.0 = not muted
+            
+            // Connect: source -> volume -> mute -> analyzer -> destination
+            source.connect(volumeGain);
+            volumeGain.connect(muteGain);
+            muteGain.connect(analyzer);
+            analyzer.connect(this.audioContext.destination);
+            
+            this.audioAnalyzers[participantIdentity] = {
+                analyzer,
+                dataArray,
+                source
+            };
+            
+            // Store gain nodes for this participant
+            this.participantGainNodes[participantIdentity] = volumeGain; // For volume control
+            
+            // Store mute gain node separately
+            if (!this.participantMuteGainNodes) {
+                this.participantMuteGainNodes = {};
+            }
+            this.participantMuteGainNodes[participantIdentity] = muteGain; // For mute control
+            
+            console.log(`Audio analyzer setup for participant '${participantIdentity}'`);
+        } catch (err) {
+            console.error('Failed to setup audio analyzer for', participantIdentity, ':', err);
+        }
+    }
+    
+    checkSpeakingLevels() {
+        let hasChanges = false;
+        
+        Object.keys(this.audioAnalyzers).forEach(participantIdentity => {
+            const { analyzer, dataArray } = this.audioAnalyzers[participantIdentity];
+            
+            // Get frequency data
+            analyzer.getByteFrequencyData(dataArray);
+            
+            // Calculate average audio level
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            
+            // Threshold for detecting speech (adjust as needed)
+            const SPEAKING_THRESHOLD = 10; // Lower = more sensitive
+            const isSpeaking = average > SPEAKING_THRESHOLD;
+            
+            // Update speaking state if changed
+            if (this.speakingStates[participantIdentity] !== isSpeaking) {
+                this.speakingStates[participantIdentity] = isSpeaking;
+                hasChanges = true;
+            }
+        });
+        
+        // Notify if any speaking states changed
+        if (hasChanges && this.onParticipantsChange) {
+            this.onParticipantsChange(this.getParticipants());
+        }
+    }
+    
+    startSpeakingDetection() {
+        if (this.speakingCheckInterval) return;
+        
+        // Check speaking levels every 100ms
+        this.speakingCheckInterval = setInterval(() => {
+            if (!this.isActive) return;
+            this.checkSpeakingLevels();
+        }, 100);
+    }
+    
+    stopSpeakingDetection() {
+        if (this.speakingCheckInterval) {
+            clearInterval(this.speakingCheckInterval);
+            this.speakingCheckInterval = null;
+        }
+    }
+    
+    cleanupAudioAnalyzer(participantIdentity) {
+        if (this.audioAnalyzers[participantIdentity]) {
+            const { source } = this.audioAnalyzers[participantIdentity];
+            try {
+                source.disconnect();
+            } catch (err) {
+                // Already disconnected
+            }
+            delete this.audioAnalyzers[participantIdentity];
+            delete this.speakingStates[participantIdentity];
+        }
+        
+        // Clean up volume gain node
+        if (this.participantGainNodes[participantIdentity]) {
+            try {
+                this.participantGainNodes[participantIdentity].disconnect();
+            } catch (err) {
+                // Already disconnected
+            }
+            delete this.participantGainNodes[participantIdentity];
+        }
+        
+        // Clean up mute gain node
+        if (this.participantMuteGainNodes?.[participantIdentity]) {
+            try {
+                this.participantMuteGainNodes[participantIdentity].disconnect();
+            } catch (err) {
+                // Already disconnected
+            }
+            delete this.participantMuteGainNodes[participantIdentity];
+        }
+    }
+    
+    setMicVolume(volumePercent) {
+        if (!this.micGainNode) {
+            console.warn('Mic gain node not initialized - volume control unavailable');
+            return false;
+        }
+        
+        // Convert percentage (0-200) to gain value (0.0-2.0)
+        const gainValue = volumePercent / 100;
+        this.micGainNode.gain.value = gainValue;
+        console.log(`✓ Mic volume updated to ${volumePercent}% (gain: ${gainValue.toFixed(2)})`);
+        return true;
     }
 }
 
@@ -116,10 +295,16 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 const audio = document.createElement("audio");
                 audio.srcObject = new MediaStream([track.mediaStreamTrack]);
                 audio.autoplay = true;
+                audio.muted = true; // CRITICAL: Mute the element itself so it doesn't play directly
+                audio.style.display = 'none'; // Hide it since it's only for Web Audio processing
                 document.body.appendChild(audio);
                 session.trackElements[track.sid] = audio;
                 // Store reference by participant identity for easier access to mute/volume controls
                 session.participantAudioElements[participant.identity] = audio;
+                
+                // Setup audio analyzer to detect speaking based on actual audio playback
+                session.setupAudioAnalyzer(participant.identity, audio);
+                
                 // Update participants when audio track is subscribed
                 if (onParticipantsChange) onParticipantsChange(session.getParticipants());
             }
@@ -163,6 +348,13 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
         if (!session.isActive) return;
         console.log(`Unsubscribed from track type: ${track.kind}`);
+        
+        // Clean up audio analyzer if it's an audio track
+        if (track.kind === "audio") {
+            session.cleanupAudioAnalyzer(participant.identity);
+            delete session.participantAudioElements[participant.identity];
+        }
+        
         removeTrackElement(track.sid);
         if (track.kind === "video" && onRemoteUnScreenShare) {
             // TODO: You can add additional checks here to verify it's a screen share
@@ -180,6 +372,10 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         if (!session.isActive) return;
         console.log("Participant disconnected!");
+        
+        // Clean up audio analyzer for disconnected participant
+        session.cleanupAudioAnalyzer(participant.identity);
+        
         removeParticipantTracks(participant);
         if (onParticipantsChange) onParticipantsChange(session.getParticipants());
     });
@@ -236,14 +432,82 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         autoGainControl: audioOptions.autoGainControl ?? false,
         voiceIsolation: audioOptions.voiceIsolation ?? false,
     };
-    session.micTrack = await createLocalAudioTrack(audioTrackOptions);
-
+    
+    // Create the initial raw microphone track
+    const rawMicTrack = await createLocalAudioTrack(audioTrackOptions);
+    
+    // Setup audio processing chain with gain control for microphone volume
+    let processedMicTrack = rawMicTrack; // Default to raw track
+    
+    try {
+        if (!session.audioContext) {
+            session.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // Create the audio processing chain to apply gain
+        const rawStream = new MediaStream([rawMicTrack.mediaStreamTrack]);
+        const source = session.audioContext.createMediaStreamSource(rawStream);
+        
+        // Create gain node for volume control
+        const gainNode = session.audioContext.createGain();
+        const micVolume = audioOptions.micVolume ?? 100;
+        gainNode.gain.value = micVolume / 100;
+        
+        // Create destination to capture the processed audio
+        const destination = session.audioContext.createMediaStreamDestination();
+        
+        // Create analyzer for speaking detection
+        const analyzer = session.audioContext.createAnalyser();
+        analyzer.fftSize = 256;
+        const bufferLength = analyzer.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // Connect: source -> gain -> destination (creates processed stream)
+        //                        \-> analyzer (for speaking detection)
+        source.connect(gainNode);
+        gainNode.connect(destination);
+        gainNode.connect(analyzer);
+        
+        // Get the processed audio track
+        const processedMediaStreamTrack = destination.stream.getAudioTracks()[0];
+        
+        // Create a LocalAudioTrack from the processed MediaStreamTrack
+        // Note: We can't use createLocalAudioTrack here as it creates a new raw track
+        // Instead, wrap the processed track directly
+        processedMicTrack = new LocalAudioTrack(processedMediaStreamTrack);
+        
+        // Copy over the track name from the raw track
+        Object.defineProperty(processedMicTrack, 'name', {
+            value: rawMicTrack.name || 'microphone',
+            writable: false
+        });
+        
+        // Store references
+        session.micSourceNode = source;
+        session.micGainNode = gainNode;
+        session.audioAnalyzers[room.localParticipant.identity] = {
+            analyzer,
+            dataArray,
+            source
+        };
+        
+        console.log(`Audio processing chain created (mic volume: ${micVolume}%)`);
+    } catch (err) {
+        console.error('Failed to setup audio processing chain:', err);
+        processedMicTrack = rawMicTrack; // Fallback to raw track
+    }
+    
+    // Store and publish the processed track
+    session.micTrack = processedMicTrack;
     await room.localParticipant.publishTrack(session.micTrack);
 
     console.log("Connected to room:", room.name);
     
     // Initial participant list
     if (onParticipantsChange) onParticipantsChange(session.getParticipants());
+    
+    // Start monitoring audio levels for speaking detection
+    session.startSpeakingDetection();
     
     return session;
 }
@@ -254,6 +518,25 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
  */
 export async function leaveChannel(session) {
     session.isActive = false;
+    
+    // Stop speaking detection
+    session.stopSpeakingDetection();
+    
+    // Clean up all audio analyzers
+    Object.keys(session.audioAnalyzers).forEach(participantIdentity => {
+        session.cleanupAudioAnalyzer(participantIdentity);
+    });
+    
+    // Close audio context
+    if (session.audioContext) {
+        try {
+            await session.audioContext.close();
+        } catch (err) {
+            console.warn('Failed to close audio context:', err);
+        }
+        session.audioContext = null;
+    }
+    
     session.room?.removeAllListeners?.();
 
     for (const element of Object.values(session.trackElements)) {
@@ -489,10 +772,22 @@ export async function stopScreenShare(session, onScreenTrackRemoved) {
  */
 export function setParticipantMuted(session, participantIdentity, isMuted) {
     if (!session?.isActive) return;
+    
+    // Use the mute gain node for proper muting in the Web Audio API chain
+    const muteGain = session.participantMuteGainNodes?.[participantIdentity];
+    if (muteGain) {
+        muteGain.gain.value = isMuted ? 0 : 1.0;
+        console.log(`Participant ${participantIdentity} ${isMuted ? 'muted' : 'unmuted'} (via mute gain node)`);
+        return;
+    }
+    
+    // Fallback to audio element if mute gain node not available
     const audio = session.participantAudioElements[participantIdentity];
     if (audio) {
         audio.muted = isMuted;
-        console.log(`Participant ${participantIdentity} audio ${isMuted ? 'muted' : 'unmuted'}`);
+        console.log(`Participant ${participantIdentity} audio ${isMuted ? 'muted' : 'unmuted'} (via audio element)`);
+    } else {
+        console.warn(`No audio element found for participant ${participantIdentity}`);
     }
 }
 
@@ -500,17 +795,48 @@ export function setParticipantMuted(session, participantIdentity, isMuted) {
  * Set a participant's volume (client-side only)
  * @param {VoiceSession} session
  * @param {string} participantIdentity
- * @param {number} volume - 0.0 to 1.0
+ * @param {number} volume - 0.0 to 5.0 (0% to 500%)
  * @returns {void}
  */
 export function setParticipantVolume(session, participantIdentity, volume) {
     if (!session?.isActive) return;
+    
+    // Clamp volume to valid range
+    const clampedVolume = Math.max(0, Math.min(5, volume));
+    
+    // Convert volume to gain:
+    // volume 0.0 = gain 0 (complete silence)
+    // volume 1.0 = gain 1.0 (normal/baseline)
+    // volume 5.0 = gain 5.0 (5x amplified)
+    // Use linear scaling: gain = volume
+    const gainValue = clampedVolume;
+    
+    // First try to use the gain node if available
+    const gainNode = session.participantGainNodes[participantIdentity];
+    if (gainNode) {
+        gainNode.gain.value = gainValue;
+        console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (gain: ${gainValue.toFixed(2)})`);
+        return;
+    }
+    
+    // Fallback to audio element volume if gain node not available
     const audio = session.participantAudioElements[participantIdentity];
     if (audio) {
-        const clampedVolume = Math.max(0, Math.min(1, volume));
-        audio.volume = clampedVolume;
-        console.log(`Participant ${participantIdentity} volume set to ${clampedVolume}`);
+        // For audio element, clamp to 0-1 range
+        audio.volume = Math.max(0, Math.min(1, gainValue));
+        console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (via audio element, gain: ${gainValue.toFixed(2)})`);
     } else {
         console.warn(`No audio element found for participant ${participantIdentity}, available:`, Object.keys(session.participantAudioElements));
     }
+}
+
+/**
+ * Set the local microphone volume
+ * @param {VoiceSession} session
+ * @param {number} volumePercent - 0 to 200 (percentage)
+ * @returns {void}
+ */
+export function setMicVolume(session, volumePercent) {
+    if (!session?.isActive) return;
+    session.setMicVolume(volumePercent);
 }

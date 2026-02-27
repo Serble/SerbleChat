@@ -13,6 +13,7 @@ export const OPTION_DEFAULTS = {
     noiseSuppression: false,
     autoGainControl: false,
     voiceIsolation: false,
+    micVolume: 100, // 0-200, default 100 (100% = normal)
   },
 };
 
@@ -169,8 +170,14 @@ export function ClientOptionsProvider({ children }) {
   }
 
   function setVoiceAudioOption(optionName, value) {
-    const valid = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation'];
+    const valid = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation', 'micVolume'];
     if (!valid.includes(optionName)) return;
+    
+    // Clamp micVolume to 0-200 range
+    if (optionName === 'micVolume') {
+      value = Math.max(0, Math.min(200, Number(value) || 100));
+    }
+    
     voiceAudioOptionsRef.current = { ...voiceAudioOptionsRef.current, [optionName]: value };
     setVoiceAudioOptionsState(voiceAudioOptionsRef.current);
     if (!pendingLoad.current) scheduleSave();

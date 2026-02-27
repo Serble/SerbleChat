@@ -11,13 +11,13 @@ export default function VoiceParticipantSettings({
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(1.0); // 1.0 = 100% = normal volume
 
   // Load settings on mount
   useEffect(() => {
     const settings = getVoiceParticipantSetting(participantIdentity);
     setIsMuted(settings.muted);
-    setVolume(settings.volume);
+    setVolume(settings.volume ?? 1.0); // Default to 1.0 if not set
   }, [participantIdentity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleMute = () => {
@@ -28,7 +28,8 @@ export default function VoiceParticipantSettings({
   };
 
   const handleVolumeChange = (e) => {
-    const newVolume = parseFloat(e.target.value);
+    const newVolumePercent = parseFloat(e.target.value); // 0-500
+    const newVolume = newVolumePercent / 100; // Convert to 0.0-5.0
     setVolume(newVolume);
     setVoiceParticipantSetting(participantIdentity, { volume: newVolume });
     setParticipantVolume(voiceSession, participantIdentity, newVolume);
@@ -121,11 +122,16 @@ export default function VoiceParticipantSettings({
             </label>
             <input
               type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={volume}
-              onChange={handleVolumeChange}
+              min={0}
+              max={500}
+              step={5}
+              value={Math.round(volume * 100)}
+              onChange={(e) => {
+                const newVolume = parseInt(e.target.value) / 100;
+                setVolume(newVolume);
+                setVoiceParticipantSetting(participantIdentity, { volume: newVolume });
+                setParticipantVolume(voiceSession, participantIdentity, newVolume);
+              }}
               style={{
                 cursor: 'pointer',
                 height: '4px',

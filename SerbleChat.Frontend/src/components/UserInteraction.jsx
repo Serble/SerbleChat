@@ -130,11 +130,16 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
             </label>
             <input
               type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={voiceSettings.volume}
-              onChange={handleVolumeChange}
+              min={0}
+              max={500}
+              step={5}
+              value={Math.round(voiceSettings.volume * 100)}
+              onChange={(e) => {
+                if (onVoiceSettingsChange) {
+                  const newVolume = parseInt(e.target.value) / 100;
+                  onVoiceSettingsChange({ volume: newVolume });
+                }
+              }}
               style={{
                 cursor: 'pointer',
                 height: '4px',

@@ -1232,6 +1232,89 @@ function VoiceAudioTab() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+      {/* ── Microphone Volume ────────────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Microphone Volume
+      </div>
+
+      <div style={{
+        padding: '1rem',
+        borderRadius: 8,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        marginBottom: '1.5rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <span style={{ fontSize: '0.95rem' }}>🎤</span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Input Volume
+          </span>
+          <span style={{ 
+            marginLeft: 'auto',
+            fontSize: '0.85rem', 
+            fontWeight: 600,
+            color: 'var(--accent)',
+            fontFamily: 'monospace',
+          }}>
+            {voiceAudioOptions.micVolume ?? 100}%
+          </span>
+        </div>
+        
+        <div style={{ position: 'relative', width: '100%', height: 20 }}>
+          <input
+            type="range"
+            min="0"
+            max="200"
+            step="5"
+            value={voiceAudioOptions.micVolume ?? 100}
+            onChange={(e) => setVoiceAudioOption('micVolume', Number(e.target.value))}
+            style={{
+              position: 'absolute',
+              width: '100%',
+              background: 'transparent',
+              outline: 'none',
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              height: 20,
+              zIndex: 2,
+            }}
+          />
+          
+          {/* Track background with gradient - positioned behind input */}
+          <div style={{
+            position: 'absolute',
+            width: '100%',
+            height: 6,
+            borderRadius: 3,
+            background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${((voiceAudioOptions.micVolume ?? 100) / 200) * 100}%, var(--bg-tertiary) ${((voiceAudioOptions.micVolume ?? 100) / 200) * 100}%, var(--bg-tertiary) 100%)`,
+            pointerEvents: 'none',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 1,
+          }} />
+        </div>
+        
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          fontSize: '0.7rem', 
+          color: 'var(--text-muted)',
+          marginTop: '0.5rem',
+        }}>
+          <span>0%</span>
+          <span>100%</span>
+          <span>200%</span>
+        </div>
+        
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: 1.5 }}>
+          Adjust your microphone input volume. 100% is normal volume, values above 100% will boost your microphone.
+        </div>
+      </div>
+      
       {/* ── Audio Processing Options ─────────────────────────────── */}
       <div style={{
         fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',

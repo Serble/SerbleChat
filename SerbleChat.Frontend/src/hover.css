@@ -48,6 +48,77 @@
   color: var(--text-secondary) !important;
 }
 
+/* Animation for speaking indicator */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+/* Range input styling for volume sliders */
+input[type="range"] {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: transparent; /* Make transparent so custom gradient shows */
+  border-radius: 3px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  margin-top: -5px; /* Centers the thumb on the track (16px thumb - 6px track = 10px diff / 2 = 5px) */
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: transparent; /* Make transparent so custom gradient shows */
+  border-radius: 3px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 6px;
+  background: transparent; /* Make transparent so custom gradient shows */
+  border-radius: 3px;
+}
+
+
 /* LandingPage login button: lift + stronger shadow */
 .hov-landing-btn:hover {
   transform: translateY(-2px) !important;
