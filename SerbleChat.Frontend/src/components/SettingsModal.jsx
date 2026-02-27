@@ -8,6 +8,7 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
+import { isInstalled, canInstall, promptInstall, initPWAInstallPrompt } from '../pwa.js';
 import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from '../api.js';
 import Avatar from './Avatar.jsx';
 
@@ -1398,9 +1399,23 @@ function NotificationsTab() {
   // { outcome: 'ok'|'denied'|'error'|null, message: string }
   const [pushStatus, setPushStatus] = useState({ outcome: null, message: '' });
 
+  // ── PWA install state ──────────────────────────────────────────────────────
+  const [pwaInstalled, setPwaInstalled] = useState(false);
+  const [pwaInstallable, setPwaInstallable] = useState(false);
+  const [pwaInstalling, setPwaInstalling] = useState(false);
+
   useEffect(() => {
     setPushSupported(isPushSupported());
     setPushEnabled(isPushEnabled());
+    
+    // Check PWA installation status
+    setPwaInstalled(isInstalled());
+    setPwaInstallable(canInstall());
+    
+    // Listen for install prompt availability
+    initPWAInstallPrompt((installable) => {
+      setPwaInstallable(installable);
+    });
   }, []);
 
   async function handlePushToggle() {
@@ -1418,6 +1433,17 @@ function NotificationsTab() {
       setPushStatus({ outcome, message });
     }
     setPushPending(false);
+  }
+
+  async function handlePwaInstall() {
+    if (pwaInstalling) return;
+    setPwaInstalling(true);
+    const result = await promptInstall();
+    if (result.outcome === 'accepted') {
+      setPwaInstalled(true);
+      setPwaInstallable(false);
+    }
+    setPwaInstalling(false);
   }
 
   // ── Default notification prefs ────────────────────────────────────────────
@@ -1579,6 +1605,73 @@ function NotificationsTab() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── PWA Installation ─────────────────────────────── */}
+      {!pwaInstalled && (
+        <>
+          <div style={{
+            fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+            textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+            paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+          }}>
+            Progressive Web App
+          </div>
+
+          <div style={{ marginBottom: '1.75rem' }}>
+            {pwaInstallable ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
+                      Install SerbleChat
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      Install SerbleChat as an app on your device for a better experience. 
+                      The app will launch in its own window and can be accessed from your home screen or app menu.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={handlePwaInstall}
+                  disabled={pwaInstalling}
+                  style={{
+                    background: 'var(--accent)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: '#fff',
+                    padding: '0.6rem 1.5rem',
+                    fontSize: '0.87rem',
+                    fontWeight: 600,
+                    cursor: pwaInstalling ? 'wait' : 'pointer',
+                    opacity: pwaInstalling ? 0.6 : 1,
+                    transition: 'background 0.15s, opacity 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                  className="hov-accent"
+                >
+                  {pwaInstalling ? (
+                    '⏳ Installing...'
+                  ) : (
+                    <>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                      </svg>
+                      Install App
+                    </>
+                  )}
+                </button>
+              </>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                💡 SerbleChat can be installed as an app on supported browsers. 
+                The install option will appear automatically when available.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── Notifications While Online ─────────────────── */}

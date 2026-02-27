@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - Serble Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #313338;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .offline-container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .offline-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.5;
+      color: #b9bbbe;
+      margin-bottom: 24px;
+    }
+    .retry-button {
+      background: #5865F2;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .retry-button:hover {
+      background: #4752C4;
+    }
+    .retry-button:active {
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>Serble Chat requires an internet connection. Please check your connection and try again.</p>
+    <button class="retry-button" onclick="window.location.reload()">
+      Retry
+    </button>
+  </div>
+</body>
+</html>
