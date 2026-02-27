@@ -1543,7 +1543,7 @@ export default function SettingsModal({ onClose }) {
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexDirection: isMobile ? 'column' : 'row' }}>
           {/* Left (desktop) / Top (mobile): tab navigation */}
           <div style={{
-            width: isMobile ? '100%' : 140,
+            width: isMobile ? '100%' : 180,
             flexShrink: 0,
             borderRight: isMobile ? 'none' : '1px solid var(--border)',
             borderBottom: isMobile ? '1px solid var(--border)' : 'none',
@@ -1553,8 +1553,8 @@ export default function SettingsModal({ onClose }) {
             display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: '0.1rem',
             flexWrap: isMobile ? 'nowrap' : 'nowrap',
           }}>
-            {SECTIONS.map(section => (
-              <div key={section} style={{ display: 'contents' }}>
+            {SECTIONS.map((section, idx) => (
+              <div key={section} style={{ paddingTop: idx > 0 ? '0.75rem' : '0' }}>
                 {!isMobile && (
                   <div style={{
                     fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
