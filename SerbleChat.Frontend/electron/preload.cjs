@@ -15,4 +15,10 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('keybind-triggered', handler);
     return () => ipcRenderer.removeListener('keybind-triggered', handler);
   },
+  
+  // OAuth flow for Electron
+  oauthStartServer: () => ipcRenderer.invoke('oauth-start-server'),
+  oauthOpenBrowser: (url) => ipcRenderer.invoke('oauth-open-browser', url),
+  oauthWaitCallback: () => ipcRenderer.invoke('oauth-wait-callback'),
+  oauthStopServer: () => ipcRenderer.invoke('oauth-stop-server'),
 });

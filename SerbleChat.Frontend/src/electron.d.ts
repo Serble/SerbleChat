@@ -12,6 +12,12 @@ export interface ElectronAPI {
   setKeybinds: (keybinds: Keybinds) => Promise<{ success: boolean }>;
   validateKeybind: (accelerator: string) => Promise<{ valid: boolean; error?: string }>;
   onKeybindTriggered: (callback: (action: string) => void) => () => void;
+  
+  // OAuth flow for Electron
+  oauthStartServer: () => Promise<{ success: boolean; error?: string }>;
+  oauthOpenBrowser: (url: string) => Promise<{ success: boolean; error?: string }>;
+  oauthWaitCallback: () => Promise<{ code: string | null; state: string | null; authorized: string | null }>;
+  oauthStopServer: () => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

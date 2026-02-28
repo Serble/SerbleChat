@@ -22,5 +22,53 @@ export const getPlatform = async () => {
   return navigator.platform;
 };
 
-// Export electron API safely
+// Get electron API safely
+export const getElectronAPI = () => {
+  return typeof window !== 'undefined' && window.electron ? window.electron : null;
+};
+
+// Export electron API safely (deprecated, use getElectronAPI instead)
 export const electronAPI = typeof window !== 'undefined' && window.electron ? window.electron : null;
+
+/**
+ * Perform OAuth flow for Electron using external browser
+ * @param {string} oauthUrl - The OAuth URL to open in the browser
+ * @returns {Promise<{code: string, state: string, authorized: string}>} - The callback parameters
+ */
+export async function electronOAuthFlow(oauthUrl) {
+  const api = getElectronAPI();
+  
+  if (!isElectron() || !api) {
+    throw new Error('Not running in Electron');
+  }
+
+  try {
+    // Start the local callback server
+    const serverResult = await api.oauthStartServer();
+    if (!serverResult.success) {
+      throw new Error('Failed to start OAuth callback server: ' + (serverResult.error || 'Unknown error'));
+    }
+
+    // Open the OAuth URL in the user's default browser
+    const browserResult = await api.oauthOpenBrowser(oauthUrl);
+    if (!browserResult.success) {
+      throw new Error('Failed to open browser: ' + (browserResult.error || 'Unknown error'));
+    }
+
+    // Wait for the callback from the browser
+    const callbackData = await api.oauthWaitCallback();
+    
+    // Stop the callback server
+    await api.oauthStopServer();
+
+    return callbackData;
+  } catch (error) {
+    // Make sure to stop the server on error
+    try {
+      await api.oauthStopServer();
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
+}

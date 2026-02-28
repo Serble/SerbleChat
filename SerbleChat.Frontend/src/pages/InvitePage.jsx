@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { acceptGuildInvite, CLIENT_ID, REDIRECT_URI, OAUTH_URL } from '../api.js';
+import { acceptGuildInvite, CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
+import { isElectron, electronOAuthFlow } from '../electron-utils.js';
 
 export default function InvitePage() {
   const { inviteId } = useParams();
@@ -18,7 +19,58 @@ export default function InvitePage() {
     if (!isLoggedIn) {
       // Store the invite URL so we can redirect back after login
       sessionStorage.setItem('postLoginRedirect', window.location.pathname);
-      window.location.href = `${OAUTH_URL}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
+      
+      // Check if running in Electron
+      if (isElectron()) {
+        // Electron: Use external browser with local callback server
+        setState('joining');
+        try {
+          const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+          
+          const electronRedirectUri = 'http://localhost:13579/callback';
+          const oauthUrl = `${OAUTH_URL}?${new URLSearchParams({
+            client_id: CLIENT_ID,
+            redirect_uri: electronRedirectUri,
+            response_type: 'code',
+            scope: 'user_info',
+            state,
+          })}`;
+          
+          // Open browser and wait for callback
+          const callbackData = await electronOAuthFlow(oauthUrl);
+          
+          // Verify state
+          if (callbackData.state !== state) {
+            throw new Error('State mismatch - possible security issue');
+          }
+          
+          // Check authorization
+          if (callbackData.authorized !== 'true' || !callbackData.code) {
+            throw new Error('Login was cancelled or denied');
+          }
+          
+          // Exchange code for token
+          const data = await exchangeCode(callbackData.code);
+          if (!data.success || !data.accessToken) {
+            throw new Error('Server did not return an access token');
+          }
+          
+          localStorage.setItem('jwt', data.accessToken);
+          
+          // Now join the guild
+          const guild = await acceptGuildInvite(inviteId);
+          setGuildName(guild.name);
+          setState('joined');
+          setTimeout(() => nav(`/app/guild/${guild.id}`), 1200);
+        } catch (err) {
+          setErrMsg(err.message || 'Failed to login');
+          setState('error');
+        }
+      } else {
+        // Web: Use normal redirect flow
+        window.location.href = `${OAUTH_URL}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
+      }
       return;
     }
     setState('joining');

@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const isDev = process.env.NODE_ENV === 'development';
 
 // Load environment variables from .env file
@@ -28,6 +29,10 @@ let currentKeybinds = {
   toggleMute: 'CommandOrControl+Shift+M',
   toggleDeafen: 'CommandOrControl+Shift+D'
 };
+
+// OAuth callback server state
+let oauthCallbackServer = null;
+let oauthCallbackResolve = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -187,7 +192,109 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (oauthCallbackServer) {
+    oauthCallbackServer.close();
+    oauthCallbackServer = null;
+  }
 });
+
+// OAuth callback server functions
+function startOAuthCallbackServer() {
+  return new Promise((resolve, reject) => {
+    if (oauthCallbackServer) {
+      // Server already running
+      resolve(true);
+      return;
+    }
+
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url, 'http://localhost:13579');
+      
+      if (url.pathname === '/callback') {
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        const authorized = url.searchParams.get('authorized');
+        
+        // Send success response to browser
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Login Successful</title>
+            <style>
+              body {
+                font-family: system-ui, -apple-system, sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                background: linear-gradient(135deg, #0d0f15 0%, #1a1035 100%);
+                color: #f1f5f9;
+              }
+              .container {
+                text-align: center;
+                background: #1a1d2e;
+                border: 1px solid #2d3148;
+                border-radius: 12px;
+                padding: 3rem 2.5rem;
+                max-width: 400px;
+              }
+              .icon { font-size: 3rem; margin-bottom: 1rem; }
+              h1 { margin: 0 0 0.5rem; font-size: 1.5rem; }
+              p { color: #94a3b8; margin: 0; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="icon">✓</div>
+              <h1>Login Successful!</h1>
+              <p>You can close this window and return to SerbleChat.</p>
+            </div>
+          </body>
+          </html>
+        `);
+        
+        // Resolve the promise with the callback data
+        if (oauthCallbackResolve) {
+          oauthCallbackResolve({ code, state, authorized });
+          oauthCallbackResolve = null;
+        }
+      } else {
+        res.writeHead(404);
+        res.end('Not Found');
+      }
+    });
+
+    server.on('error', (err) => {
+      console.error('OAuth callback server error:', err);
+      reject(err);
+    });
+
+    server.listen(13579, 'localhost', () => {
+      console.log('OAuth callback server listening on http://localhost:13579');
+      oauthCallbackServer = server;
+      resolve(true);
+    });
+  });
+}
+
+function stopOAuthCallbackServer() {
+  return new Promise((resolve) => {
+    if (!oauthCallbackServer) {
+      resolve();
+      return;
+    }
+    
+    oauthCallbackServer.close(() => {
+      oauthCallbackServer = null;
+      oauthCallbackResolve = null;
+      resolve();
+    });
+  });
+}
 
 // IPC handlers for any Electron-specific features
 ipcMain.handle('is-electron', () => true);
@@ -259,5 +366,42 @@ ipcMain.handle('validate-keybind', (event, accelerator) => {
     
     // Syntax is valid, allow it
     return { valid: true };
+  }
+});
+
+// OAuth handlers for Electron
+ipcMain.handle('oauth-start-server', async () => {
+  try {
+    await startOAuthCallbackServer();
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to start OAuth callback server:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('oauth-open-browser', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to open external browser:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('oauth-wait-callback', () => {
+  return new Promise((resolve) => {
+    oauthCallbackResolve = resolve;
+  });
+});
+
+ipcMain.handle('oauth-stop-server', async () => {
+  try {
+    await stopOAuthCallbackServer();
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to stop OAuth callback server:', err);
+    return { success: false, error: err.message };
   }
 });

@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CLIENT_ID, REDIRECT_URI, OAUTH_URL } from '../api.js';
+import { CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
+import { isElectron, electronOAuthFlow } from '../electron-utils.js';
 
 const c = {
   page: {
@@ -60,18 +61,71 @@ const c = {
 
 export default function LandingPage() {
   const nav = useNavigate();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+  
   useEffect(() => {
     if (localStorage.getItem('jwt')) nav('/app', { replace: true });
   }, [nav]);
 
-  function login() {
+  async function login() {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setLoginError(null);
+    
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
-    sessionStorage.setItem('oauth_state', state);
-    window.location.href = `${OAUTH_URL}?${new URLSearchParams({
-      client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
-      response_type: 'token', scope: 'user_info', state,
-    })}`;
+    
+    try {
+      // Check if running in Electron
+      if (isElectron()) {
+        // Electron: Use external browser with local callback server
+        const electronRedirectUri = 'http://localhost:13579/callback';
+        const oauthUrl = `${OAUTH_URL}?${new URLSearchParams({
+          client_id: CLIENT_ID, 
+          redirect_uri: electronRedirectUri,
+          response_type: 'code', 
+          scope: 'user_info', 
+          state,
+        })}`;
+        
+        // Open browser and wait for callback
+        const callbackData = await electronOAuthFlow(oauthUrl);
+        
+        // Verify state
+        if (callbackData.state !== state) {
+          throw new Error('State mismatch - possible security issue');
+        }
+        
+        // Check authorization
+        if (callbackData.authorized !== 'true' || !callbackData.code) {
+          throw new Error('Login was cancelled or denied');
+        }
+        
+        // Exchange code for token
+        const data = await exchangeCode(callbackData.code);
+        if (!data.success || !data.accessToken) {
+          throw new Error('Server did not return an access token');
+        }
+        
+        localStorage.setItem('jwt', data.accessToken);
+        nav('/app', { replace: true });
+      } else {
+        // Web: Use normal redirect flow
+        sessionStorage.setItem('oauth_state', state);
+        window.location.href = `${OAUTH_URL}?${new URLSearchParams({
+          client_id: CLIENT_ID, 
+          redirect_uri: REDIRECT_URI,
+          response_type: 'code', 
+          scope: 'user_info', 
+          state,
+        })}`;
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError(error.message || 'Failed to login. Please try again.');
+      setIsLoggingIn(false);
+    }
   }
 
   return (
@@ -88,15 +142,39 @@ export default function LandingPage() {
         <p style={c.sub}>
           Real-time messaging, group chats and friend requests — all powered by your Serble account.
         </p>
+        {loginError && (
+          <div style={{
+            background: '#7f1d1d',
+            color: '#fca5a5',
+            padding: '0.75rem 1.25rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            fontSize: '0.9rem',
+            maxWidth: '400px',
+          }}>
+            {loginError}
+          </div>
+        )}
         <button
-          style={c.btn}
+          style={{
+            ...c.btn,
+            opacity: isLoggingIn ? 0.6 : 1,
+            cursor: isLoggingIn ? 'not-allowed' : 'pointer',
+          }}
           onClick={login}
+          disabled={isLoggingIn}
           className="hov-landing-btn"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-          </svg>
-          Login with Serble
+          {isLoggingIn ? (
+            <>⏳ Logging in...</>
+          ) : (
+            <>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+              </svg>
+              Login with Serble
+            </>
+          )}
         </button>
 
         <div style={c.features}>

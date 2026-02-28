@@ -1,14 +1,25 @@
 {
-  "name": "serble-chat-frontend",
+  "name": "serble-chat",
+  "description": "Client for the Serble Chat platform.",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Serble/SerbleChat",
+  "bugs": {
+    "url": "https://github.com/Serble/SerbleChat/issues",
+    "email": "support@serble.net"
+  },
+  "author": {
+    "name": "CoPokBl",
+    "email": "copokbl@serble.net",
+    "url": "copokbl.net"
+  },
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "generate-icons": "node generate-icons.js",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win",

@@ -2,40 +2,88 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { exchangeCode } from '../api.js';
 
+// Inject loading animation styles
+if (typeof document !== 'undefined' && !document.getElementById('callback-styles')) {
+  const style = document.createElement('style');
+  style.id = 'callback-styles';
+  style.textContent = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .callback-spinner {
+      animation: spin 2s linear infinite;
+    }
+    .callback-pulse {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 const s = {
   page: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', minHeight: '100vh', gap: '1.5rem', padding: '2rem',
+    background: 'linear-gradient(135deg, #0d0f15 0%, #1a1035 100%)',
   },
   card: {
     background: '#1a1d2e', border: '1px solid #2d3148', borderRadius: '12px',
-    padding: '2.5rem 3rem', maxWidth: '520px', width: '100%',
+    padding: '3rem 2.5rem', maxWidth: '480px', width: '100%',
     textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
   },
-  title: { margin: '0 0 1rem', fontSize: '1.5rem', fontWeight: 700 },
-  status: (ok) => ({
-    padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem',
-    background: ok ? '#14532d' : '#7f1d1d',
-    color: ok ? '#86efac' : '#fca5a5',
-    fontSize: '0.9rem',
-  }),
-  pre: {
-    background: '#0f1117', borderRadius: '8px', padding: '1rem',
-    textAlign: 'left', fontSize: '0.8rem', color: '#94a3b8',
-    overflowX: 'auto', wordBreak: 'break-all', whiteSpace: 'pre-wrap',
+  loadingContainer: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem',
+  },
+  spinner: {
+    fontSize: '3rem', display: 'inline-block',
+  },
+  title: { margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#f1f5f9' },
+  subtitle: { margin: '0.5rem 0 0', fontSize: '0.95rem', color: '#94a3b8', fontWeight: 400 },
+  statusGood: {
+    padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem',
+    background: '#14532d', color: '#86efac',
+    fontSize: '0.9rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.75rem',
+  },
+  statusError: {
+    padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem',
+    background: '#7f1d1d', color: '#fca5a5',
+    fontSize: '0.9rem', fontWeight: 500,
+  },
+  errorTitle: {
+    fontSize: '1.1rem', fontWeight: 600, color: '#fca5a5', marginBottom: '0.5rem',
+  },
+  errorMessage: {
+    fontSize: '0.85rem', color: '#fecaca', margin: '0.5rem 0', lineHeight: 1.5,
   },
   btn: {
-    marginTop: '1rem', padding: '0.6rem 1.5rem', borderRadius: '8px',
-    background: '#7c3aed', color: '#fff', fontWeight: 600,
+    padding: '0.7rem 1.8rem', borderRadius: '6px', fontWeight: 600,
     fontSize: '0.9rem', cursor: 'pointer', border: 'none',
+    transition: 'all 0.2s ease',
+  },
+  btnPrimary: {
+    background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+    color: '#fff',
+    marginRight: '0.75rem',
+  },
+  btnSecondary: {
+    background: '#2d3148', color: '#94a3b8',
+  },
+  buttonGroup: {
+    display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1.5rem',
+    flexWrap: 'wrap',
   },
 };
 
 export default function CallbackPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('Processing OAuth callback…');
-  const [ok, setOk] = useState(null);
-  const [details, setDetails] = useState(null);
+  const [stage, setStage] = useState('init'); // 'init', 'exchanging', 'success', 'error'
+  const [errorTitle, setErrorTitle] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -47,37 +95,41 @@ export default function CallbackPage() {
 
       // ── CSRF state check ────────────────────────────────────────────────────
       if (returnedState !== savedState) {
-        setOk(false);
-        setStatus('State mismatch – possible CSRF attack. Login aborted.');
-        setDetails({ returnedState, savedState });
+        setErrorTitle('Security Check Failed');
+        setErrorMessage('State mismatch detected. This could indicate a security issue. Please try logging in again.');
+        setStage('error');
+        sessionStorage.removeItem('oauth_state');
         return;
       }
       sessionStorage.removeItem('oauth_state');
 
+      // ── Authorization check ──────────────────────────────────────────────────
       if (authorized !== 'true' || !code) {
-        setOk(false);
-        setStatus('Serble OAuth denied or no code returned.');
-        setDetails({ authorized, code: code ?? '(none)' });
+        setErrorTitle('Login Cancelled or Invalid');
+        setErrorMessage('You denied the login request or the authorization code is missing. Please try again.');
+        setStage('error');
         return;
       }
 
-      setStatus(`Code received. Exchanging with POST /auth…`);
-      setDetails({ code });
+      // ── Exchange code for token ──────────────────────────────────────────────
+      setStage('exchanging');
 
       try {
         const data = await exchangeCode(code);
-        if (!data.success || !data.accessToken) throw new Error('Backend returned success=false');
+        if (!data.success || !data.accessToken) {
+          throw new Error('Server did not return an access token');
+        }
         localStorage.setItem('jwt', data.accessToken);
-        setOk(true);
-        setStatus('Authentication successful! Redirecting…');
-        setDetails({ accessToken: data.accessToken });
+        setStage('success');
+        
+        // Redirect after a brief success state
         const redirect = sessionStorage.getItem('postLoginRedirect') ?? '/app';
         sessionStorage.removeItem('postLoginRedirect');
-        setTimeout(() => navigate(redirect), 1500);
+        setTimeout(() => navigate(redirect), 1000);
       } catch (err) {
-        setOk(false);
-        setStatus(`Token exchange failed: ${err.message}`);
-        setDetails({ error: err.message });
+        setErrorTitle('Login Failed');
+        setErrorMessage(err.message || 'Could not complete the login process. Please check your connection and try again.');
+        setStage('error');
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,18 +137,50 @@ export default function CallbackPage() {
   return (
     <div style={s.page}>
       <div style={s.card}>
-        <h2 style={s.title}>OAuth Callback</h2>
-        {ok !== null && (
-          <div style={s.status(ok)}>{ok ? '✓' : '✗'} {status}</div>
+        {/* Loading State */}
+        {stage === 'init' || stage === 'exchanging' ? (
+          <div style={s.loadingContainer}>
+            <div style={{ ...s.spinner, ...{} }} className="callback-spinner">
+              ⚡
+            </div>
+            <h2 style={s.title}>Logging you in...</h2>
+            <p style={s.subtitle}>
+              {stage === 'init' ? 'Verifying your credentials' : 'Completing authentication'}
+            </p>
+          </div>
+        ) : null}
+
+        {/* Success State */}
+        {stage === 'success' && (
+          <div style={s.loadingContainer}>
+            <div style={{ fontSize: '3rem' }}>✓</div>
+            <h2 style={s.title}>Welcome back!</h2>
+            <p style={s.subtitle}>Redirecting you to the app...</p>
+          </div>
         )}
-        {ok === null && <p style={{ color: '#94a3b8' }}>{status}</p>}
-        {details && (
-          <pre style={s.pre}>{JSON.stringify(details, null, 2)}</pre>
-        )}
-        {ok === false && (
-          <button style={s.btn} onClick={() => navigate('/')}>
-            ← Back to Login
-          </button>
+
+        {/* Error State */}
+        {stage === 'error' && (
+          <>
+            <div style={s.statusError}>
+              <div style={s.errorTitle}>⚠️ {errorTitle}</div>
+              <div style={s.errorMessage}>{errorMessage}</div>
+            </div>
+            <div style={s.buttonGroup}>
+              <button
+                style={{ ...s.btn, ...s.btnPrimary }}
+                onClick={() => navigate('/')}
+              >
+                Back to Login
+              </button>
+              <button
+                style={{ ...s.btn, ...s.btnSecondary }}
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

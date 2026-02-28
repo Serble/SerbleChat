@@ -73,5 +73,9 @@ npm run electron:build:mac    # macOS
 npm run electron:build:linux  # Linux
 ```
 
+Running it using Electron changes the following:
+- OAuth is performed using integrated server
+- You can configure global keybinds
+
 ## Contributing
 Bug reports as issues and pull requests are appreciated.

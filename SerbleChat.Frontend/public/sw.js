@@ -78,9 +78,11 @@ self.addEventListener('fetch', event => {
           })
           .catch(err => {
             console.error('Fetch failed:', err);
-            // Return offline page for navigation requests
+            // For navigation requests, return cached index.html instead of offline page
+            // This allows the app to load and handle connection issues gracefully
+            // rather than showing an offline page for transient network errors
             if (request.mode === 'navigate') {
-              return caches.match('/offline.html');
+              return caches.match('/index.html');
             }
             // For other requests, try to return cached version
             return caches.match('/index.html');
