@@ -295,8 +295,8 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 const audio = document.createElement("audio");
                 audio.srcObject = new MediaStream([track.mediaStreamTrack]);
                 audio.autoplay = true;
-                audio.muted = true; // CRITICAL: Mute the element itself so it doesn't play directly
-                audio.style.display = 'none'; // Hide it since it's only for Web Audio processing
+                audio.muted = false; // Don't mute - we need the element to play sound for Web Audio API to hear it
+                audio.style.display = 'none'; // Hide it since it's only for audio
                 document.body.appendChild(audio);
                 session.trackElements[track.sid] = audio;
                 // Store reference by participant identity for easier access to mute/volume controls
@@ -433,8 +433,26 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         voiceIsolation: audioOptions.voiceIsolation ?? false,
     };
     
-    // Create the initial raw microphone track
-    const rawMicTrack = await createLocalAudioTrack(audioTrackOptions);
+    // Create the initial raw microphone track with error handling
+    let rawMicTrack;
+    try {
+        rawMicTrack = await createLocalAudioTrack(audioTrackOptions);
+    } catch (micErr) {
+        console.error('Failed to create microphone track:', micErr);
+        // Try with minimal constraints as fallback
+        try {
+            rawMicTrack = await createLocalAudioTrack({ 
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                voiceIsolation: false,
+            });
+            console.log('Fallback: created microphone track with no audio processing');
+        } catch (fallbackErr) {
+            console.error('Failed to create microphone track even with fallback:', fallbackErr);
+            throw new Error(`Cannot access microphone: ${fallbackErr.message}`);
+        }
+    }
     
     // Setup audio processing chain with gain control for microphone volume
     let processedMicTrack = rawMicTrack; // Default to raw track
@@ -629,13 +647,34 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
     } = qualitySettings;
     
     try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
+        // For Electron, show source picker before starting capture
+        const isElectron = typeof window !== 'undefined' && window.electron;
+        if (isElectron) {
+            // Dynamically import to avoid circular dependencies
+            const { pickDisplaySourceElectron } = await import('./electron-utils.js');
+            
+            console.log('Showing display source picker for Electron...');
+            const selectedSourceId = await pickDisplaySourceElectron();
+            
+            if (!selectedSourceId) {
+                throw new Error('Screen sharing was cancelled - no source selected');
+            }
+            
+            console.log('User selected source, proceeding with getDisplayMedia...');
+        }
+        
+        // For Electron, simpler constraints work better
+        const constraintOptions = isElectron 
+          ? { video: true, audio: false }  // Electron handles screen sharing differently
+          : {
+              video: {
                 frameRate: { ideal: fps, max: fps }
                 // Resolution automatically matches the content being shared
-            },
-            audio: true // optional: can capture system audio in some browsers
-        });
+              },
+              audio: true // optional: can capture system audio in some browsers
+            };
+
+        const screenStream = await navigator.mediaDevices.getDisplayMedia(constraintOptions);
 
         const screenTrack = screenStream.getVideoTracks()[0];
 
@@ -644,10 +683,12 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         console.log("Initial screen track settings:", settings);
         
         // Get track capabilities
-        const capabilities = screenTrack.getCapabilities();
-        console.log("Screen track capabilities:", capabilities);
+        const capabilities = screenTrack.getCapabilities?.();
+        if (capabilities) {
+          console.log("Screen track capabilities:", capabilities);
+        }
 
-        // Apply constraints to the track
+        // Apply constraints to the track (only if not Electron, as it's already constrained)
         try {
             await screenTrack.applyConstraints({
                 frameRate: { ideal: fps, max: fps }
@@ -685,7 +726,25 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         console.log("Actual track frame rate:", screenTrack.getSettings().frameRate);
     } catch (err) {
         console.error("Screen share failed:", err);
-        throw err;
+        console.error("Screen share error details - Name:", err.name, "Message:", err.message, "Stack:", err.stack);
+        
+        // Provide more specific error messages
+        let errorMessage = err.message || 'Unknown error';
+        if (err.name === 'NotSupportedError') {
+            errorMessage = 'Screen sharing is not supported in this context. Check Electron permissions.';
+        } else if (err.name === 'NotAllowedError') {
+            errorMessage = 'Screen sharing was denied. Permission required.';
+        } else if (err.name === 'AbortError') {
+            if (errorMessage.includes('starting capture')) {
+                errorMessage = 'Failed to start screen capture. Ensure Electron display handler is properly set up. Try again.';
+            } else {
+                errorMessage = 'Screen share was cancelled or aborted.';
+            }
+        }
+        
+        const error = new Error(errorMessage);
+        error.originalError = err;
+        throw error;
     }
 }
 

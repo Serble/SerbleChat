@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell, desktopCapturer, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -34,6 +34,9 @@ let currentKeybinds = {
 let oauthCallbackServer = null;
 let oauthCallbackResolve = null;
 
+// Store user-selected display source
+let selectedDisplaySource = null;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -45,15 +48,24 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      enableRemoteModule: false,
     },
     backgroundColor: '#313338',
     show: false,
     autoHideMenuBar: true,
   });
 
-  // Show window when ready to avoid visual flash
+  // Show window and register keybinds when ready to avoid visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    
+    // Register keybinds after window is shown (non-blocking)
+    try {
+      registerKeybinds();
+    } catch (err) {
+      console.error('Failed to register keybinds:', err);
+      // Don't crash the app if keybinds fail to register
+    }
   });
 
   if (isDev) {
@@ -118,10 +130,15 @@ function canRegisterKeybind(accelerator) {
 
 // Register global shortcuts
 function registerKeybinds() {
-  // Unregister all previous shortcuts
-  globalShortcut.unregisterAll();
+  try {
+    // Unregister all previous shortcuts
+    globalShortcut.unregisterAll();
+  } catch (err) {
+    console.warn('Warning: Could not unregister previous shortcuts:', err.message);
+  }
   
-  const specialKeys = ['pause', 'scrolllock', 'numlock', 'capslock'];
+  const isLinux = process.platform === 'linux';
+  let successCount = 0;
   
   // Register toggle mute
   if (currentKeybinds.toggleMute) {
@@ -138,12 +155,24 @@ function registerKeybinds() {
             mainWindow.webContents.send('keybind-triggered', 'toggleMute');
           }
         });
-        if (!success) {
-          console.warn('Failed to register toggleMute keybind:', currentKeybinds.toggleMute, '(formatted:', formatted + ')');
+        if (success) {
+          console.log('Registered toggleMute keybind:', currentKeybinds.toggleMute);
+          successCount++;
+        } else {
+          // On Linux, many keybinds are reserved by the system - this is expected
+          if (isLinux) {
+            console.info('Info: toggleMute keybind already in use (common on Linux):', currentKeybinds.toggleMute);
+          } else {
+            console.warn('Failed to register toggleMute keybind:', currentKeybinds.toggleMute, '(formatted:', formatted + ')');
+          }
         }
       }
     } catch (e) {
-      console.error('Error registering toggleMute keybind:', e);
+      if (isLinux) {
+        console.info('Info: Could not register toggleMute keybind (common on Linux):', e.message);
+      } else {
+        console.error('Error registering toggleMute keybind:', e);
+      }
     }
   }
   
@@ -162,19 +191,94 @@ function registerKeybinds() {
             mainWindow.webContents.send('keybind-triggered', 'toggleDeafen');
           }
         });
-        if (!success) {
-          console.warn('Failed to register toggleDeafen keybind:', currentKeybinds.toggleDeafen, '(formatted:', formatted + ')');
+        if (success) {
+          console.log('Registered toggleDeafen keybind:', currentKeybinds.toggleDeafen);
+          successCount++;
+        } else {
+          // On Linux, many keybinds are reserved by the system - this is expected
+          if (isLinux) {
+            console.info('Info: toggleDeafen keybind already in use (common on Linux):', currentKeybinds.toggleDeafen);
+          } else {
+            console.warn('Failed to register toggleDeafen keybind:', currentKeybinds.toggleDeafen, '(formatted:', formatted + ')');
+          }
         }
       }
     } catch (e) {
-      console.error('Error registering toggleDeafen keybind:', e);
+      if (isLinux) {
+        console.info('Info: Could not register toggleDeafen keybind (common on Linux):', e.message);
+      } else {
+        console.error('Error registering toggleDeafen keybind:', e);
+      }
     }
+  }
+  
+  if (successCount > 0) {
+    console.log(`Successfully registered ${successCount} keybind(s)`);
+  } else if (isLinux) {
+    console.info('Info: No keybinds could be registered (common on Linux where keybinds may be reserved by the system)');
   }
 }
 
 app.whenReady().then(() => {
   createWindow();
-  registerKeybinds();
+  
+  // Register IPC handlers
+  registerIPCHandlers();
+
+  // Permission handlers for media devices
+  // Grant microphone permission
+  app.on('permission-request', (webContents, permission, callback) => {
+    if (permission === 'media') {
+      // Grant all media permissions (microphone, camera)
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  // Handle getCameraPermission (for camera access)
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission === 'camera' || permission === 'microphone') {
+      return true; // Always allow camera and microphone
+    }
+    return false;
+  });
+
+  // Handle screen sharing / getDisplayMedia - desktopCapturer requires explicit permission
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    console.log('Screen share request received');
+    
+    // If user has already selected a source via our picker, use it
+    if (selectedDisplaySource) {
+      console.log('Using user-selected source:', selectedDisplaySource.name);
+      callback({ 
+        video: selectedDisplaySource 
+      });
+      selectedDisplaySource = null; // Clear for next time
+      return;
+    }
+    
+    // Fallback: auto-select primary screen if no selection made
+    console.log('No pre-selected source, auto-selecting primary display...');
+    desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
+      if (!sources || sources.length === 0) {
+        console.error('No display sources found');
+        callback({ cancelled: true });
+        return;
+      }
+      
+      // Prefer the primary screen/display
+      const primarySource = sources.find(s => s.name.toLowerCase().includes('screen') || s.name === 'Entire Screen') || sources[0];
+      console.log('Auto-selected display source:', primarySource.name);
+      
+      callback({ 
+        video: primarySource 
+      });
+    }).catch(err => {
+      console.error('Failed to get display sources:', err);
+      callback({ cancelled: true });
+    });
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -296,112 +400,159 @@ function stopOAuthCallbackServer() {
   });
 }
 
-// IPC handlers for any Electron-specific features
-ipcMain.handle('is-electron', () => true);
-ipcMain.handle('get-platform', () => process.platform);
+// Register all IPC handlers
+function registerIPCHandlers() {
+  // IPC handlers for any Electron-specific features
+  ipcMain.handle('is-electron', () => true);
+  ipcMain.handle('get-platform', () => process.platform);
 
-// Keybind management
-ipcMain.handle('get-keybinds', () => currentKeybinds);
+  // Keybind management
+  ipcMain.handle('get-keybinds', () => currentKeybinds);
 
-ipcMain.handle('set-keybinds', (event, keybinds) => {
-  currentKeybinds = {
-    toggleMute: keybinds.toggleMute || '',
-    toggleDeafen: keybinds.toggleDeafen || ''
-  };
-  registerKeybinds();
-  return { success: true };
-});
-
-ipcMain.handle('validate-keybind', (event, accelerator) => {
-  if (!accelerator) return { valid: true };
-  
-  const normalized = normalizeAccelerator(accelerator);
-  const formatted = formatAcceleratorForPlatform(normalized);
-  
-  try {
-    // Check if it's already one of our current keybinds (allow rebinding to same key)
-    const currentMuteNorm = formatAcceleratorForPlatform(normalizeAccelerator(currentKeybinds.toggleMute));
-    const currentDeafenNorm = formatAcceleratorForPlatform(normalizeAccelerator(currentKeybinds.toggleDeafen));
-    
-    // Normalize case-insensitively for comparison
-    const formattedLower = formatted.toLowerCase();
-    const currentMuteLower = currentMuteNorm.toLowerCase();
-    const currentDeafenLower = currentDeafenNorm.toLowerCase();
-    
-    const isCurrentKeybind = 
-      currentMuteLower === formattedLower ||
-      currentDeafenLower === formattedLower;
-    
-    if (isCurrentKeybind) {
-      return { valid: true };
-    }
-    
-    // Check if this is an unregisterable key - allow it anyway
-    if (!canRegisterKeybind(formatted)) {
-      return { valid: true };
-    }
-    
-    // Try to register temporarily to validate
-    const success = globalShortcut.register(formatted, () => {});
-    if (success) {
-      globalShortcut.unregister(formatted);
-      return { valid: true };
-    }
-    
-    // If registration failed, try to check if it's a syntax error or just in use
-    // Allow the keybind anyway - it might work when actually saved
-    return { valid: true };
-  } catch (e) {
-    // Even if there's an error, check basic syntax validity
-    const parts = formatted.split('+');
-    const validModifiers = ['control', 'shift', 'alt', 'command'];
-    const allButLast = parts.slice(0, -1).map(p => p.toLowerCase());
-    
-    // Check if all parts except last are valid modifiers
-    const validSyntax = allButLast.every(p => validModifiers.includes(p)) && parts.length > 0;
-    
-    if (!validSyntax) {
-      return { valid: false, error: 'Invalid keybind format' };
-    }
-    
-    // Syntax is valid, allow it
-    return { valid: true };
-  }
-});
-
-// OAuth handlers for Electron
-ipcMain.handle('oauth-start-server', async () => {
-  try {
-    await startOAuthCallbackServer();
+  ipcMain.handle('set-keybinds', (event, keybinds) => {
+    currentKeybinds = {
+      toggleMute: keybinds.toggleMute || '',
+      toggleDeafen: keybinds.toggleDeafen || ''
+    };
+    registerKeybinds();
     return { success: true };
-  } catch (err) {
-    console.error('Failed to start OAuth callback server:', err);
-    return { success: false, error: err.message };
-  }
-});
-
-ipcMain.handle('oauth-open-browser', async (event, url) => {
-  try {
-    await shell.openExternal(url);
-    return { success: true };
-  } catch (err) {
-    console.error('Failed to open external browser:', err);
-    return { success: false, error: err.message };
-  }
-});
-
-ipcMain.handle('oauth-wait-callback', () => {
-  return new Promise((resolve) => {
-    oauthCallbackResolve = resolve;
   });
-});
 
-ipcMain.handle('oauth-stop-server', async () => {
-  try {
-    await stopOAuthCallbackServer();
-    return { success: true };
-  } catch (err) {
-    console.error('Failed to stop OAuth callback server:', err);
-    return { success: false, error: err.message };
-  }
-});
+  ipcMain.handle('validate-keybind', (event, accelerator) => {
+    if (!accelerator) return { valid: true };
+    
+    const normalized = normalizeAccelerator(accelerator);
+    const formatted = formatAcceleratorForPlatform(normalized);
+    
+    try {
+      // Check if it's already one of our current keybinds (allow rebinding to same key)
+      const currentMuteNorm = formatAcceleratorForPlatform(normalizeAccelerator(currentKeybinds.toggleMute));
+      const currentDeafenNorm = formatAcceleratorForPlatform(normalizeAccelerator(currentKeybinds.toggleDeafen));
+      
+      // Normalize case-insensitively for comparison
+      const formattedLower = formatted.toLowerCase();
+      const currentMuteLower = currentMuteNorm.toLowerCase();
+      const currentDeafenLower = currentDeafenNorm.toLowerCase();
+      
+      const isCurrentKeybind = 
+        currentMuteLower === formattedLower ||
+        currentDeafenLower === formattedLower;
+      
+      if (isCurrentKeybind) {
+        return { valid: true };
+      }
+      
+      // Check if this is an unregisterable key - allow it anyway
+      if (!canRegisterKeybind(formatted)) {
+        return { valid: true };
+      }
+      
+      // Try to register temporarily to validate
+      const success = globalShortcut.register(formatted, () => {});
+      if (success) {
+        globalShortcut.unregister(formatted);
+        return { valid: true };
+      }
+      
+      // If registration failed, try to check if it's a syntax error or just in use
+      // Allow the keybind anyway - it might work when actually saved
+      return { valid: true };
+    } catch (e) {
+      // Even if there's an error, check basic syntax validity
+      const parts = formatted.split('+');
+      const validModifiers = ['control', 'shift', 'alt', 'command'];
+      const allButLast = parts.slice(0, -1).map(p => p.toLowerCase());
+      
+      // Check if all parts except last are valid modifiers
+      const validSyntax = allButLast.every(p => validModifiers.includes(p)) && parts.length > 0;
+      
+      if (!validSyntax) {
+        return { valid: false, error: 'Invalid keybind format' };
+      }
+      
+      // Syntax is valid, allow it
+      return { valid: true };
+    }
+  });
+
+  // Screen sharing - get available sources for user selection
+  ipcMain.handle('get-display-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      
+      // Format sources for the frontend (remove large thumbnail data for efficiency)
+      const formattedSources = sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL(), // Convert to data URL for preview
+        isScreen: source.display_id !== undefined // Sources with display_id are screens, others are windows
+      }));
+      
+      console.log(`Available display sources: ${formattedSources.map(s => s.name).join(', ')}`);
+      return { success: true, sources: formattedSources };
+    } catch (err) {
+      console.error('Failed to get display sources:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Screen sharing - get the actual source for capture (after user selection)
+  ipcMain.handle('get-display-source', async (event, sourceId) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      const source = sources.find(s => s.id === sourceId);
+      
+      if (!source) {
+        return { success: false, error: 'Source not found' };
+      }
+      
+      console.log(`User selected source for screen sharing: ${source.name}`);
+      
+      // Store the source so the display media request handler can use it
+      selectedDisplaySource = source;
+      
+      return { success: true, source };
+    } catch (err) {
+      console.error('Failed to get display source:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // OAuth handlers for Electron
+  ipcMain.handle('oauth-start-server', async () => {
+    try {
+      await startOAuthCallbackServer();
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to start OAuth callback server:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('oauth-open-browser', async (event, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to open external browser:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('oauth-wait-callback', () => {
+    return new Promise((resolve) => {
+      oauthCallbackResolve = resolve;
+    });
+  });
+
+  ipcMain.handle('oauth-stop-server', async () => {
+    try {
+      await stopOAuthCallbackServer();
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to stop OAuth callback server:', err);
+      return { success: false, error: err.message };
+    }
+  });
+}
+

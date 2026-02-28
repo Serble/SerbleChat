@@ -73,6 +73,16 @@ export default function VoicePanel({
     } catch (error) {
       console.error('Screen sharing error:', error);
       setLocalScreenShare(null);
+      
+      // Show user-friendly error message
+      let errorMessage = error.message || 'Failed to start screen sharing';
+      if (error.name === 'NotSupportedError' || errorMessage.includes('not supported')) {
+        errorMessage = 'Screen sharing is not supported in this environment. Check Electron permissions if on desktop.';
+      } else if (error.name === 'NotAllowedError' || errorMessage.includes('denied')) {
+        errorMessage = 'Screen sharing was denied. Please allow access and try again.';
+      } else if (error.name === 'AbortError' || errorMessage.includes('cancelled')) {
+        errorMessage = 'Screen sharing was cancelled.';
+      }
     }
   };
 

@@ -18,6 +18,10 @@ export interface ElectronAPI {
   oauthOpenBrowser: (url: string) => Promise<{ success: boolean; error?: string }>;
   oauthWaitCallback: () => Promise<{ code: string | null; state: string | null; authorized: string | null }>;
   oauthStopServer: () => Promise<{ success: boolean; error?: string }>;
+  
+  // Screen sharing for Electron
+  getDisplaySources: () => Promise<{ success: boolean; sources?: Array<{ id: string; name: string; thumbnail: string; isScreen: boolean }>; error?: string }>;
+  getDisplaySource: (sourceId: string) => Promise<{ success: boolean; source?: any; error?: string }>;
 }
 
 declare global {

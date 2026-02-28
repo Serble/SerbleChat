@@ -1,5 +1,4 @@
 TODO:
-- Voice/video chat
 - User profiles (make them highly customisable, custom css style)
 - Reactions
 - More live updates
@@ -14,3 +13,5 @@ TODO:
 - Sounds for notifications, mute/deafen/stream/join/leave vc
 - Typing indicators?
 - [BUG] Unreads not marked as read for own messages and live update msgs
+- icon for client side user muted
+- pick audio devices in electron app

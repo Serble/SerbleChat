@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import LandingPage  from './pages/LandingPage.jsx';
 import CallbackPage from './pages/CallbackPage.jsx';
 import AppShell     from './pages/AppShell.jsx';
@@ -8,12 +9,20 @@ import { ThemeProvider } from './context/ThemeContext.jsx';
 import { ClientOptionsProvider } from './context/ClientOptionsContext.jsx';
 import { MobileProvider } from './context/MobileContext.jsx';
 import { VoiceProvider } from './context/VoiceContext.jsx';
+import { initializeMediaPermissions } from './electron-utils.js';
 
 function ProtectedRoute({ children }) {
   return localStorage.getItem('jwt') ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {
+  useEffect(() => {
+    // Initialize media permissions on app startup (for Electron)
+    initializeMediaPermissions().catch(err => {
+      console.warn('Media permissions initialization warning:', err);
+    });
+  }, []);
+
   return (
     <ThemeProvider>
       <BrowserRouter>

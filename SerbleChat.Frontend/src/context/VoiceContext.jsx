@@ -34,7 +34,20 @@ export function VoiceProvider({ children }) {
   }, [voiceSession, voiceMuted, voiceDeafened]);
 
   function describeVoiceError(err, context) {
-    if (err?.message) return err.message;
+    if (err?.message) {
+      // Provide specific error messages for common issues
+      const message = err.message.toLowerCase();
+      if (message.includes('microphone') || message.includes('audio')) {
+        return 'Failed to access microphone. Check device permissions and ensure a microphone is connected.';
+      }
+      if (message.includes('permission') || message.includes('denied')) {
+        return 'Access to microphone was denied. Check Electron permissions.';
+      }
+      if (message.includes('not found') || message.includes('no device')) {
+        return 'No microphone device found. Ensure a microphone is connected.';
+      }
+      return err.message;
+    }
     if (typeof err === 'string') return err;
     return context ? `Voice error (${context}).` : 'Voice error.';
   }

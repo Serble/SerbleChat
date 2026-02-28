@@ -21,4 +21,8 @@ contextBridge.exposeInMainWorld('electron', {
   oauthOpenBrowser: (url) => ipcRenderer.invoke('oauth-open-browser', url),
   oauthWaitCallback: () => ipcRenderer.invoke('oauth-wait-callback'),
   oauthStopServer: () => ipcRenderer.invoke('oauth-stop-server'),
+  
+  // Screen sharing for Electron
+  getDisplaySources: () => ipcRenderer.invoke('get-display-sources'),
+  getDisplaySource: (sourceId) => ipcRenderer.invoke('get-display-source', sourceId),
 });
