@@ -5,6 +5,12 @@ TODO:
 - More live updates
   - Members changing (profiles)
 - Fix app making TOO MANY requests (cache them or something, react SWR)
-- File uploads (attachments)
+- File uploads (attachments, through Serble Files)
 - Webhooks for sending messages
 - Bot library (self bots)
+- Improve push notification reliability potentially (native app support with browser rendering?)
+- Send whether muted or defeaned to server so we can display when not in vc (and display deafened at all)
+- Voice activity threshold/push to talk
+- Sounds for notifications, mute/deafen/stream/join/leave vc
+- Typing indicators?
+- [BUG] Unreads not marked as read for own messages and live update msgs
