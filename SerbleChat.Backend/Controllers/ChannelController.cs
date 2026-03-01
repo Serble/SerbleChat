@@ -132,8 +132,23 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
     
         List<Message> messages = await msgs.GetMessages(channelId, limit, offset);
-        await unreads.MarkRead(userId, channelId, messages.FirstOrDefault()?.Id ?? 0);
         return Ok(messages);
+    }
+
+    [HttpPost("{channelId:long}/messages/{messageId:long}/read")]
+    public async Task<ActionResult> MarkMessagesRead(long channelId, long messageId) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+    
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+        
+        await unreads.MarkRead(userId, channelId, messageId);
+        return Ok();
     }
 
     [HttpGet("{channelId:long}/messages/{messageId:long}")]

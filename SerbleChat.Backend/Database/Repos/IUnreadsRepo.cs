@@ -2,6 +2,7 @@ namespace SerbleChat.Backend.Database.Repos;
 
 public interface IUnreadsRepo {
     Task MarkRead(string userId, long channelId, long messageId);
+    Task<long> GetLastReadMessageId(string userId, long channelId);
     Task<int> GetUnreadMentionsCount(string userId, long channelId);
     Task<int> GetUnreadMentionsCount(string userId);
     Task<int> GetUnreadMessagesCount(string userId, long channelId);

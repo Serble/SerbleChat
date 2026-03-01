@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
-         getChannelIconUrl, getGroupChatIconUrl } from '../api.js';
+         getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
@@ -399,6 +399,10 @@ export default function ChatView() {
   const [mentionData, setMentionData]   = useState({ members: [], channels: [], roles: [] });
   const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
   const [pickerIndex, setPickerIndex]   = useState(0);
+  
+  // Track the highest message ID we've marked as read for this channel
+  const lastMarkedReadIdRef = useRef(null);
+  const markReadTimeoutRef = useRef(null);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -646,6 +650,9 @@ export default function ChatView() {
   useEffect(() => {
     // Mark this channel as actively viewed (clears its unread count)
     setActiveChannelId(channelId);
+    // Reset message read tracking for the new channel
+    lastMarkedReadIdRef.current = null;
+    clearTimeout(markReadTimeoutRef.current);
     return () => {
       // When leaving the channel, clear active so new messages are counted
       setActiveChannelId(null);
@@ -787,6 +794,63 @@ export default function ChatView() {
   useEffect(() => {
     if (!loading) inputRef.current?.focus();
   }, [channelId, loading]);
+
+  // Mark visible messages as read when user views them
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl || channelMessages.length === 0) return;
+
+    const markVisibleMessagesAsRead = () => {
+      // Get all message elements
+      const msgElements = scrollEl.querySelectorAll('[data-msgid]');
+      if (msgElements.length === 0) return;
+
+      let highestVisibleId = null;
+
+      // Find the highest message ID that's at least partially visible
+      for (const el of msgElements) {
+        const rect = el.getBoundingClientRect();
+        const scrollRect = scrollEl.getBoundingClientRect();
+        
+        // Check if element is within the visible viewport (with some margin)
+        if (rect.bottom > scrollRect.top && rect.top < scrollRect.bottom) {
+          const msgId = el.getAttribute('data-msgid');
+          if (msgId && !isNaN(msgId)) {
+            const id = BigInt(msgId);
+            if (highestVisibleId === null || id > highestVisibleId) {
+              highestVisibleId = id;
+            }
+          }
+        }
+      }
+
+      // If we found a visible message and it's higher than what we've already marked
+      if (highestVisibleId !== null) {
+        const lastMarked = lastMarkedReadIdRef.current ? BigInt(lastMarkedReadIdRef.current) : null;
+        if (lastMarked === null || highestVisibleId > lastMarked) {
+          // Debounce the API call to avoid too many requests
+          clearTimeout(markReadTimeoutRef.current);
+          markReadTimeoutRef.current = setTimeout(async () => {
+            try {
+              await markMessagesAsRead(String(channelId), String(highestVisibleId));
+              lastMarkedReadIdRef.current = String(highestVisibleId);
+            } catch (err) {
+              console.warn('Failed to mark messages as read:', err);
+            }
+          }, 500); // 500ms debounce
+        }
+      }
+    };
+
+    // Track scroll and message changes to detect when new messages become visible
+    scrollEl.addEventListener('scroll', markVisibleMessagesAsRead);
+    markVisibleMessagesAsRead(); // Initial check
+
+    return () => {
+      scrollEl.removeEventListener('scroll', markVisibleMessagesAsRead);
+      clearTimeout(markReadTimeoutRef.current);
+    };
+  }, [channelMessages, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-resize textarea as content grows/shrinks
   useEffect(() => {

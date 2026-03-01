@@ -283,6 +283,15 @@ export async function deleteMessage(channelId, messageId) {
   return handle(res);
 }
 
+/** POST /channel/:channelId/messages/:messageId/read  – mark messages up to messageId as read */
+export async function markMessagesAsRead(channelId, messageId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/read`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 /** POST /channel/:channelId  – send a message */
 export async function sendMessage(channelId, content) {
   const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}`, {

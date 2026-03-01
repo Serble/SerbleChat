@@ -24,6 +24,14 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         await context.SaveChangesAsync();
     }
 
+    public async Task<long> GetLastReadMessageId(string userId, long channelId) {
+        long? val = await context.ChannelReads
+            .Where(cr => cr.UserId == userId && cr.ChannelId == channelId)
+            .Select(cr => (long?)cr.LastReadMessageId) // cast to nullable long for DefaultIfEmpty
+            .FirstOrDefaultAsync(); // if no record, return 0 as default
+        return val ?? 0;
+    }
+
     public async Task<int> GetUnreadMentionsCount(string userId, long channelId) {
         return await (
             from m in context.Messages
