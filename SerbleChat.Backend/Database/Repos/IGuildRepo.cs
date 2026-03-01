@@ -29,8 +29,8 @@ public interface IGuildRepo {
     Task UpdateChannelPermissionOverride(ChannelPermissionOverride permissionOverride);
     
     Task CreateInvite(GuildInvite invite);
-    Task<GuildInvite?> GetInvite(long id);
-    Task DeleteInvite(long id);
+    Task<GuildInvite?> GetInvite(string id);
+    Task DeleteInvite(string id);
     Task<GuildInvite[]> GetGuildInvites(long guildId);
     
     public Task<GuildPermissions> GetUserPermissions(string userId, long guildId, long channelId = -1);

@@ -35,7 +35,7 @@ export const electronAPI = typeof window !== 'undefined' && window.electron ? wi
  * @param {string} oauthUrl - The OAuth URL to open in the browser
  * @returns {Promise<{code: string, state: string, authorized: string}>} - The callback parameters
  */
-export async function electronOAuthFlow(oauthUrl) {
+export const electronOAuthFlow = async (oauthUrl) => {
   const api = getElectronAPI();
   
   if (!isElectron() || !api) {
@@ -71,14 +71,14 @@ export async function electronOAuthFlow(oauthUrl) {
     }
     throw error;
   }
-}
+};
 
 /**
  * Initialize media permissions in Electron
  * Call this on app startup to ensure media permissions are properly set up
  * @returns {Promise<void>}
  */
-export async function initializeMediaPermissions() {
+export const initializeMediaPermissions = async () => {
   if (!isElectron()) {
     return; // Only needed in Electron
   }
@@ -92,25 +92,25 @@ export async function initializeMediaPermissions() {
     console.warn('Microphone access initialization warning:', err.message);
     // Don't throw - this might fail if user denies permission, and that's okay
   }
-}
+};
 
 /**
  * Check if screen sharing is available in the current environment
  * @returns {boolean}
  */
-export function isScreenSharingAvailable() {
+export const isScreenSharingAvailable = () => {
   if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
     return typeof navigator.mediaDevices.getDisplayMedia === 'function';
   }
   return false;
-}
+};
 
 /**
  * Get microphone error message for display
  * @param {Error} error
  * @returns {string}
  */
-export function getMicrophoneErrorMessage(error) {
+export const getMicrophoneErrorMessage = (error) => {
   if (!error) return 'Unknown microphone error';
   
   if (error.name === 'NotAllowedError') {
@@ -124,13 +124,13 @@ export function getMicrophoneErrorMessage(error) {
   }
   
   return error.message || 'Failed to access microphone';
-}
+};
 
 /**
  * Show display source picker for Electron screen sharing
  * @returns {Promise<string>} - Returns the selected source ID, or null if cancelled
  */
-export async function pickDisplaySourceElectron() {
+export const pickDisplaySourceElectron = async () => {
   if (!isElectron() || !window.electron?.getDisplaySources) {
     throw new Error('Display source picker only available in Electron');
   }

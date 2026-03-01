@@ -13,7 +13,8 @@ export default function InvitePage() {
   const [errMsg, setErrMsg]     = useState(null);
 
   // Hue based on invite id for a consistent colour splash
-  const hue = (Number(inviteId) * 67) % 360;
+  // Convert string ID to a number for consistent color generation
+  const hue = (inviteId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 67) % 360;
 
   async function handleJoin() {
     if (!isLoggedIn) {

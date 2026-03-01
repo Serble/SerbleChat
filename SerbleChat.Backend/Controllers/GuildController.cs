@@ -526,15 +526,17 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return Forbid();
         }
         
+        string inviteId = Guid.NewGuid().ToString().Replace("-", "")[..12];
         GuildInvite invite = new() {
-            GuildId = guildId,
+            Id = inviteId,
+            GuildId = guildId
         };
         await guilds.CreateInvite(invite);
         return Ok(invite);
     }
     
-    [HttpDelete("invite/{inviteId:long}")]
-    public async Task<ActionResult> DeleteInvite(long inviteId) {
+    [HttpDelete("invite/{inviteId}")]
+    public async Task<ActionResult> DeleteInvite(string inviteId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -580,8 +582,8 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok(invites);
     }
 
-    [HttpPost("invite/{inviteId:long}/accept")]
-    public async Task<ActionResult<Guild>> AcceptInvite(long inviteId) {
+    [HttpPost("invite/{inviteId}/accept")]
+    public async Task<ActionResult<Guild>> AcceptInvite(string inviteId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();

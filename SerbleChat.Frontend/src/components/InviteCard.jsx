@@ -37,7 +37,8 @@ export default function InviteCard({ inviteId }) {
   }
 
   // Hue for the guild icon — stable per invite id
-  const hue = (Number(inviteId) * 67) % 360;
+  // Convert string ID to a number for consistent color generation
+  const hue = (inviteId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 67) % 360;
 
   return (
     <div style={{

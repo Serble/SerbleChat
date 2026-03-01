@@ -239,11 +239,11 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
         return context.SaveChangesAsync();
     }
 
-    public async Task<GuildInvite?> GetInvite(long id) {
+    public async Task<GuildInvite?> GetInvite(string id) {
         return await context.GuildInvites.FindAsync(id);
     }
 
-    public Task DeleteInvite(long id) {
+    public Task DeleteInvite(string id) {
         return context.GuildInvites.Where(i => i.Id == id).ExecuteDeleteAsync();
     }
 

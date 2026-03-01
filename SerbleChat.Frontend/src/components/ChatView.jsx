@@ -23,7 +23,7 @@ import Avatar from './Avatar.jsx';
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
 // hostname/port (or after a Vite port reassignment on reload) still work.
-const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/(\d+)/g;
+const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/([a-zA-Z0-9_-]+)/g;
 
 // Regex that matches message links: /app/channel/:channelId?message=:messageId
 // Also origin-agnostic for the same reasons as invite links.

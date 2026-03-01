@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 namespace SerbleChat.Backend.Database.Structs;
 
 public class GuildInvite {
-    [Key]
-    public long Id { get; set; }
+    [Key, StringLength(12)]
+    public string Id { get; set; } = null!;
     
     [ForeignKey(nameof(GuildNavigation))]
     public long GuildId { get; set; }
