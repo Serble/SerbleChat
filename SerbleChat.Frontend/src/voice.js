@@ -1,30 +1,22 @@
 import {getChannelVoiceToken} from "./api.js";
 import {createLocalAudioTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track} from "livekit-client";
 
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
 class VoiceSession {
     constructor(room, onParticipantsChange) {
         this.room = room;
         this.onParticipantsChange = onParticipantsChange;
         this.isActive = true;
-        this.audioContext = null;
-        this.audioAnalyzers = {};
         this.speakingStates = {};
         this.speakingCheckInterval = null;
         this.micGainNode = null;
         this.micSourceNode = null;
-        this.participantMutedStates = {};
-        this.participantMuteGainNodes = {}; // Maps participant identity to mute gain node
     }
     /** @type {Room} */
     room;
     /** @type {Object<string, HTMLElement>} */
     trackElements = {};
-    /** @type {Object<string, HTMLAudioElement>} */
-    participantAudioElements = {}; // Maps participant identity to audio element
-    /** @type {AudioContext} */
-    audioContext;
-    /** @type {Object<string, {analyzer: AnalyserNode, dataArray: Uint8Array, source: MediaElementAudioSourceNode}>} */
-    audioAnalyzers;
     /** @type {Object<string, boolean>} */
     speakingStates;
     /** @type {number} */
@@ -33,8 +25,6 @@ class VoiceSession {
     micGainNode;
     /** @type {MediaStreamAudioSourceNode} */
     micSourceNode;
-    /** @type {Object<string, GainNode>} */
-    participantGainNodes = {}; // Maps participant identity to gain node for volume control
     /** @type {LocalAudioTrack} */
     micTrack;
     /** @type {LocalVideoTrack} */
@@ -47,6 +37,8 @@ class VoiceSession {
     isDeafened = false;
     /** @type {boolean | null} */
     wasUnmutedBeforeDeafen = null; // Track mute state before deafening
+    /** @type {Map<string, {source: MediaStreamAudioSourceNode, muteNode: GainNode | null, gainNode: GainNode, element: HTMLMediaElement | null, analyzer: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>}>} */
+    audioGraph = new Map();
 
     getParticipants() {
         if (!this.room) return [];
@@ -64,9 +56,9 @@ class VoiceSession {
             
             // Check if participant is client-side muted
             let isClientMuted = false;
-            const muteGainNode = this.participantMuteGainNodes?.[p.identity];
-            if (muteGainNode) {
-                isClientMuted = muteGainNode.gain.value === 0;
+            const graph = this.audioGraph?.[p.identity];
+            if (graph) {
+                isClientMuted = graph.muteNode.gain < 0.5;
             }
             
             return {
@@ -97,84 +89,23 @@ class VoiceSession {
         
         return participants;
     }
-    
-    setupAudioAnalyzer(participantIdentity, audioElement) {
-        // Don't setup if already exists AND is working (has gain nodes)
-        if (this.audioAnalyzers[participantIdentity] && this.participantMuteGainNodes?.[participantIdentity]) {
-            console.log('Audio analyzer already exists for:', participantIdentity);
-            return;
-        }
-        
-        if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        try {
-            // Ensure audio context is running
-            if (this.audioContext.state === 'suspended') {
-                this.audioContext.resume();
-            }
-            
-            // Create analyzer for this participant
-            const analyzer = this.audioContext.createAnalyser();
-            analyzer.fftSize = 256;
-            const bufferLength = analyzer.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            
-            // Connect audio element to analyzer
-            // Note: createMediaElementSource can only be called once per element
-            const source = this.audioContext.createMediaElementSource(audioElement);
-            
-            // Create gain node for volume control
-            const volumeGain = this.audioContext.createGain();
-            volumeGain.gain.value = 1.0; // Default to full volume
-            
-            // Create a separate mute gain node (will be set to 0 when muted)
-            const muteGain = this.audioContext.createGain();
-            muteGain.gain.value = 1.0; // 1.0 = not muted
-            
-            // Connect: source -> volume -> mute -> analyzer -> destination
-            source.connect(volumeGain);
-            volumeGain.connect(muteGain);
-            muteGain.connect(analyzer);
-            analyzer.connect(this.audioContext.destination);
-            
-            this.audioAnalyzers[participantIdentity] = {
-                analyzer,
-                dataArray,
-                source
-            };
-            
-            // Store gain nodes for this participant
-            this.participantGainNodes[participantIdentity] = volumeGain; // For volume control
-            
-            // Store mute gain node separately
-            if (!this.participantMuteGainNodes) {
-                this.participantMuteGainNodes = {};
-            }
-            this.participantMuteGainNodes[participantIdentity] = muteGain; // For mute control
-            
-            console.log(`✓ Audio analyzer setup complete for participant '${participantIdentity}'`);
-        } catch (err) {
-            console.error('✗ Failed to setup audio analyzer for', participantIdentity, ':', err);
-            // Clean up any partial state to allow retries
-            if (this.audioAnalyzers[participantIdentity]) {
-                delete this.audioAnalyzers[participantIdentity];
-            }
-            if (this.participantGainNodes[participantIdentity]) {
-                delete this.participantGainNodes[participantIdentity];
-            }
-            if (this.participantMuteGainNodes?.[participantIdentity]) {
-                delete this.participantMuteGainNodes[participantIdentity];
-            }
+
+    cleanAudio(participantId) {
+        const refs = this.audioGraph.get(participantId);
+        if (refs) {
+            refs.source.disconnect();
+            if (refs.muteNode) refs.muteNode.disconnect();
+            refs.gainNode.disconnect();
+            if (refs.element) refs.element.remove(); // Remove the dummy audio element
+            this.audioGraph.delete(participantId);
         }
     }
     
     checkSpeakingLevels() {
         let hasChanges = false;
         
-        Object.keys(this.audioAnalyzers).forEach(participantIdentity => {
-            const { analyzer, dataArray } = this.audioAnalyzers[participantIdentity];
+        Object.keys(this.audioGraph).forEach(participantIdentity => {
+            const { analyzer, dataArray } = this.audioGraph.get(participantIdentity);
             
             // Get frequency data
             analyzer.getByteFrequencyData(dataArray);
@@ -220,39 +151,6 @@ class VoiceSession {
         }
     }
     
-    cleanupAudioAnalyzer(participantIdentity) {
-        if (this.audioAnalyzers[participantIdentity]) {
-            const { source } = this.audioAnalyzers[participantIdentity];
-            try {
-                source.disconnect();
-            } catch (err) {
-                // Already disconnected
-            }
-            delete this.audioAnalyzers[participantIdentity];
-            delete this.speakingStates[participantIdentity];
-        }
-        
-        // Clean up volume gain node
-        if (this.participantGainNodes[participantIdentity]) {
-            try {
-                this.participantGainNodes[participantIdentity].disconnect();
-            } catch (err) {
-                // Already disconnected
-            }
-            delete this.participantGainNodes[participantIdentity];
-        }
-        
-        // Clean up mute gain node
-        if (this.participantMuteGainNodes?.[participantIdentity]) {
-            try {
-                this.participantMuteGainNodes[participantIdentity].disconnect();
-            } catch (err) {
-                // Already disconnected
-            }
-            delete this.participantMuteGainNodes[participantIdentity];
-        }
-    }
-    
     setMicVolume(volumePercent) {
         if (!this.micGainNode) {
             console.warn('Mic gain node not initialized - volume control unavailable');
@@ -268,6 +166,8 @@ class VoiceSession {
 }
 
 export async function joinChannel(channelId, onParticipantsChange, onRemoteScreenShare, onRemoteUnScreenShare, onFatalError, audioOptions = {}) {
+    await audioContext.resume();
+
     let token = await getChannelVoiceToken(channelId.channelId);
     token = token.token;
 
@@ -310,20 +210,41 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         try {
             console.log(`Subscribed to track type: ${track.kind}`);
             if (track.kind === "audio") {
-                if (session.trackElements[track.sid]) return;
-                const audio = document.createElement("audio");
-                audio.srcObject = new MediaStream([track.mediaStreamTrack]);
-                audio.autoplay = true;
-                audio.muted = false; // Don't mute - we need the element to play sound for Web Audio API to hear it
-                audio.style.display = 'none'; // Hide it since it's only for audio
-                document.body.appendChild(audio);
-                session.trackElements[track.sid] = audio;
-                // Store reference by participant identity for easier access to mute/volume controls
-                session.participantAudioElements[participant.identity] = audio;
-                
-                // Setup audio analyzer to detect speaking based on actual audio playback
-                session.setupAudioAnalyzer(participant.identity, audio);
-                
+                if (session.audioGraph[participant.identity]) return;
+
+                console.log(`Processing audio track for ${participant.identity}`);
+
+                // 1. Ensure AudioContext is running
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+
+                // 2. THE TRICK: Attach the track to a hidden, muted audio element.
+                // Chromium browsers often won't "start" the stream unless it's attached to a DOM element.
+                const element = track.attach();
+                element.muted = true; // Mute the element so we don't get double audio
+                element.style.display = 'none'; // Hide it
+
+                // 3. Create the Web Audio Graph
+                const source = audioContext.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+                const muteNode = audioContext.createGain();
+                const gainNode = audioContext.createGain();
+                muteNode.gain.value = 1.0;
+                gainNode.gain.value = 1.0;
+
+                const analyzer = audioContext.createAnalyser();
+                analyzer.fftSize = 256;
+                const bufferLength = analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                source.connect(muteNode);
+                muteNode.connect(gainNode);
+                gainNode.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+
+                // 4. Store references so they aren't garbage collected
+                session.audioGraph.set(participant.identity, { source, muteNode, gainNode, element, analyzer, dataArray });
+
                 // Update participants when audio track is subscribed
                 if (onParticipantsChange) onParticipantsChange(session.getParticipants());
             }
@@ -370,8 +291,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         
         // Clean up audio analyzer if it's an audio track
         if (track.kind === "audio") {
-            session.cleanupAudioAnalyzer(participant.identity);
-            delete session.participantAudioElements[participant.identity];
+            session.cleanAudio(participant.identity);
         }
         
         removeTrackElement(track.sid);
@@ -382,7 +302,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     });
     
     // Notify when participants join/leave
-    room.on(RoomEvent.ParticipantConnected, (participant) => {
+    room.on(RoomEvent.ParticipantConnected, (_participant) => {
         if (!session.isActive) return;
         console.log("Participant connected!");
         if (onParticipantsChange) onParticipantsChange(session.getParticipants());
@@ -393,7 +313,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         console.log("Participant disconnected!");
         
         // Clean up audio analyzer for disconnected participant
-        session.cleanupAudioAnalyzer(participant.identity);
+        session.cleanAudio(participant.identity);
         
         removeParticipantTracks(participant);
         if (onParticipantsChange) onParticipantsChange(session.getParticipants());
@@ -477,24 +397,24 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     let processedMicTrack = rawMicTrack; // Default to raw track
     
     try {
-        if (!session.audioContext) {
-            session.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
         }
-        
+
         // Create the audio processing chain to apply gain
         const rawStream = new MediaStream([rawMicTrack.mediaStreamTrack]);
-        const source = session.audioContext.createMediaStreamSource(rawStream);
+        const source = audioContext.createMediaStreamSource(rawStream);
         
         // Create gain node for volume control
-        const gainNode = session.audioContext.createGain();
+        const gainNode = audioContext.createGain();
         const micVolume = audioOptions.micVolume ?? 100;
         gainNode.gain.value = micVolume / 100;
         
         // Create destination to capture the processed audio
-        const destination = session.audioContext.createMediaStreamDestination();
+        const destination = audioContext.createMediaStreamDestination();
         
         // Create analyzer for speaking detection
-        const analyzer = session.audioContext.createAnalyser();
+        const analyzer = audioContext.createAnalyser();
         analyzer.fftSize = 256;
         const bufferLength = analyzer.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
@@ -522,12 +442,8 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         // Store references
         session.micSourceNode = source;
         session.micGainNode = gainNode;
-        session.audioAnalyzers[room.localParticipant.identity] = {
-            analyzer,
-            dataArray,
-            source
-        };
-        
+
+        session.audioGraph.set(room.localParticipant.identity, { source, muteNode: null, gainNode, element: null, analyzer, dataArray });
         console.log(`Audio processing chain created (mic volume: ${micVolume}%)`);
     } catch (err) {
         console.error('Failed to setup audio processing chain:', err);
@@ -560,19 +476,19 @@ export async function leaveChannel(session) {
     session.stopSpeakingDetection();
     
     // Clean up all audio analyzers
-    Object.keys(session.audioAnalyzers).forEach(participantIdentity => {
-        session.cleanupAudioAnalyzer(participantIdentity);
+    Object.keys(session.audioGraph).forEach(participantIdentity => {
+        session.cleanAudio(participantIdentity);
     });
     
     // Close audio context
-    if (session.audioContext) {
-        try {
-            await session.audioContext.close();
-        } catch (err) {
-            console.warn('Failed to close audio context:', err);
-        }
-        session.audioContext = null;
-    }
+    // if (session.audioContext) {
+    //     try {
+    //         await session.audioContext.close();
+    //     } catch (err) {
+    //         console.warn('Failed to close audio context:', err);
+    //     }
+    //     session.audioContext = null;
+    // }
     
     session.room?.removeAllListeners?.();
 
@@ -852,14 +768,14 @@ export function setParticipantMuted(session, participantIdentity, isMuted) {
     if (!session?.isActive) return;
     
     // Use the mute gain node for proper muting in the Web Audio API chain
-    const muteGain = session.participantMuteGainNodes?.[participantIdentity];
-    if (muteGain) {
-        muteGain.gain.value = isMuted ? 0 : 1.0;
+    const { muteNode } = session.audioGraph.get(participantIdentity);
+    if (muteNode) {
+        muteNode.gain.value = isMuted ? 0.0 : 1.0;
         console.log(`Participant ${participantIdentity} ${isMuted ? 'muted' : 'unmuted'} (via mute gain node)`);
     } else {
         console.warn(`No mute gain node found for participant ${participantIdentity}`);
-        console.warn(`Available mute gain nodes:`, Object.keys(session.participantMuteGainNodes || {}));
-        console.warn(`Available audio elements:`, Object.keys(session.participantAudioElements || {}));
+        console.warn(`Available mute gain nodes:`, Object.keys(session.audioGraph || {}));
+        console.warn(`Available audio elements:`, Object.keys(session.audioGraph || {}));
     }
 }
 
@@ -884,14 +800,14 @@ export function setParticipantVolume(session, participantIdentity, volume) {
     const gainValue = clampedVolume;
     
     // Use the gain node (required for proper volume control with Web Audio API)
-    const gainNode = session.participantGainNodes[participantIdentity];
+    const { gainNode } = session.audioGraph.get(participantIdentity);
     if (gainNode) {
         gainNode.gain.value = gainValue;
         console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (gain: ${gainValue.toFixed(2)})`);
     } else {
         console.warn(`No volume gain node found for participant ${participantIdentity}`);
-        console.warn(`Available volume gain nodes:`, Object.keys(session.participantGainNodes || {}));
-        console.warn(`Available audio elements:`, Object.keys(session.participantAudioElements || {}));
+        console.warn(`Available volume gain nodes:`, Object.keys(session.audioGraph || {}));
+        console.warn(`Available audio elements:`, Object.keys(session.audioGraph || {}));
     }
 }
 
