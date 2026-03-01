@@ -624,6 +624,12 @@ export async function getGuildInvites(guildId) {
   return handle(res);
 }
 
+/** GET /guild/invite/:inviteId  – get invite information including guild details (no auth required) */
+export async function getGuildInvite(inviteId) {
+  const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}`);
+  return handle(res);
+}
+
 /** DELETE /guild/invite/:inviteId  – delete an invite (owner only) */
 export async function deleteGuildInvite(inviteId) {
   const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}`, {

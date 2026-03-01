@@ -12,6 +12,11 @@ public class GuildInvite {
     public long GuildId { get; set; }
     
     // Navigation Properties
-    [JsonIgnore]
+    [JsonPropertyName("guild")]
     public Guild GuildNavigation { get; set; } = null!;
+}
+
+public class GuildInviteNoGuild(GuildInvite invite) {
+    public string Id { get; set; } = invite.Id;
+    public long GuildId { get; set; } = invite.GuildId;
 }

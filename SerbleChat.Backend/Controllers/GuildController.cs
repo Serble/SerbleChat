@@ -510,7 +510,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     // INVITES
 
     [HttpPost("{guildId:long}/invite")]
-    public async Task<ActionResult<GuildInvite>> CreateInvite(long guildId) {
+    public async Task<ActionResult<GuildInviteNoGuild>> CreateInvite(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -532,7 +532,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             GuildId = guildId
         };
         await guilds.CreateInvite(invite);
-        return Ok(invite);
+        return Ok(new GuildInviteNoGuild(invite));
     }
     
     [HttpDelete("invite/{inviteId}")]
@@ -562,7 +562,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
     }
     
     [HttpGet("{guildId:long}/invite")]
-    public async Task<ActionResult<GuildInvite[]>> GetInvites(long guildId) {
+    public async Task<ActionResult<IEnumerable<GuildInviteNoGuild>>> GetInvites(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -579,7 +579,18 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         GuildInvite[] invites = await guilds.GetGuildInvites(guildId);
-        return Ok(invites);
+        return Ok(invites.Select(i => new GuildInviteNoGuild(i)));
+    }
+    
+    [HttpGet("invite/{inviteId}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<GuildInvite>> GetInvite(string inviteId) {
+        GuildInvite? invite = await guilds.GetInvite(inviteId);
+        if (invite == null) {
+            return NotFound("Invite not found");
+        }
+        
+        return Ok(invite);
     }
 
     [HttpPost("invite/{inviteId}/accept")]

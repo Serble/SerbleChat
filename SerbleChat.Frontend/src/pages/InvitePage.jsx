@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { acceptGuildInvite, CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
+import { acceptGuildInvite, getGuildInvite, getGuildIconUrl, CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
 import { isElectron, electronOAuthFlow } from '../electron-utils.js';
 
 export default function InvitePage() {
@@ -10,7 +10,31 @@ export default function InvitePage() {
   const isLoggedIn = !!localStorage.getItem('jwt');
   const [state, setState]       = useState('idle'); // idle | joining | joined | already | error
   const [guildName, setGuildName] = useState(null);
+  const [guildInfo, setGuildInfo] = useState(null); // Store full guild info from invite
+  const [loadingInvite, setLoadingInvite] = useState(true); // Loading state for invite fetch
   const [errMsg, setErrMsg]     = useState(null);
+  const [imageError, setImageError] = useState(false);
+  const imgRef = useRef(null);
+
+  // Fetch invite information on mount
+  useEffect(() => {
+    async function fetchInviteInfo() {
+      try {
+        const invite = await getGuildInvite(inviteId);
+        if (invite?.guild) {
+          setGuildInfo(invite.guild);
+          setGuildName(invite.guild.name);
+        }
+      } catch (err) {
+        console.error('Failed to fetch invite info:', err);
+        setErrMsg('This invite may be invalid or expired.');
+        setState('error');
+      } finally {
+        setLoadingInvite(false);
+      }
+    }
+    fetchInviteInfo();
+  }, [inviteId]);
 
   // Hue based on invite id for a consistent colour splash
   // Convert string ID to a number for consistent color generation
@@ -114,14 +138,40 @@ export default function InvitePage() {
         {/* Guild icon */}
         <div style={{
           width: 72, height: 72, borderRadius: '30%',
-          background: `hsl(${hue},45%,35%)`,
+          background: (!guildInfo || imageError) ? `hsl(${hue},45%,35%)` : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '2rem',
-        }}>🏰</div>
+          color: '#fff',
+          fontWeight: 700,
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          {guildInfo && !imageError && (
+            <img
+              ref={imgRef}
+              src={getGuildIconUrl(guildInfo.id)}
+              alt={guildInfo.name}
+              onError={() => setImageError(true)}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                borderRadius: 'inherit',
+                display: 'block',
+              }}
+            />
+          )}
+          {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : '🏰')}
+        </div>
 
         {/* Copy */}
         <div>
-          {state === 'joined' ? (
+          {loadingInvite && state === 'idle' ? (
+            <>
+              <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#f2f3f5', marginBottom: '0.4rem' }}>Loading invite…</div>
+              <div style={{ color: '#72767d', fontSize: '0.9rem' }}>Please wait</div>
+            </>
+          ) : state === 'joined' ? (
             <>
               <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#23a55a', marginBottom: '0.4rem' }}>✓ You joined!</div>
               <div style={{ color: '#72767d', fontSize: '0.9rem' }}>Welcome to <strong style={{ color: '#f2f3f5' }}>{guildName}</strong>. Redirecting…</div>
@@ -138,10 +188,12 @@ export default function InvitePage() {
             </>
           ) : (
             <>
-              <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#f2f3f5', marginBottom: '0.4rem' }}>You've been invited!</div>
+              <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#f2f3f5', marginBottom: '0.4rem' }}>
+                {guildInfo ? `Join ${guildInfo.name}` : "You've been invited!"}
+              </div>
               <div style={{ color: '#72767d', fontSize: '0.9rem' }}>
                 {isLoggedIn
-                  ? 'Click below to accept the guild invite.'
+                  ? guildInfo ? `Accept the invite to join ${guildInfo.name}.` : 'Click below to accept the guild invite.'
                   : 'Log in to accept this guild invite.'}
               </div>
             </>
@@ -152,17 +204,17 @@ export default function InvitePage() {
         {(state === 'idle' || state === 'joining') && (
           <button
             onClick={handleJoin}
-            disabled={state === 'joining'}
+            disabled={state === 'joining' || loadingInvite}
             style={{
               background: '#7c3aed', border: 'none', borderRadius: '8px',
               padding: '0.75rem 2rem', color: '#fff', fontSize: '1rem',
-              fontWeight: 700, cursor: state === 'joining' ? 'default' : 'pointer',
-              opacity: state === 'joining' ? 0.7 : 1, transition: 'background 0.15s',
+              fontWeight: 700, cursor: (state === 'joining' || loadingInvite) ? 'default' : 'pointer',
+              opacity: (state === 'joining' || loadingInvite) ? 0.7 : 1, transition: 'background 0.15s',
               width: '100%',
             }}
-            className={state !== 'joining' ? 'hov-accent' : undefined}
+            className={(state !== 'joining' && !loadingInvite) ? 'hov-accent' : undefined}
           >
-            {state === 'joining' ? 'Joining…' : isLoggedIn ? 'Accept Invite' : 'Log in to Join'}
+            {state === 'joining' ? 'Joining…' : loadingInvite ? 'Loading…' : isLoggedIn ? 'Accept Invite' : 'Log in to Join'}
           </button>
         )}
 

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { acceptGuildInvite } from '../api.js';
+import { acceptGuildInvite, getGuildInvite, getGuildIconUrl } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
 
 /**
@@ -12,7 +12,26 @@ export default function InviteCard({ inviteId }) {
   const nav = useNavigate();
   const [state, setState]       = useState('idle'); // idle | joining | joined | already | error
   const [guildName, setGuildName] = useState(null);
+  const [guildInfo, setGuildInfo] = useState(null); // Store full guild info from invite
   const [errMsg, setErrMsg]     = useState(null);
+  const [imageError, setImageError] = useState(false);
+  const imgRef = useRef(null);
+
+  // Fetch invite information on mount
+  useEffect(() => {
+    async function fetchInviteInfo() {
+      try {
+        const invite = await getGuildInvite(inviteId);
+        if (invite?.guild) {
+          setGuildInfo(invite.guild);
+          setGuildName(invite.guild.name);
+        }
+      } catch (err) {
+        console.error('Failed to fetch invite info:', err);
+      }
+    }
+    fetchInviteInfo();
+  }, [inviteId]);
 
   // Check if user is already in this guild — we'll find out after accepting
   async function handleJoin() {
@@ -47,20 +66,41 @@ export default function InviteCard({ inviteId }) {
       borderRadius: '8px', padding: '0.75rem 1rem',
       marginTop: '0.35rem', maxWidth: 340,
     }}>
-      {/* Guild icon placeholder */}
+      {/* Guild icon */}
       <div style={{
         width: 40, height: 40, borderRadius: '30%', flexShrink: 0,
-        background: `hsl(${hue},40%,32%)`,
+        background: (!guildInfo || imageError) ? `hsl(${hue},40%,32%)` : 'transparent',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: '1.2rem',
-      }}>🏰</div>
+        overflow: 'hidden',
+        position: 'relative',
+        color: '#fff',
+        fontWeight: 700,
+      }}>
+        {guildInfo && !imageError && (
+          <img
+            ref={imgRef}
+            src={getGuildIconUrl(guildInfo.id)}
+            alt={guildInfo.name}
+            onError={() => setImageError(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: 'inherit',
+              display: 'block',
+            }}
+          />
+        )}
+        {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : '🏰')}
+      </div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginBottom: '0.1rem' }}>
           Guild Invite
         </div>
         <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {guildName ?? `Invite #${inviteId}`}
+          {guildInfo ? guildInfo.name : (guildName ?? `Invite #${inviteId}`)}
         </div>
       </div>
 
