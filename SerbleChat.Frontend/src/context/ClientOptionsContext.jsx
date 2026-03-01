@@ -7,6 +7,7 @@ import { getClientOptions, setClientOptions } from '../api.js';
 export const OPTION_DEFAULTS = {
   messageLinesLimit: 28,
   blockedMessageMode: 'masked', // 'masked' | 'visible' | 'hidden'
+  sendTypingIndicators: true, // whether to send typing notifications
   voiceParticipantSettings: {}, // { [participantIdentity]: { muted: boolean, volume: number } }
   voiceAudioOptions: {
     echoCancellation: false,
@@ -30,6 +31,7 @@ export function ClientOptionsProvider({ children }) {
 
   const [messageLinesLimit, setMsgLimitState] = useState(OPTION_DEFAULTS.messageLinesLimit);
   const [blockedMessageMode, setBlockedModeState] = useState(OPTION_DEFAULTS.blockedMessageMode);
+  const [sendTypingIndicators, setSendTypingIndicatorsState] = useState(OPTION_DEFAULTS.sendTypingIndicators);
   const [voiceParticipantSettings, setVoiceParticipantSettingsState] = useState(OPTION_DEFAULTS.voiceParticipantSettings);
   const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
   const [keybinds, setKeybindsState] = useState(OPTION_DEFAULTS.keybinds);
@@ -38,6 +40,7 @@ export function ClientOptionsProvider({ children }) {
   // needing to be recreated on every render.
   const msgLimitRef        = useRef(OPTION_DEFAULTS.messageLinesLimit);
   const blockedModeRef     = useRef(OPTION_DEFAULTS.blockedMessageMode);
+  const sendTypingIndicatorsRef = useRef(OPTION_DEFAULTS.sendTypingIndicators);
   const voiceSettingsRef   = useRef(OPTION_DEFAULTS.voiceParticipantSettings);
   const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
   const keybindsRef        = useRef(OPTION_DEFAULTS.keybinds);
@@ -86,6 +89,10 @@ export function ClientOptionsProvider({ children }) {
         blockedModeRef.current = parsed.blockedMessageMode;
         setBlockedModeState(parsed.blockedMessageMode);
       }
+      if (typeof parsed.sendTypingIndicators === 'boolean') {
+        sendTypingIndicatorsRef.current = parsed.sendTypingIndicators;
+        setSendTypingIndicatorsState(parsed.sendTypingIndicators);
+      }
       if (parsed.voiceParticipantSettings && typeof parsed.voiceParticipantSettings === 'object') {
         voiceSettingsRef.current = parsed.voiceParticipantSettings;
         setVoiceParticipantSettingsState(parsed.voiceParticipantSettings);
@@ -123,6 +130,7 @@ export function ClientOptionsProvider({ children }) {
         const payload = JSON.stringify({
           messageLinesLimit: msgLimitRef.current,
           blockedMessageMode: blockedModeRef.current,
+          sendTypingIndicators: sendTypingIndicatorsRef.current,
           voiceParticipantSettings: voiceSettingsRef.current,
           voiceAudioOptions: voiceAudioOptionsRef.current,
           keybinds: keybindsRef.current,
@@ -149,6 +157,13 @@ export function ClientOptionsProvider({ children }) {
     scheduleSave();
   }, [voiceAudioOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Watch typing indicators setting changes and persist ───────────────────
+
+  useEffect(() => {
+    if (pendingLoad.current) return;
+    scheduleSave();
+  }, [sendTypingIndicators]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Public setters ───────────────────────────────────────────────────────────
 
   function setMessageLinesLimit(val) {
@@ -162,6 +177,13 @@ export function ClientOptionsProvider({ children }) {
     if (!['masked', 'visible', 'hidden'].includes(mode)) return;
     blockedModeRef.current = mode;
     setBlockedModeState(mode);
+    if (!pendingLoad.current) scheduleSave();
+  }
+
+  function setSendTypingIndicators(enabled) {
+    const val = !!enabled;
+    sendTypingIndicatorsRef.current = val;
+    setSendTypingIndicatorsState(val);
     if (!pendingLoad.current) scheduleSave();
   }
 
@@ -221,6 +243,8 @@ export function ClientOptionsProvider({ children }) {
       setMessageLinesLimit,
       blockedMessageMode,
       setBlockedMessageMode,
+      sendTypingIndicators,
+      setSendTypingIndicators,
       voiceParticipantSettings,
       setVoiceParticipantSetting,
       getVoiceParticipantSetting,

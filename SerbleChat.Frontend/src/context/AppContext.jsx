@@ -56,6 +56,8 @@ export function AppProvider({ children }) {
   const voicePresenceInflightRef = useRef(new Set());
   // userId (string) -> 'online' | 'offline'
   const [userStatuses, setUserStatuses] = useState({});
+  // channelId (string) -> Set<userId> of users currently typing
+  const [typingUsers, setTypingUsers] = useState({});
 
   const hubRef          = useRef(null);
   const userCacheRef    = useRef({});
@@ -78,6 +80,8 @@ export function AppProvider({ children }) {
   const activeChannelIdRef = useRef(null);
   const notifPrefsRef = useRef({});
   const guildNotifPrefsRef = useRef({});
+  // Typing indicator timeout IDs: channelId -> Set<timeoutId>
+  const clearTypingRef = useRef({});
 
   // Keep refs in sync with state so SignalR handlers always read the latest values
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
@@ -504,6 +508,17 @@ export function AppProvider({ children }) {
         }
         return { ...p, [key]: [...existing, msg] };
       });
+      // Clear typing indicator for this user in this channel
+      setTypingUsers(p => {
+        const updated = p[key] ? new Set(p[key]) : new Set();
+        updated.delete(String(msg.authorId));
+        if (updated.size === 0) {
+          const next = { ...p };
+          delete next[key];
+          return next;
+        }
+        return { ...p, [key]: updated };
+      });
       // Bubble the channel to the top of the DM/group sidebar
       setChannelLastActive(p => ({ ...p, [key]: Date.now() }));
       // Unread tracking: only when not currently viewing this channel
@@ -610,6 +625,46 @@ export function AppProvider({ children }) {
       setUserStatuses(p => ({ ...p, [String(userId)]: status }));
     });
 
+    conn.on('UserTyping', ({ userId, channelId }) => {
+      if (!userId || !channelId) return;
+      const key = String(channelId);
+      const userIdStr = String(userId);
+      
+      // Clear any existing timeout for this user in this channel
+      if (clearTypingRef.current[key]?.[userIdStr]) {
+        clearTimeout(clearTypingRef.current[key][userIdStr]);
+      }
+      
+      // Add user to typing set
+      setTypingUsers(p => {
+        const current = p[key] ? new Set(p[key]) : new Set();
+        current.add(userIdStr);
+        return { ...p, [key]: current };
+      });
+      
+      // Set 4-second auto-clear timeout
+      const timeoutId = setTimeout(() => {
+        setTypingUsers(p => {
+          const updated = p[key] ? new Set(p[key]) : new Set();
+          updated.delete(userIdStr);
+          if (updated.size === 0) {
+            const next = { ...p };
+            delete next[key];
+            return next;
+          }
+          return { ...p, [key]: updated };
+        });
+        // Clean up ref
+        if (clearTypingRef.current[key]) {
+          delete clearTypingRef.current[key][userIdStr];
+        }
+      }, 4000);
+      
+      // Store timeout ID for potential cleanup
+      if (!clearTypingRef.current[key]) clearTypingRef.current[key] = {};
+      clearTypingRef.current[key][userIdStr] = timeoutId;
+    });
+
     conn.on('NewChannel', async (channel) => {      // channel.type: 0=Guild, 1=DM, 2=Group
       if (channel?.type === 0) {
         // Guild channel created — notify guild sidebar to reload its channel list
@@ -708,6 +763,8 @@ export function AppProvider({ children }) {
       guildUpdatedEvent,
       channelUpdatedEvent,
       userStatuses,
+      typingUsers,
+      hubRef,
       // Unread counts & notification preferences
       unreads,
       guildUnreads,

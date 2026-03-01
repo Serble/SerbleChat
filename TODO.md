@@ -11,6 +11,6 @@ TODO:
 - Send whether muted or defeaned to server so we can display when not in vc (and display deafened at all)
 - Voice activity threshold/push to talk
 - Sounds for notifications, mute/deafen/stream/join/leave vc
-- Typing indicators?
 - icon for client side user muted
 - pick audio devices in electron app
+- make guild invites display guild information preview

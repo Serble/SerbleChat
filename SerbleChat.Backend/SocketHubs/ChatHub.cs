@@ -24,6 +24,24 @@ public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultip
         //         Status = "online"
         //     });
     }
+    
+    public async Task NotifyTyping(long channelId) {
+        string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return;  // channel doesn't exist, ignore
+        }
+        
+        if (!await channels.UserHasAccessToChannel(userId, channel, true)) {
+            return;  // again, ignore invalid request
+        }
+        
+        await Clients.Group($"channel-{channelId}").SendAsync("UserTyping", new {
+            UserId = userId,
+            ChannelId = channelId
+        });
+    }
 
     public async Task RefreshListeners() {
         string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");

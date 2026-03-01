@@ -19,6 +19,7 @@ import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
+import TypingIndicator from './TypingIndicator.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -375,9 +376,9 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, hubRef } = useApp();
   const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted, remoteScreenShares } = useVoice();
-  const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
+  const { blockedMessageMode, sendTypingIndicators } = useClientOptions() ?? { blockedMessageMode: 'masked', sendTypingIndicators: true };
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
@@ -403,6 +404,9 @@ export default function ChatView() {
   // Track the highest message ID we've marked as read for this channel
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
+  // Debounce timer for typing indicator notifications (max send every 2 seconds)
+  const typingIndicatorTimerRef = useRef(null);
+  const lastTypingNotifyRef = useRef(0);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -775,6 +779,16 @@ export default function ChatView() {
     if (nearBottom) scrollToBottom();
   }, [channelMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When typing indicator appears/disappears, scroll down if near bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) {
+      requestAnimationFrame(() => scrollToBottom());
+    }
+  }, [typingUsers[String(channelId)]?.size]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Scroll to and highlight a linked message once messages have loaded
   useEffect(() => {
     const targetId = searchParams.get('message');
@@ -911,6 +925,26 @@ export default function ChatView() {
       const pos = before.length + token.length;
       inputRef.current.setSelectionRange(pos, pos);
     });
+  }
+
+  // ── Typing indicator ────────────────────────────────────────────────────────
+
+  function notifyTyping() {
+    // Only send if the setting is enabled
+    if (!sendTypingIndicators || !hubRef || !hubRef.current) return;
+    
+    const now = Date.now();
+    // Throttle to max once every 2 seconds to reduce server load
+    if (now - lastTypingNotifyRef.current < 2000) return;
+    
+    lastTypingNotifyRef.current = now;
+    try {
+      hubRef.current?.invoke('NotifyTyping', Number(channelId)).catch(e => {
+        console.warn('Failed to notify typing:', e);
+      });
+    } catch (e) {
+      console.warn('Failed to notify typing:', e);
+    }
   }
 
   // ── Message send ─────────────────────────────────────────────────────────────
@@ -1081,6 +1115,7 @@ export default function ChatView() {
 
         {/* Messages area */}
         <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
+          
           {channelMessages.length === 0 && !loading && (
             <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
@@ -1131,6 +1166,21 @@ export default function ChatView() {
           <div ref={bottomRef} style={{ height: 8 }} />
         </div>
 
+        {/* Typing indicator - between messages and input */}
+        {typingUsers[String(channelId)]?.size > 0 && (() => {
+          const filtered = new Set(
+            Array.from(typingUsers[String(channelId)]).filter(uid => !isBlocked(uid))
+          );
+          return filtered.size > 0 ? (
+            <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)' }}>
+              <TypingIndicator 
+                users={filtered} 
+                resolveUser={resolveUser}
+              />
+            </div>
+          ) : null;
+        })()}
+
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
           {/* Blocked-by-me banner — replaces the input entirely */}
           {isDmChannel && otherUser && isBlocked(otherUser.id) ? (
@@ -1174,7 +1224,12 @@ export default function ChatView() {
                   }}
                   placeholder={`Message ${channelDisplayName}`}
                   value={input}
-                  onChange={e => { setInput(e.target.value); setSendError(null); detectMention(e.target.value, e.target.selectionStart); }}
+                  onChange={e => { 
+                    setInput(e.target.value); 
+                    setSendError(null); 
+                    detectMention(e.target.value, e.target.selectionStart);
+                    notifyTyping();
+                  }}
                   onKeyDown={handleKeyDown}
                   onKeyUp={e => {
                     if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {

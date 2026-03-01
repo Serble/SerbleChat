@@ -947,7 +947,7 @@ function ProfileTab() {
 // ─── Chat Tab ─────────────────────────────────────────────────────────────────
 
 function ChatTab() {
-  const { messageLinesLimit, setMessageLinesLimit, blockedMessageMode, setBlockedMessageMode } = useClientOptions();
+  const { messageLinesLimit, setMessageLinesLimit, blockedMessageMode, setBlockedMessageMode, sendTypingIndicators, setSendTypingIndicators } = useClientOptions();
   const [draft, setDraft] = useState(messageLinesLimit);
 
   // Keep draft in sync if context changes (e.g. after backend load)
@@ -1037,6 +1037,53 @@ function ChatTab() {
           Messages with more than <strong style={{ color: 'var(--text-secondary)' }}>{draft} lines</strong> will
           be visually collapsed with a "Show more" button. The full content is always
           retained — only the display is clipped. Range: 5–200.
+        </div>
+      </div>
+
+      {/* ── Typing Indicators ──────────────────────────── */}
+      <div style={{ marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+          <label style={{ flex: 1, fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Send typing indicators
+          </label>
+          <button
+            onClick={() => setSendTypingIndicators(!sendTypingIndicators)}
+            style={{
+              width: 44,
+              height: 24,
+              borderRadius: 12,
+              border: 'none',
+              background: sendTypingIndicators ? 'var(--accent)' : 'var(--bg-active)',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: sendTypingIndicators ? 'flex-end' : 'flex-start',
+              padding: '2px',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.opacity = '0.85';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.opacity = '1';
+            }}
+          >
+            <div
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#fff',
+                transition: 'all 0.2s',
+              }}
+            />
+          </button>
+        </div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          When enabled, other users will see typing indicators when you're composing messages.
+          You will always see when others are typing regardless of this setting.
         </div>
       </div>
 

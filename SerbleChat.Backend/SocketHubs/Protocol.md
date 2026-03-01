@@ -1,4 +1,6 @@
 # Updates SignalR Protocol
+Keep in mind that int refers to a 64bit integer (or a long) when
+it comes to IDs of things.
 
 ## To Client
 `FriendRequestReceived`:
@@ -101,6 +103,14 @@
 `ChannelUpdated`:
 ```json
 {
+    "channelId": int
+}
+```
+
+`UserTyping`:
+```json
+{
+    "userId": string,
     "channelId": int
 }
 ```
