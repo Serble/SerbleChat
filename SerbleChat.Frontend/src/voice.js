@@ -50,7 +50,7 @@ class VoiceSession {
 
     getParticipants() {
         if (!this.room) return [];
-        // Returns array of { identity: string, isSpeaking: boolean, isMuted: boolean }
+        // Returns array of { identity: string, isSpeaking: boolean, isMuted: boolean, isClientMuted: boolean }
         const participants = Array.from(this.room.remoteParticipants.values()).map(p => {
             // Check if participant has an audio track and if it's muted
             let isMuted = false;
@@ -62,10 +62,18 @@ class VoiceSession {
                 isMuted = false;
             }
             
+            // Check if participant is client-side muted
+            let isClientMuted = false;
+            const muteGainNode = this.participantMuteGainNodes?.[p.identity];
+            if (muteGainNode) {
+                isClientMuted = muteGainNode.gain.value === 0;
+            }
+            
             return {
                 identity: p.identity,
                 isSpeaking: this.speakingStates[p.identity] || false, // Use our detected speaking state
-                isMuted: isMuted
+                isMuted: isMuted,
+                isClientMuted: isClientMuted
             };
         });
         
@@ -82,7 +90,8 @@ class VoiceSession {
                 identity: local.identity,
                 isSpeaking: this.speakingStates[local.identity] || false, // Use our detected speaking state
                 isMuted: localMuted,
-                isLocal: true
+                isLocal: true,
+                isClientMuted: false // Local participant can't be client-muted
             });
         }
         
@@ -90,8 +99,8 @@ class VoiceSession {
     }
     
     setupAudioAnalyzer(participantIdentity, audioElement) {
-        // Don't setup if already exists
-        if (this.audioAnalyzers[participantIdentity]) {
+        // Don't setup if already exists AND is working (has gain nodes)
+        if (this.audioAnalyzers[participantIdentity] && this.participantMuteGainNodes?.[participantIdentity]) {
             console.log('Audio analyzer already exists for:', participantIdentity);
             return;
         }
@@ -145,9 +154,19 @@ class VoiceSession {
             }
             this.participantMuteGainNodes[participantIdentity] = muteGain; // For mute control
             
-            console.log(`Audio analyzer setup for participant '${participantIdentity}'`);
+            console.log(`✓ Audio analyzer setup complete for participant '${participantIdentity}'`);
         } catch (err) {
-            console.error('Failed to setup audio analyzer for', participantIdentity, ':', err);
+            console.error('✗ Failed to setup audio analyzer for', participantIdentity, ':', err);
+            // Clean up any partial state to allow retries
+            if (this.audioAnalyzers[participantIdentity]) {
+                delete this.audioAnalyzers[participantIdentity];
+            }
+            if (this.participantGainNodes[participantIdentity]) {
+                delete this.participantGainNodes[participantIdentity];
+            }
+            if (this.participantMuteGainNodes?.[participantIdentity]) {
+                delete this.participantMuteGainNodes[participantIdentity];
+            }
         }
     }
     
@@ -837,16 +856,10 @@ export function setParticipantMuted(session, participantIdentity, isMuted) {
     if (muteGain) {
         muteGain.gain.value = isMuted ? 0 : 1.0;
         console.log(`Participant ${participantIdentity} ${isMuted ? 'muted' : 'unmuted'} (via mute gain node)`);
-        return;
-    }
-    
-    // Fallback to audio element if mute gain node not available
-    const audio = session.participantAudioElements[participantIdentity];
-    if (audio) {
-        audio.muted = isMuted;
-        console.log(`Participant ${participantIdentity} audio ${isMuted ? 'muted' : 'unmuted'} (via audio element)`);
     } else {
-        console.warn(`No audio element found for participant ${participantIdentity}`);
+        console.warn(`No mute gain node found for participant ${participantIdentity}`);
+        console.warn(`Available mute gain nodes:`, Object.keys(session.participantMuteGainNodes || {}));
+        console.warn(`Available audio elements:`, Object.keys(session.participantAudioElements || {}));
     }
 }
 
@@ -870,22 +883,15 @@ export function setParticipantVolume(session, participantIdentity, volume) {
     // Use linear scaling: gain = volume
     const gainValue = clampedVolume;
     
-    // First try to use the gain node if available
+    // Use the gain node (required for proper volume control with Web Audio API)
     const gainNode = session.participantGainNodes[participantIdentity];
     if (gainNode) {
         gainNode.gain.value = gainValue;
         console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (gain: ${gainValue.toFixed(2)})`);
-        return;
-    }
-    
-    // Fallback to audio element volume if gain node not available
-    const audio = session.participantAudioElements[participantIdentity];
-    if (audio) {
-        // For audio element, clamp to 0-1 range
-        audio.volume = Math.max(0, Math.min(1, gainValue));
-        console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (via audio element, gain: ${gainValue.toFixed(2)})`);
     } else {
-        console.warn(`No audio element found for participant ${participantIdentity}, available:`, Object.keys(session.participantAudioElements));
+        console.warn(`No volume gain node found for participant ${participantIdentity}`);
+        console.warn(`Available volume gain nodes:`, Object.keys(session.participantGainNodes || {}));
+        console.warn(`Available audio elements:`, Object.keys(session.participantAudioElements || {}));
     }
 }
 

@@ -272,6 +272,11 @@ export default function VoicePanel({
                       🔇
                     </span>
                   )}
+                  {p.isClientMuted && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }} title="You muted this user">
+                      🔕
+                    </span>
+                  )}
                 </div>
               </UserInteraction>
             );

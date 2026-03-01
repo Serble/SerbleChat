@@ -365,6 +365,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                 const participant = participantMap[id];
                 const isSpeaking = participant?.isSpeaking ?? false;
                 const isMuted = participant?.isMuted ?? false;
+                const isClientMuted = participant?.isClientMuted ?? false;
                 
                 return (
                   <UserInteraction key={id} userId={user?.id} username={name}>
@@ -392,6 +393,11 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                       {isMuted && (
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
                           🔇
+                        </span>
+                      )}
+                      {isClientMuted && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--danger)' }} title="You muted this user">
+                          🔕
                         </span>
                       )}
                     </div>
@@ -525,6 +531,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
               const participant = participantMap[id];
               const isSpeaking = participant?.isSpeaking ?? false;
               const isMuted = participant?.isMuted ?? false;
+              const isClientMuted = participant?.isClientMuted ?? false;
               
               return (
                 <UserInteraction key={id} userId={user?.id} username={name}>
@@ -561,6 +568,11 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                     {isMuted && (
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
                         🔇
+                      </span>
+                    )}
+                    {isClientMuted && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--danger)' }} title="You muted this user">
+                        🔕
                       </span>
                     )}
                   </div>

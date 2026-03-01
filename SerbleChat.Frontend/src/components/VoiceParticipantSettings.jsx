@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { useVoice } from '../context/VoiceContext.jsx';
 import { setParticipantMuted, setParticipantVolume } from '../voice.js';
 
 export default function VoiceParticipantSettings({ 
@@ -9,6 +10,7 @@ export default function VoiceParticipantSettings({
   onSettingsChange,
 }) {
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
+  const { refreshParticipants } = useVoice();
   const [showSettings, setShowSettings] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1.0); // 1.0 = 100% = normal volume
@@ -25,6 +27,10 @@ export default function VoiceParticipantSettings({
     setIsMuted(newMuted);
     setVoiceParticipantSetting(participantIdentity, { muted: newMuted });
     setParticipantMuted(voiceSession, participantIdentity, newMuted);
+    // Refresh participants to update UI immediately
+    if (refreshParticipants) {
+      refreshParticipants();
+    }
   };
 
   const handleVolumeChange = (e) => {

@@ -209,7 +209,7 @@ function MenuItem({ label, onClick, variant = 'default' }) {
  * - disabled: boolean - If true, disables interaction (default: false)
  */
 export default function UserInteraction({ userId, username, guildId = null, voiceSettings = null, onVoiceSettingsChange = null, children, disabled = false }) {
-  const { voiceSession, voiceParticipants } = useVoice();
+  const { voiceSession, voiceParticipants, refreshParticipants } = useVoice();
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
   const [popout, setPopout] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -234,13 +234,15 @@ export default function UserInteraction({ userId, username, guildId = null, voic
     const current = effectiveVoiceSettings || { muted: false, volume: 1 };
     const updated = { ...current, ...newSettings };
     setVoiceParticipantSetting(settingsKey, updated);
-    if (updated.muted) {
-      setParticipantMuted(voiceSession, settingsKey, true);
-    } else {
-      setParticipantMuted(voiceSession, settingsKey, false);
+    if (updated.muted !== undefined) {
+      setParticipantMuted(voiceSession, settingsKey, updated.muted);
     }
     if (updated.volume !== undefined) {
       setParticipantVolume(voiceSession, settingsKey, updated.volume);
+    }
+    // Refresh participants to update UI immediately
+    if (refreshParticipants) {
+      refreshParticipants();
     }
   } : onVoiceSettingsChange;
 

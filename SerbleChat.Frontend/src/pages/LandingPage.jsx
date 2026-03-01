@@ -6,22 +6,23 @@ import { isElectron, electronOAuthFlow } from '../electron-utils.js';
 const c = {
   page: {
     minHeight: '100vh', overflow: 'auto',
-    background: 'linear-gradient(145deg, #0d0f15 0%, #1a1035 60%, #0d1520 100%)',
+    background: 'linear-gradient(135deg, #050e1f 0%, #0a1a35 50%, #05101f 100%)',
     display: 'flex', flexDirection: 'column',
   },
   nav: {
-    padding: '1.25rem 2.5rem', display: 'flex', alignItems: 'center',
-    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    padding: '1.25rem 2.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
+    borderBottom: '1px solid rgba(59,130,246,0.08)',
   },
-  logo: { fontSize: '1.3rem', fontWeight: 800, color: '#a78bfa', margin: 0, letterSpacing: '-0.02em' },
+  logoImg: { width: '2.5rem', height: '2.5rem', borderRadius: '8px' },
+  logoText: { fontSize: '1.3rem', fontWeight: 800, color: '#3b82f6', margin: 0, letterSpacing: '-0.02em' },
   hero: {
-    flex: 1, display: 'flex', flexDirection: 'column',
+    display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
-    padding: '5rem 2rem 4rem', textAlign: 'center',
+    padding: '3rem 2rem', textAlign: 'center', minHeight: 'auto',
   },
   badge: {
-    display: 'inline-block', background: 'rgba(124,58,237,0.15)',
-    border: '1px solid rgba(124,58,237,0.35)', color: '#a78bfa',
+    display: 'inline-block', background: 'rgba(59,130,246,0.15)',
+    border: '1px solid rgba(59,130,246,0.35)', color: '#60a5fa',
     borderRadius: '9999px', padding: '0.3rem 1rem',
     fontSize: '0.75rem', fontWeight: 700, marginBottom: '1.75rem',
     letterSpacing: '0.1em', textTransform: 'uppercase',
@@ -30,33 +31,38 @@ const c = {
     fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', fontWeight: 800,
     color: '#f1f5f9', margin: '0 0 1.25rem', lineHeight: 1.1, letterSpacing: '-0.03em',
   },
-  accent: { color: '#a78bfa' },
+  accent: { color: '#60a5fa' },
   sub: {
-    fontSize: '1.1rem', color: '#94a3b8', maxWidth: '480px',
-    margin: '0 auto 2.75rem', lineHeight: 1.65,
+    fontSize: '1.1rem', color: '#cbd5e1', maxWidth: '480px',
+    margin: '0 auto 2rem', lineHeight: 1.65,
   },
   btn: {
     display: 'inline-flex', alignItems: 'center', gap: '0.6rem',
     padding: '0.9rem 2.5rem',
-    background: 'linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%)',
+    background: 'linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%)',
     color: '#fff', borderRadius: '9999px',
     fontWeight: 700, fontSize: '1rem', cursor: 'pointer', border: 'none',
-    boxShadow: '0 4px 24px rgba(124,58,237,0.45)',
+    boxShadow: '0 4px 24px rgba(59,130,246,0.45)',
     transition: 'transform 0.15s, box-shadow 0.15s',
   },
+  featureSection: {
+    padding: '3rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center',
+  },
+  featureSectionTitle: {
+    fontSize: '1.75rem', fontWeight: 800, color: '#e2e8f0', marginBottom: '2.5rem', textAlign: 'center',
+  },
   features: {
-    display: 'flex', gap: '1.25rem', flexWrap: 'wrap',
-    justifyContent: 'center', marginTop: '4rem', padding: '0 2rem',
-    maxWidth: 900, margin: '4rem auto 0',
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '1.75rem', maxWidth: '1200px', width: '100%', paddingX: '0',
   },
   card: {
-    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '12px', padding: '1.5rem', flex: '1', minWidth: 200, maxWidth: 260,
-    textAlign: 'left',
+    background: 'rgba(30,58,138,0.25)', border: '1px solid rgba(59,130,246,0.2)',
+    borderRadius: '16px', padding: '2rem', textAlign: 'left',
+    transition: 'border-color 0.3s, background-color 0.3s',
   },
-  cardIcon: { fontSize: '1.75rem', marginBottom: '0.75rem' },
-  cardTitle: { fontWeight: 700, color: '#e2e8f0', marginBottom: '0.4rem', fontSize: '0.95rem' },
-  cardText: { color: '#64748b', fontSize: '0.85rem', lineHeight: 1.55 },
+  cardIcon: { fontSize: '2.5rem', marginBottom: '1rem' },
+  cardTitle: { fontWeight: 700, color: '#60a5fa', marginBottom: '0.75rem', fontSize: '1.1rem' },
+  cardText: { color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.6 },
 };
 
 export default function LandingPage() {
@@ -131,16 +137,14 @@ export default function LandingPage() {
   return (
     <div style={c.page}>
       <nav style={c.nav}>
-        <h1 style={c.logo}>SerbleChat</h1>
+        <img src="/favicon.webp" alt="Serble Chat" style={c.logoImg} />
+        <h1 style={c.logoText}>Serble Chat</h1>
       </nav>
 
       <section style={c.hero}>
-        <div style={c.badge}>✦ Open Beta</div>
-        <h1 style={c.h1}>
-          Chat with your<br /><span style={c.accent}>friends</span>
-        </h1>
+        <img src="/favicon.webp" alt="Serble Chat" style={{ width: '12rem', height: '12rem', marginBottom: '2rem', borderRadius: '27px' }} />
         <p style={c.sub}>
-          Real-time messaging, group chats and friend requests — all powered by your Serble account.
+          Real-time messaging, group chats, guilds, friends. All powered by your Serble account.
         </p>
         {loginError && (
           <div style={{
@@ -176,12 +180,27 @@ export default function LandingPage() {
             </>
           )}
         </button>
+      </section>
 
+      <section style={c.featureSection}>
+        <h2 style={c.featureSectionTitle}>Why Choose Serble Chat?</h2>
         <div style={c.features}>
           {[
-            { icon: '💬', title: 'Direct Messages', text: 'Private one-on-one conversations with your friends.' },
-            { icon: '👥', title: 'Group Chats',     text: 'Create group chats and bring your friend circle together.' },
-            { icon: '⚡', title: 'Real-time',       text: 'Instant message delivery powered by SignalR.' },
+            { 
+              icon: '🔐', 
+              title: 'Privacy First', 
+              text: 'Deleted messages are purged forever. Control your privacy with the option to toggle sending typing indicators.' 
+            },
+            { 
+              icon: '📹', 
+              title: 'Voice & Screenshare', 
+              text: 'Crystal-clear voice calls and screen sharing. Connect face-to-face with your friends instantly.' 
+            },
+            { 
+              icon: '🔔', 
+              title: 'Smart Notifications', 
+              text: 'Fine-grained control over notifications. Set preferences per channel and per guild to stay focused.' 
+            },
           ].map(f => (
             <div key={f.title} style={c.card}>
               <div style={c.cardIcon}>{f.icon}</div>

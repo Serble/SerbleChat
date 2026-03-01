@@ -119,8 +119,8 @@ self.addEventListener('push', event => {
     body,
     tag,
     data,
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
+    icon: '/favicon.webp',
+    badge: '/favicon.webp',
     renotify: true,
   };
 

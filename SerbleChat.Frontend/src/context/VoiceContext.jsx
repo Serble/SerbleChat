@@ -259,17 +259,26 @@ export function VoiceProvider({ children }) {
   useEffect(() => {
     if (!voiceSession || voiceParticipants.length === 0) return;
     
-    voiceParticipants.forEach(participant => {
-      if (participant.isLocal) return; // Skip local participant
-      
-      const settings = getVoiceParticipantSetting(participant.identity);
-      if (settings.muted) {
-        setParticipantMuted(voiceSession, participant.identity, true);
-      }
-      if (settings.volume !== 1) {
-        setParticipantVolume(voiceSession, participant.identity, settings.volume);
-      }
-    });
+    // Use a small delay to ensure audio analyzer is fully set up
+    const timeoutId = setTimeout(() => {
+      voiceParticipants.forEach(participant => {
+        if (participant.isLocal) return; // Skip local participant
+        
+        const settings = getVoiceParticipantSetting(participant.identity);
+        
+        // Only apply mute if gain node exists (audio analyzer is set up)
+        if (settings.muted && voiceSession.participantMuteGainNodes?.[participant.identity]) {
+          setParticipantMuted(voiceSession, participant.identity, true);
+        }
+        
+        // Only apply volume if gain node exists (audio analyzer is set up)
+        if (settings.volume !== 1 && voiceSession.participantGainNodes?.[participant.identity]) {
+          setParticipantVolume(voiceSession, participant.identity, settings.volume);
+        }
+      });
+    }, 100); // 100ms delay should be enough for audio analyzer setup
+    
+    return () => clearTimeout(timeoutId);
   }, [voiceParticipants, voiceSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply microphone volume setting when it changes
@@ -278,6 +287,13 @@ export function VoiceProvider({ children }) {
     const micVolume = voiceAudioOptions.micVolume ?? 100;
     setMicVolume(voiceSession, micVolume);
   }, [voiceAudioOptions.micVolume, voiceSession]);
+
+  // Function to manually refresh participants (useful after muting/unmuting)
+  function refreshParticipants() {
+    if (voiceSession?.getParticipants) {
+      setVoiceParticipants(voiceSession.getParticipants());
+    }
+  }
 
   return (
     <VoiceContext.Provider value={{
@@ -296,6 +312,7 @@ export function VoiceProvider({ children }) {
       leaveVoice: handleLeaveVoice,
       toggleMute: handleToggleMute,
       toggleDeafen: handleToggleDeafen,
+      refreshParticipants,
     }}>
       {children}
     </VoiceContext.Provider>
