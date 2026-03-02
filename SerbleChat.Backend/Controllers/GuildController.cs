@@ -614,6 +614,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return BadRequest("Already a member of this guild");
         }
         
+        GuildBan? ban = await guilds.GetBan(invite.GuildId, userId);
+        if (ban != null && ban.Until > DateTime.UtcNow) {
+            return Forbid();
+        }
+        
         await guilds.AddGuildMember(guild.Id, userId);
         return Ok(guild);
     }
@@ -826,8 +831,128 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         return Ok();
     }
     
-    // NOTIFICATION PREFERENCES
+    [HttpPost("{guildId:long}/leave")]
+    public async Task<ActionResult> LeaveGuild(long guildId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        if (!await guilds.IsGuildMember(guildId, userId)) {
+            return BadRequest("Not a member of this guild");
+        }
+        
+        await guilds.RemoveGuildMember(guildId, userId);
+        await updates.Clients.User(userId).SendAsync("LeftGuild", new {
+            GuildId = guildId
+        });
+        return Ok();
+    }
+
+    [HttpPost("{guildId:long}/members/{userId}/kick")]
+    public async Task<ActionResult> KickUser(long guildId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
+        if (!perms.HasPerm(p => p.KickMembers)) {
+            return Forbid();
+        }
+        
+        await guilds.RemoveGuildMember(guildId, userId);
+        await updates.Clients.User(userId).SendAsync("LeftGuild", new {
+            GuildId = guildId
+        });
+        return Ok();
+    }
     
+    [HttpPost("{guildId:long}/members/{userId}/ban")]
+    public async Task<ActionResult> BanUser(long guildId, string userId, UserBanRequest request) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
+        if (!perms.HasPerm(p => p.BanMembers)) {
+            return Forbid();
+        }
+        
+        await guilds.RemoveGuildMember(guildId, userId);
+
+        GuildBan ban = new() {
+            GuildId = guildId,
+            UserId = userId,
+            CreatedAt = DateTime.UtcNow,
+            Until = request.Until
+        };
+        await guilds.CreateBan(ban);
+        
+        await updates.Clients.User(userId).SendAsync("LeftGuild", new {
+            GuildId = guildId
+        });
+        return Ok();
+    }
+
+    [HttpGet("{guildId:long}/bans")]
+    public async Task<ActionResult<GuildBan[]>> GetBans(long guildId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
+        if (!perms.HasPerm(p => p.BanMembers)) {
+            return Forbid();
+        }
+        
+        return Ok(await guilds.GetBansForGuild(guildId));
+    }
+
+    [HttpDelete("{guildId:long}/bans/{userId}")]
+    public async Task<ActionResult> UnbanUser(long guildId, string userId) {
+        string? requesterId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (requesterId == null) {
+            return Unauthorized();
+        }
+
+        Guild? guild = await guilds.GetGuild(guildId);
+        if (guild == null) {
+            return NotFound("Guild not found");
+        }
+
+        GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
+        if (!perms.HasPerm(p => p.BanMembers)) {
+            return Forbid();
+        }
+        
+        await guilds.RemoveBan(guildId, userId);
+        return Ok();
+    }
+
+    // NOTIFICATION PREFERENCES
     [HttpGet("{guildId:long}/notification-preferences")]
     public async Task<ActionResult<UserGuildNotificationPreferences>> GetGuildNotificationPreferences(long guildId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

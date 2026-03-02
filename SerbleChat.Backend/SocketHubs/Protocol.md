@@ -122,3 +122,11 @@ it comes to IDs of things.
     "message": messagedata
 }
 ```
+
+`LeftGuild`:
+For when the user leaves a guild.
+```json
+{
+    "guildId": int
+}
+```

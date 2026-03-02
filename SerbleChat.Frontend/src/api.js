@@ -411,6 +411,15 @@ export async function deleteGuild(id) {
   return handle(res);
 }
 
+/** POST /guild/:id/leave – leave a guild */
+export async function leaveGuild(id, userId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(id)}/leave?userId=${encodeURIComponent(userId)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 /** PUT /guild/:id/icon – upload guild icon */
 export async function uploadGuildIcon(guildId, file) {
   const formData = new FormData();
@@ -643,6 +652,42 @@ export async function deleteGuildInvite(inviteId) {
 export async function acceptGuildInvite(inviteId) {
   const res = await fetch(`${BASE}/guild/invite/${encodeURIComponent(inviteId)}/accept`, {
     method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+// ── Guild Member Management ───────────────────────────────────────────────────
+
+/** POST /guild/:guildId/members/:userId/kick – kick a member from the guild */
+export async function kickGuildMember(guildId, userId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}/kick`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** POST /guild/:guildId/members/:userId/ban – ban a member from the guild */
+export async function banGuildMember(guildId, userId, until) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}/ban`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ until }),
+  });
+  return handle(res);
+}
+
+/** GET /guild/:guildId/bans – get list of banned users */
+export async function getGuildBans(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/bans`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** DELETE /guild/:guildId/bans/:userId – unban a user */
+export async function unbanGuildMember(guildId, userId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/bans/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
     headers: authHeaders(),
   });
   return handle(res);

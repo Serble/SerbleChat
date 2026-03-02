@@ -25,6 +25,7 @@ export function AppProvider({ children }) {
   const [blockedUsers, setBlockedUsers] = useState([]); // PublicUserResponse[]
   const [blockedUserIds, setBlockedUserIds] = useState(new Set()); // Set<string>
   const [isConnected, setIsConnected]   = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false); // Track when guilds/channels are loaded
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
   const [channelLastActive, setChannelLastActive] = useState({}); // channelId (string) -> ms timestamp
   const [toasts,        setToasts]        = useState([]);
@@ -144,6 +145,8 @@ export function AppProvider({ children }) {
       await reloadGroups();
       await reloadGuilds();
       await refreshBlockedUsers();
+      // Mark initial data as loaded after guilds and channel mappings are populated
+      setInitialDataLoaded(true);
       // Load initial unread counts (already filtered by per-channel prefs server-side)
       try {
         const counts = await getUnreads();
@@ -620,6 +623,41 @@ export function AppProvider({ children }) {
       setUserUpdatedEvent({ userId: id, ts: Date.now() });
     });
 
+    conn.on('LeftGuild', async ({ guildId }) => {
+      // Remove guild from the list
+      setGuilds(p => p.filter(g => String(g.id) !== String(guildId)));
+      
+      // Clear active guild if we're viewing this guild
+      setActiveGuildId(prev => String(prev) === String(guildId) ? null : prev);
+      
+      // Clean up guild-related state
+      setGuildPermissions(p => {
+        const next = { ...p };
+        delete next[guildId];
+        return next;
+      });
+      setGuildMemberColors(p => {
+        const next = { ...p };
+        delete next[guildId];
+        return next;
+      });
+      setGuildNotifPrefs(p => {
+        const next = { ...p };
+        delete next[guildId];
+        return next;
+      });
+      delete guildPermissionsRef.current[guildId];
+      delete guildNotifPrefsRef.current[guildId];
+      
+      // Show toast notification
+      addToast({
+        title: 'Left Guild',
+        body: 'You have been removed from the guild.',
+        type: 'info',
+        duration: 5000
+      });
+    });
+
     conn.on('ClientJoinVoice', ({ userId, channelId }) => {
       if (userId == null || channelId == null) return;
       addVoiceUser(channelId, userId);
@@ -750,6 +788,7 @@ export function AppProvider({ children }) {
       guilds,     setGuilds,
       blockedUsers, isBlocked, blockUser: blockUserFn, unblockUser: unblockUserFn, refreshBlockedUsers,
       isConnected,
+      initialDataLoaded,
       messages,  setMessages,
       channelLastActive,
       toasts, addToast, removeToast,
@@ -774,6 +813,7 @@ export function AppProvider({ children }) {
       userStatuses,
       typingUsers,
       hubRef,
+      channelToGuild,
       // Unread counts & notification preferences
       unreads,
       guildUnreads,

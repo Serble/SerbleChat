@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 
 const TYPE_STYLES = {
-  info:    { bg: '#1e1f22', border: '#3b3d43',  icon: 'ℹ️' },
-  success: { bg: '#1a2e22', border: '#23a55a55', icon: '✅' },
-  warning: { bg: '#2a2010', border: '#f0b23255', icon: '⚠️' },
-  danger:  { bg: '#2a1515', border: '#f23f4355', icon: '🔴' },
+  info:    { bg: 'var(--bg-secondary)', border: 'var(--accent)', icon: 'ℹ️' },
+  success: { bg: 'rgba(35, 165, 90, 0.15)', border: 'rgba(35, 165, 90, 0.4)', icon: '✅' },
+  warning: { bg: 'rgba(240, 178, 50, 0.15)', border: 'rgba(240, 178, 50, 0.4)', icon: '⚠️' },
+  danger:  { bg: 'rgba(242, 63, 67, 0.15)', border: 'rgba(242, 63, 67, 0.4)', icon: '🔴' },
 };
 
 function Toast({ toast, onRemove }) {
@@ -33,18 +33,18 @@ function Toast({ toast, onRemove }) {
       <span style={{ fontSize: '1rem', flexShrink: 0, lineHeight: 1.4 }}>{style.icon}</span>
       <div style={{ flex: 1 }}>
         {toast.title && (
-          <div style={{ fontWeight: 700, color: '#f2f3f5', fontSize: '0.875rem', marginBottom: toast.body ? '0.2rem' : 0 }}>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem', marginBottom: toast.body ? '0.2rem' : 0 }}>
             {toast.title}
           </div>
         )}
         {toast.body && (
-          <div style={{ color: '#b5bac1', fontSize: '0.82rem', lineHeight: 1.4 }}>{toast.body}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.4 }}>{toast.body}</div>
         )}
       </div>
       <button
         onClick={() => onRemove(toast.id)}
         style={{
-          background: 'transparent', border: 'none', color: '#72767d',
+          background: 'transparent', border: 'none', color: 'var(--text-muted)',
           cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1,
           padding: '0.1rem', flexShrink: 0,
           transition: 'color 0.1s',

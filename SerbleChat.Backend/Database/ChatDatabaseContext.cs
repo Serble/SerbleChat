@@ -25,6 +25,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<MessageMention> MessageMentions { get; set; } = null!;
     public DbSet<ChannelRead> ChannelReads { get; set; } = null!;
     public DbSet<UserWebNotificationHook> UserWebNotificationHooks { get; set; } = null!;
+    public DbSet<GuildBan> GuildBans { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Message>()
@@ -58,6 +59,10 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
         
         modelBuilder.Entity<ChannelRead>()
             .HasIndex(e => new { e.UserId, e.ChannelId })
+            .IsUnique();
+        
+        modelBuilder.Entity<GuildBan>()
+            .HasIndex(e => new { e.UserId, e.GuildId })
             .IsUnique();
     }
 }

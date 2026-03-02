@@ -6,10 +6,11 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import {
   getGuildChannels, createGuildChannel, deleteGuildChannel,
-  updateGuildChannel, updateGuild, deleteGuild,
+  updateGuildChannel, updateGuild, deleteGuild, leaveGuild,
   createGuildInvite, getGuildInvites, deleteGuildInvite,
   reorderGuildChannel, FRONTEND_URL, uploadGuildIcon, deleteGuildIcon, getGuildIconUrl,
   getChannelIconUrl, uploadChannelIcon, deleteChannelIcon,
+  getGuildBans, unbanGuildMember, getAccountById,
 } from '../api.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
@@ -136,7 +137,78 @@ function GuildNotifTab({ guildId }) {
 
 // ─── Guild Settings Modal ─────────────────────────────────────────────────────
 
-function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUpdatedEvent }) {
+// ─── Ban Card Component ───────────────────────────────────────────────────────
+
+function BanCard({ ban, onUnban, unbanning }) {
+  const [userInfo, setUserInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAccountById(ban.userId)
+      .then(setUserInfo)
+      .catch(() => setUserInfo(null))
+      .finally(() => setLoading(false));
+  }, [ban.userId]);
+
+  const isPermanent = !ban.until || new Date(ban.until).getFullYear() >= 9999;
+  const expiresDate = isPermanent ? null : new Date(ban.until);
+  const isExpired = expiresDate && expiresDate < new Date();
+
+  return (
+    <div style={{ 
+      background: 'var(--bg-secondary)', 
+      borderRadius: '8px', 
+      padding: '0.75rem 1rem', 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '0.75rem' 
+    }}>
+      <Avatar userId={ban.userId} name={userInfo?.username ?? 'Unknown'} size={40} color={userInfo?.color} />
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ 
+          fontSize: '0.875rem', 
+          color: 'var(--text-primary)', 
+          fontWeight: 600,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}>
+          {loading ? 'Loading…' : (userInfo?.username ?? 'Unknown User')}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+          {isPermanent ? 'Permanent ban' : isExpired ? `Expired ${expiresDate.toLocaleDateString()}` : `Until ${expiresDate.toLocaleDateString()}`}
+        </div>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '0.05rem' }}>
+          User ID: {ban.userId}
+        </div>
+      </div>
+      <button
+        onClick={() => onUnban(ban.userId)}
+        disabled={unbanning}
+        style={{
+          background: unbanning ? 'var(--bg-active)' : 'var(--success)',
+          border: 'none',
+          borderRadius: '5px',
+          padding: '0.4rem 0.75rem',
+          color: '#fff',
+          fontSize: '0.78rem',
+          cursor: unbanning ? 'default' : 'pointer',
+          flexShrink: 0,
+          transition: 'background 0.15s',
+          fontWeight: 600,
+          opacity: unbanning ? 0.6 : 1,
+        }}
+        className={!unbanning ? 'hov-success' : undefined}
+      >
+        {unbanning ? '…' : 'Unban'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Guild Settings Modal ─────────────────────────────────────────────────────
+
+function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUpdatedEvent, currentUser }) {
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [iconError, setIconError] = useState(null);
   const [hasIcon, setHasIcon] = useState(false);
@@ -173,6 +245,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
   const canManageGuild = isOwner || allowed(perms, 'manageGuild');
   const canManageRoles = isOwner || allowed(perms, 'manageRoles');
   const canManageInvites = isOwner || allowed(perms, 'manageGuild');
+  const canManageBans = isOwner || allowed(perms, 'banMembers');
 
   // Default to first visible tab
   const firstTab = canManageGuild ? 'overview' : canManageRoles ? 'roles' : 'roles';
@@ -184,6 +257,9 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
   const [invLoading, setInvLoading] = useState(false);
   const [creating, setCreating]     = useState(false);
   const [copied, setCopied]         = useState(null);
+  const [bans, setBans]             = useState([]);
+  const [bansLoading, setBansLoading] = useState(false);
+  const [unbanningUser, setUnbanningUser] = useState(null);
 
   useEffect(() => {
     if (tab !== 'invites') return;
@@ -192,6 +268,15 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
       .then(setInvites)
       .catch(console.error)
       .finally(() => setInvLoading(false));
+  }, [tab, guild.id]);
+
+  useEffect(() => {
+    if (tab !== 'bans') return;
+    setBansLoading(true);
+    getGuildBans(guild.id)
+      .then(setBans)
+      .catch(console.error)
+      .finally(() => setBansLoading(false));
   }, [tab, guild.id]);
 
   async function handleSave(e) {
@@ -209,6 +294,19 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
     catch (err) { setError(err.message); setBusy(false); }
   }
 
+  async function handleLeave() {
+    if (!confirm(`Leave "${guild.name}"? You can rejoin with an invite.`)) return;
+    setBusy(true);
+    try {
+      await leaveGuild(guild.id, currentUser.id);
+      // LeftGuild signal will handle cleanup, just close the modal
+      onClose();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
   async function handleCreateInvite() {
     setCreating(true);
     try { const inv = await createGuildInvite(guild.id); setInvites(p => [...p, inv]); }
@@ -219,6 +317,19 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
   async function handleDeleteInvite(inviteId) {
     try { await deleteGuildInvite(inviteId); setInvites(p => p.filter(i => i.id !== inviteId)); }
     catch (err) { console.error(err); }
+  }
+
+  async function handleUnban(userId) {
+    setUnbanningUser(userId);
+    try {
+      await unbanGuildMember(guild.id, userId);
+      setBans(p => p.filter(b => b.userId !== userId));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to unban user: ' + err.message);
+    } finally {
+      setUnbanningUser(null);
+    }
   }
 
   function copyLink(inv) {
@@ -287,6 +398,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
           {canManageInvites && <button style={tabStyle(tab === 'invites')} onClick={() => setTab('invites')}>Invites</button>}
           {canManageGuild  && <button style={tabStyle(tab === 'defaultPerms')} onClick={() => setTab('defaultPerms')}>Default Perms</button>}
           <button style={tabStyle(tab === 'roles')} onClick={() => setTab('roles')}>Roles</button>
+          {canManageBans && <button style={tabStyle(tab === 'bans')} onClick={() => setTab('bans')}>Bans</button>}
         </div>
 
         {/* Content */}
@@ -402,12 +514,23 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
               <button type="submit" disabled={busy || !name.trim()}
                 style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: busy || !name.trim() ? 'default' : 'pointer', opacity: busy || !name.trim() ? 0.6 : 1, transition: 'background 0.15s' }}
                 className={!busy && name.trim() ? 'hov-accent' : undefined}>Save Changes</button>
-              {isOwner && (
+              
+              {/* Danger Zone */}
+              {(isOwner || !isOwner) && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Danger Zone</div>
-                  <button type="button" onClick={handleDelete} disabled={busy}
-                    style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
-                    className={!busy ? 'hov-danger-fill' : undefined}>Delete Guild</button>
+                  
+                  {!isOwner && (
+                    <button type="button" onClick={handleLeave} disabled={busy}
+                      style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                      className={!busy ? 'hov-danger-fill' : undefined}>Leave Guild</button>
+                  )}
+                  
+                  {isOwner && (
+                    <button type="button" onClick={handleDelete} disabled={busy}
+                      style={{ background: 'transparent', border: '1px solid var(--danger)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--danger)', fontSize: '0.875rem', fontWeight: 600, cursor: busy ? 'default' : 'pointer', alignSelf: 'flex-start', transition: 'background 0.15s, color 0.15s' }}
+                      className={!busy ? 'hov-danger-fill' : undefined}>Delete Guild</button>
+                  )}
                 </div>
               )}
             </form>
@@ -453,6 +576,22 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
           {tab === 'roles' && (
             <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '0.75rem 1rem 1rem' }}>
               <RolesTab guildId={guild.id} canManage={canManageRoles} />
+            </div>
+          )}
+
+          {/* Bans */}
+          {tab === 'bans' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {bansLoading && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading bans…</div>}
+              {!bansLoading && bans.length === 0 && <div style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>No banned users.</div>}
+              {bans.map(ban => (
+                <BanCard
+                  key={ban.id}
+                  ban={ban}
+                  onUnban={handleUnban}
+                  unbanning={unbanningUser === ban.userId}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -1112,6 +1251,119 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin
   );
 }
 
+// ─── Guild Context Menu ───────────────────────────────────────────────────────
+
+function GuildContextMenu({ guild, isOwner, currentUser, x, y, onClose, onLeave, onOpenSettings }) {
+  const menuRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onDown(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [onClose]);
+
+  async function handleLeave() {
+    if (busy) return;
+    if (!confirm(`Leave "${guild.name}"? You can rejoin with an invite.`)) return;
+    setBusy(true);
+    try {
+      await leaveGuild(guild.id, currentUser.id);
+      onClose();
+      if (onLeave) onLeave();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to leave guild: ' + err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const menuW = 180;
+  const menuH = isOwner ? 60 : 100;
+  let left = x;
+  let top = y;
+  if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 8;
+  if (top + menuH > window.innerHeight) top = window.innerHeight - menuH - 8;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        zIndex: 700,
+        left,
+        top,
+        minWidth: menuW,
+        background: 'var(--bg-overlay)',
+        border: '1px solid var(--border)',
+        borderRadius: '6px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        padding: '0.4rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.15rem',
+      }}
+    >
+      {onOpenSettings && (
+        <ContextMenuItem label="Guild Settings" onClick={() => { onOpenSettings(); onClose(); }} icon="⚙" />
+      )}
+      {!isOwner && (
+        <ContextMenuItem 
+          label={busy ? 'Leaving…' : 'Leave Guild'} 
+          onClick={handleLeave} 
+          variant="danger"
+          disabled={busy}
+        />
+      )}
+    </div>,
+    document.body
+  );
+}
+
+function ContextMenuItem({ label, onClick, variant = 'default', icon = null, disabled = false }) {
+  const [hovered, setHovered] = useState(false);
+  const isDanger = variant === 'danger';
+
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => !disabled && setHovered(false)}
+      disabled={disabled}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        padding: '0.5rem 0.65rem',
+        borderRadius: '4px',
+        background: hovered ? (isDanger ? 'rgba(242,63,67,0.15)' : 'var(--bg-hover)') : 'transparent',
+        border: 'none',
+        color: isDanger && hovered ? 'var(--danger)' : hovered ? 'var(--text-primary)' : 'var(--text-secondary)',
+        fontSize: '0.875rem',
+        fontWeight: 500,
+        cursor: disabled ? 'default' : 'pointer',
+        textAlign: 'left',
+        transition: 'background 0.1s, color 0.1s',
+        width: '100%',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {icon && <span style={{ fontSize: '0.9rem' }}>{icon}</span>}
+      {label}
+    </button>
+  );
+}
+
 // ─── Main GuildSidebar ────────────────────────────────────────────────────────
 
 export default function GuildSidebar({ guildId }) {
@@ -1123,6 +1375,7 @@ export default function GuildSidebar({ guildId }) {
   const [showInvite, setShowInvite]       = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [channelSettings, setChannelSettings] = useState(null); // channel object or null
+  const [guildContextMenu, setGuildContextMenu] = useState(null); // { x, y } or null
   // Drag-to-reorder state
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const dragIndexRef = useRef(null); // index being dragged
@@ -1134,6 +1387,7 @@ export default function GuildSidebar({ guildId }) {
 
   // Resolved permissions for this guild
   const perms = getMyPerms(guildId);
+  const isOwner           = perms?.administrator === 0 && guild; // owner has all perms set Allow
   const canManageChannels = allowed(perms, 'manageChannels');
   const canCreateInvites  = allowed(perms, 'createInvites');
   const canManageGuild    = allowed(perms, 'manageGuild');
@@ -1185,6 +1439,14 @@ export default function GuildSidebar({ guildId }) {
     }
   }, [rolesUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Navigate away if guild is removed (kicked, banned, or left)
+  useEffect(() => {
+    if (!guild && guilds.length > 0) {
+      // Guild was removed, navigate to home
+      nav('/app/friends', { replace: true });
+    }
+  }, [guild, guilds, nav]);
+
   async function handleReorder(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
     const ch = channels[fromIndex];
@@ -1211,7 +1473,9 @@ export default function GuildSidebar({ guildId }) {
     <div style={{ width: 240, background: 'var(--bg-secondary)', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
       {/* Guild header */}
       <div style={{ height: 48, display: 'flex', alignItems: 'center', padding: '0 0.75rem 0 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0, gap: '0.25rem' }}>
-        <span style={{ flex: 1, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span 
+          onContextMenu={e => { e.preventDefault(); setGuildContextMenu({ x: e.clientX, y: e.clientY }); }}
+          style={{ flex: 1, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'context-menu' }}>
           {guild?.name ?? '…'}
         </span>
         {canCreateInvites && (
@@ -1335,6 +1599,7 @@ export default function GuildSidebar({ guildId }) {
           guild={guild}
           perms={perms}
           guildUpdatedEvent={guildUpdatedEvent}
+          currentUser={currentUser}
           onClose={() => setShowSettings(false)}
           onSaved={() => refreshGuilds()}
           onDeleted={() => { refreshGuilds(); nav('/app/friends', { replace: true }); }}
@@ -1372,6 +1637,22 @@ export default function GuildSidebar({ guildId }) {
             setChannelSettings(null);
           }}
           channelUpdatedEvent={channelUpdatedEvent}
+        />
+      )}
+
+      {guildContextMenu && guild && (
+        <GuildContextMenu
+          guild={guild}
+          isOwner={isOwner}
+          currentUser={currentUser}
+          x={guildContextMenu.x}
+          y={guildContextMenu.y}
+          onClose={() => setGuildContextMenu(null)}
+          onLeave={() => {
+            // LeftGuild signal will handle the cleanup
+            setGuildContextMenu(null);
+          }}
+          onOpenSettings={canOpenSettings ? () => setShowSettings(true) : null}
         />
       )}
     </div>

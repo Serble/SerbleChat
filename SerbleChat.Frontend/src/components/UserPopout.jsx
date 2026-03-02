@@ -6,10 +6,11 @@ import remarkBreaks from 'remark-breaks';
 import { bannerBg, nameTextColor } from '../userColor.js';
 import {
   getAccountById, getGuildRoles, getUserGuildRoles, addUserGuildRole, removeUserGuildRole,
-  addFriend, removeFriend, getOrCreateDmChannel,
+  addFriend, removeFriend, getOrCreateDmChannel, kickGuildMember, banGuildMember,
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
 import Avatar from './Avatar.jsx';
+import BanModal from './BanModal.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -123,13 +124,18 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const [friendBusy, setFriendBusy]   = useState(false);
   const [msgBusy, setMsgBusy]         = useState(false);
   const [blockBusy, setBlockBusy]     = useState(false);
+  const [kickBusy, setKickBusy]       = useState(false);
+  const [banBusy, setBanBusy]         = useState(false);
+  const [banModalOpen, setBanModalOpen] = useState(false);
   const dropRef   = useRef(null);
   const popoutRef = useRef(null);
 
   const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends } = useApp();
+  const isSelf         = currentUser?.id === userId;
   const myPerms        = guildId ? getMyPerms(guildId) : null;
   const canManageRoles = !!myPerms && (myPerms.administrator === 0 || myPerms.manageRoles === 0);
-  const isSelf         = currentUser?.id === userId;
+  const canKick        = !!myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.kickMembers === 0);
+  const canBan         = !!myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.banMembers === 0);
   const blocked        = isBlocked ? isBlocked(userId) : false;
 
   // Derive friendship state
@@ -208,6 +214,35 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     try { blocked ? await unblockUser(userId) : await blockUser(userId); }
     catch (e) { console.error(e); }
     finally { setBlockBusy(false); }
+  }
+
+  async function handleKick() {
+    if (kickBusy || !guildId) return;
+    if (!confirm(`Kick ${displayName ?? username} from this guild?`)) return;
+    setKickBusy(true);
+    try {
+      await kickGuildMember(guildId, userId);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to kick user: ' + e.message);
+    } finally {
+      setKickBusy(false);
+    }
+  }
+
+  async function handleBan(until) {
+    setBanBusy(true);
+    try {
+      await banGuildMember(guildId, userId, until.toISOString());
+      setBanModalOpen(false);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to ban user: ' + e.message);
+    } finally {
+      setBanBusy(false);
+    }
   }
 
   // Positioning — widen to 320px, clamp vertically with more breathing room
@@ -387,6 +422,33 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
         <div style={{ height: 4 }} />
       </div>
 
+      {/* ── Kick / Ban actions (guild moderators only) ── */}
+      {!isSelf && guildId && (canKick || canBan) && (
+        <div style={{ padding: '0 1rem 0.75rem', flexShrink: 0 }}>
+          <div style={{ height: 1, background: 'var(--border)', marginBottom: '0.65rem' }} />
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {canKick && (
+              <ActionButton
+                label={kickBusy ? '…' : 'Kick'}
+                icon="👢"
+                onClick={handleKick}
+                disabled={kickBusy}
+                variant="red"
+              />
+            )}
+            {canBan && (
+              <ActionButton
+                label={banBusy ? '…' : 'Ban'}
+                icon="🔨"
+                onClick={() => setBanModalOpen(true)}
+                disabled={banBusy}
+                variant="red"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Block / Unblock footer ── */}
       {!isSelf && (
         <div style={{ padding: '0 1rem 0.85rem', flexShrink: 0 }}>
@@ -412,6 +474,16 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             {blockBusy ? '…' : blocked ? 'Unblock User' : 'Block User'}
           </button>
         </div>
+      )}
+
+      {/* Ban Modal */}
+      {banModalOpen && (
+        <BanModal
+          username={displayName ?? username}
+          onBan={handleBan}
+          onCancel={() => setBanModalOpen(false)}
+          busy={banBusy}
+        />
       )}
     </div>
   );

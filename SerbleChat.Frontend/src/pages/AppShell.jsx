@@ -80,14 +80,64 @@ function ChannelPage() {
 }
 
 export default function AppShell() {
-  const { activeGuildId } = useApp();
+  const { activeGuildId, guilds, channelToGuild, initialDataLoaded } = useApp();
   const { isMobile, sidebarOpen, closeSidebar } = useMobile();
   const location = useLocation();
+  const nav = useNavigate();
 
   // Auto-close the sidebar when the user navigates on mobile
   useEffect(() => {
     if (isMobile) closeSidebar();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Navigate away if user is removed from guild they're currently viewing
+  // Only run this after initial data is loaded to avoid false positives
+  useEffect(() => {
+    if (!initialDataLoaded) return; // Wait for initial data load
+    if (!activeGuildId) return;
+    
+    // Check if the active guild still exists in the guilds list
+    const guildExists = guilds.some(g => String(g.id) === String(activeGuildId));
+    
+    if (!guildExists) {
+      // Check if we're currently viewing a channel in this guild
+      // If we are, don't navigate yet - let the channel check handle it
+      const channelMatch = location.pathname.match(/\/channel\/(\d+)/);
+      if (channelMatch) {
+        const channelId = channelMatch[1];
+        const guildId = channelToGuild[String(channelId)];
+        if (String(guildId) === String(activeGuildId)) {
+          // We're viewing a channel in this guild, don't navigate yet
+          return;
+        }
+      }
+      
+      // Guild was removed, navigate to home
+      nav('/app/friends', { replace: true });
+    }
+  }, [initialDataLoaded, activeGuildId, guilds, location.pathname, channelToGuild, nav]);
+
+  // Also check if current channel belongs to a removed guild
+  // Only run this after initial data is loaded to avoid false positives
+  useEffect(() => {
+    if (!initialDataLoaded) return; // Wait for initial data load
+    
+    const channelMatch = location.pathname.match(/\/channel\/(\d+)/);
+    if (!channelMatch) return;
+    
+    const channelId = channelMatch[1];
+    const guildId = channelToGuild[String(channelId)];
+    
+    // Only proceed if we know this channel belongs to a guild (guildId is set)
+    if (!guildId) return;
+    
+    // This is a guild channel, check if the guild still exists
+    const guildExists = guilds.some(g => String(g.id) === String(guildId));
+    if (!guildExists) {
+      // Guild was removed, navigate to home
+      nav('/app/friends', { replace: true });
+    }
+  }, [initialDataLoaded, location.pathname, channelToGuild, guilds, nav]);
 
   const sidebar = activeGuildId
     ? <GuildSidebar guildId={activeGuildId} />

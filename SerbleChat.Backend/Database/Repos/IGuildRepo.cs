@@ -9,9 +9,16 @@ public interface IGuildRepo {
     Task CreateGuild(Guild guild);
     Task DeleteGuild(long id);
     Task UpdateGuild(Guild guild);
+    
     Task AddGuildMember(long guildId, string userId);
     Task<bool> IsGuildMember(long guildId, string userId);
     Task<ChatUser[]> GetGuildMembers(long guildId);
+    Task RemoveGuildMember(long guildId, string userId);
+
+    Task CreateBan(GuildBan ban);
+    Task RemoveBan(long guildId, string userId);
+    Task<GuildBan?> GetBan(long guildId, string userId);
+    Task<GuildBan[]> GetBansForGuild(long guildId);
     
     Task<GuildChannel?> GetGuildChannel(long channelId);
     Task CreateGuildChannel(GuildChannel channel);

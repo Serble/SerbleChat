@@ -5,19 +5,25 @@ import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { setParticipantMuted, setParticipantVolume } from '../voice.js';
-import { getOrCreateDmChannel } from '../api.js';
+import { getOrCreateDmChannel, kickGuildMember, banGuildMember } from '../api.js';
 import UserPopout from './UserPopout.jsx';
+import BanModal from './BanModal.jsx';
 
 /**
  * UserContextMenu
- * Context menu that appears on right-click with "View Profile", "Message", and "Block"
+ * Context menu that appears on right-click with "View Profile", "Message", "Block", and guild moderation options
  */
-function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null }) {
+function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
   const nav = useNavigate();
-  const { blockUser, unblockUser, isBlocked } = useApp();
+  const { blockUser, unblockUser, isBlocked, currentUser } = useApp();
   const menuRef = useRef(null);
   const blocked = isBlocked ? isBlocked(userId) : false;
   const [showVolumeControl, setShowVolumeControl] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const isSelf = currentUser?.id === userId;
+  const canKick = guildId && myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.kickMembers === 0);
+  const canBan = guildId && myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.banMembers === 0);
 
   useEffect(() => {
     function onKey(e) {
@@ -83,9 +89,25 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
     }
   }
 
+  async function handleKick() {
+    if (!guildId || busy) return;
+    if (!confirm(`Kick ${username} from this guild?`)) return;
+    setBusy(true);
+    try {
+      await kickGuildMember(guildId, userId);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to kick user: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Clamp menu position
   const menuW = 180;
-  const menuH = voiceSettings ? 240 : 120;
+  let menuH = voiceSettings ? 240 : 120;
+  if (canKick || canBan) menuH += 60; // Add space for moderation options
   let left = x;
   let top = y;
   if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 8;
@@ -93,80 +115,92 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
   if (left < 8) left = 8;
   if (top < 8) top = 8;
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      style={{
-        position: 'fixed',
-        zIndex: 700,
-        left,
-        top,
-        minWidth: menuW,
-        background: 'var(--bg-overlay)',
-        border: '1px solid var(--border)',
-        borderRadius: '6px',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-        padding: '0.4rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.15rem',
-      }}
-    >
-      <MenuItem label="View Profile" onClick={handleViewProfile} />
-      <MenuItem label="Message" onClick={handleMessage} />
-      {voiceSettings && (
-        <>
-          <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
-          <MenuItem label={voiceSettings.muted ? '🔇 Unmute' : '🔊 Mute'} onClick={handleToggleMute} />
-          <div style={{ padding: '0.4rem 0.65rem' }}>
-            <label style={{
-              fontSize: '0.7rem',
-              color: 'var(--text-secondary)',
-              fontWeight: 500,
-              display: 'block',
-              marginBottom: '0.3rem',
-            }}>
-              Volume: {Math.round(voiceSettings.volume * 100)}%
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={500}
-              step={5}
-              value={Math.round(voiceSettings.volume * 100)}
-              onChange={(e) => {
-                if (onVoiceSettingsChange) {
-                  const newVolume = parseInt(e.target.value) / 100;
-                  onVoiceSettingsChange({ volume: newVolume });
-                }
-              }}
-              style={{
-                cursor: 'pointer',
-                height: '4px',
-                width: '100%',
-              }}
-            />
-          </div>
-          {(voiceSettings.muted || voiceSettings.volume !== 1) && (
-            <MenuItem label="Reset" onClick={handleResetVoiceSettings} />
+  return (
+    <>
+      {createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            zIndex: 700,
+            left,
+            top,
+            minWidth: menuW,
+            background: 'var(--bg-overlay)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            padding: '0.4rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.15rem',
+          }}
+        >
+          <MenuItem label="View Profile" onClick={handleViewProfile} />
+          <MenuItem label="Message" onClick={handleMessage} />
+          {voiceSettings && (
+            <>
+              <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
+              <MenuItem label={voiceSettings.muted ? '🔇 Unmute' : '🔊 Mute'} onClick={handleToggleMute} />
+              <div style={{ padding: '0.4rem 0.65rem' }}>
+                <label style={{
+                  fontSize: '0.7rem',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 500,
+                  display: 'block',
+                  marginBottom: '0.3rem',
+                }}>
+                  Volume: {Math.round(voiceSettings.volume * 100)}%
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={500}
+                  step={5}
+                  value={Math.round(voiceSettings.volume * 100)}
+                  onChange={(e) => {
+                    if (onVoiceSettingsChange) {
+                      const newVolume = parseInt(e.target.value) / 100;
+                      onVoiceSettingsChange({ volume: newVolume });
+                    }
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    height: '4px',
+                    width: '100%',
+                  }}
+                />
+              </div>
+              {(voiceSettings.muted || voiceSettings.volume !== 1) && (
+                <MenuItem label="Reset" onClick={handleResetVoiceSettings} />
+              )}
+            </>
           )}
-        </>
+          {(canKick || canBan) && (
+            <>
+              <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
+              {canKick && <MenuItem label="Kick from Guild" onClick={handleKick} variant="danger" disabled={busy} />}
+              {canBan && onOpenBanModal && <MenuItem label="Ban from Guild" onClick={() => onOpenBanModal(userId, username, guildId)} variant="danger" disabled={busy} />}
+            </>
+          )}
+          <MenuItem label={blocked ? 'Unblock' : 'Block'} onClick={handleBlock} variant="danger" />
+        </div>,
+        document.body
       )}
-      <MenuItem label={blocked ? 'Unblock' : 'Block'} onClick={handleBlock} variant="danger" />
-    </div>,
-    document.body
+    </>
   );
 }
 
-function MenuItem({ label, onClick, variant = 'default' }) {
+function MenuItem({ label, onClick, variant = 'default', disabled = false }) {
   const [hovered, setHovered] = useState(false);
   const isDanger = variant === 'danger';
 
   return (
     <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => !disabled && setHovered(false)}
+      disabled={disabled}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -177,10 +211,11 @@ function MenuItem({ label, onClick, variant = 'default' }) {
         color: isDanger && hovered ? 'var(--danger)' : hovered ? 'var(--text-primary)' : 'var(--text-secondary)',
         fontSize: '0.875rem',
         fontWeight: 500,
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer',
         textAlign: 'left',
         transition: 'background 0.1s, color 0.1s',
         width: '100%',
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       {label}
@@ -211,12 +246,17 @@ function MenuItem({ label, onClick, variant = 'default' }) {
 export default function UserInteraction({ userId, username, guildId = null, voiceSettings = null, onVoiceSettingsChange = null, children, disabled = false }) {
   const { voiceSession, voiceParticipants, refreshParticipants } = useVoice();
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
+  const { getMyPerms } = useApp();
   const [popout, setPopout] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [banModal, setBanModal] = useState(null); // { userId, username, guildId }
   const [hovered, setHovered] = useState(false);
 
   // Disable interaction if userId is not available
   const isDisabled = disabled || !userId;
+
+  // Get permissions if in a guild
+  const myPerms = guildId ? getMyPerms(guildId) : null;
 
   // Check if this user is in the current voice session
   const userIdStr = userId?.toString() || "";
@@ -301,6 +341,29 @@ export default function UserInteraction({ userId, username, guildId = null, voic
           onViewProfile={handleViewProfile}
           voiceSettings={effectiveVoiceSettings}
           onVoiceSettingsChange={effectiveVoiceSettingsHandler}
+          guildId={guildId}
+          myPerms={myPerms}
+          onOpenBanModal={(userId, username, guildId) => {
+            setBanModal({ userId, username, guildId });
+            setContextMenu(null);
+          }}
+        />
+      )}
+
+      {banModal && (
+        <BanModal
+          username={banModal.username}
+          onBan={async (until) => {
+            try {
+              await banGuildMember(banModal.guildId, banModal.userId, until.toISOString());
+              setBanModal(null);
+            } catch (e) {
+              console.error(e);
+              alert('Failed to ban user: ' + e.message);
+            }
+          }}
+          onCancel={() => setBanModal(null)}
+          busy={false}
         />
       )}
     </>

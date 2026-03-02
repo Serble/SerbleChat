@@ -53,6 +53,43 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
             .ToArrayAsync();
     }
 
+    public Task RemoveGuildMember(long guildId, string userId) {
+        return context.GuildMembers
+            .Where(m => m.GuildId == guildId && m.UserId == userId)
+            .ExecuteDeleteAsync();
+    }
+
+    public async Task CreateBan(GuildBan ban) {
+        await context.GuildBans
+            .Where(b => b.GuildId == ban.GuildId && b.UserId == ban.UserId)
+            .ExecuteDeleteAsync();
+        context.GuildBans.Add(ban);
+        await context.SaveChangesAsync();
+    }
+
+    public Task RemoveBan(long guildId, string userId) {
+        return context.GuildBans
+            .Where(b => b.GuildId == guildId && b.UserId == userId)
+            .ExecuteDeleteAsync();
+    }
+
+    public Task<GuildBan?> GetBan(long guildId, string userId) {
+        return context.GuildBans
+            .Where(b => b.GuildId == guildId && b.UserId == userId)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<GuildBan[]> GetBansForGuild(long guildId) {
+        await context.GuildBans
+            .Where(b => b.GuildId == guildId && b.Until < DateTime.UtcNow)
+            .ExecuteDeleteAsync();
+        
+        return await context.GuildBans
+            .Where(b => b.GuildId == guildId)
+            .Include(b => b.UserNavigation)
+            .ToArrayAsync();
+    }
+
     public Task<GuildChannel?> GetGuildChannel(long channelId) {
         return context.GuildChannels
             .Where(c => c.ChannelId == channelId)
