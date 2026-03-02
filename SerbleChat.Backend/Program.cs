@@ -1,7 +1,6 @@
 using System.Text;
-using Amazon;
+using System.Text.Json;
 using Amazon.S3;
-using Lib.Net.Http.WebPush;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -70,11 +69,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers()
     .AddJsonOptions(opts => {
-        opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-        opts.JsonSerializerOptions.DictionaryKeyPolicy  = System.Text.Json.JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
     });
 builder.Services.AddCors(options => {
-    options.AddPolicy("AllowAll", policy => {
+    options.AddPolicy("AllowSerbleChatOrigins", policy => {
         // Cors enforces that allow origin isn't * for SignalR with creds.
         // So we need to actually specify the origin.
         policy.WithOrigins(apiSettings.AllowedOrigins)
@@ -129,7 +128,7 @@ if (app.Environment.IsDevelopment()) {
     app.UseSwaggerUI();
 }
 
-app.UseCors("AllowAll");
+app.UseCors("AllowSerbleChatOrigins");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHub<ChatHub>("/updates");

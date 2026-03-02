@@ -1,7 +1,4 @@
 using System.Security.Claims;
-using Amazon.S3;
-using Amazon.S3.Model;
-using ImageMagick;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SerbleChat.Backend.Database.Repos;

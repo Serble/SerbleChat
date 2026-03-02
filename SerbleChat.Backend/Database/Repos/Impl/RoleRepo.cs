@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
-using SerbleChat.Backend.Schemas;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
