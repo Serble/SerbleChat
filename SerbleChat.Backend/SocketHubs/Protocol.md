@@ -114,3 +114,11 @@ it comes to IDs of things.
     "channelId": int
 }
 ```
+
+`ReceiveNotification`:
+```json
+{
+    "type": "message",
+    "message": messagedata
+}
+```

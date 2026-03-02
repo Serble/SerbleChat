@@ -10,6 +10,7 @@ import {
   getGuildChannels, getUsersInVoice,
 } from '../api.js';
 import { resubscribeIfEnabled } from '../push.js';
+import { playSound, preloadSounds } from '../sound.js';
 
 const Ctx = createContext(null);
 
@@ -129,6 +130,9 @@ export function AppProvider({ children }) {
       window.location.replace('/');
       return;
     }
+
+    // Preload sounds in the background
+    preloadSounds(['notification', 'mute', 'unmute', 'deafen', 'undeafen', 'join', 'leave', 'stream_start', 'stream_end']).catch(console.warn);
 
     try {
       const [user, fr, dms] = await Promise.all([
@@ -540,6 +544,11 @@ export function AppProvider({ children }) {
           setUnreads(p => ({ ...p, [key]: (p[key] ?? 0) + 1 }));
         }
       }
+    });
+
+    conn.on('ReceiveNotification', async (content) => {
+      // Play notification sound
+      playSound('notification').catch(e => console.warn('Failed to play notification sound:', e));
     });
 
     conn.on('DeleteMessage', ({ id }) => {
