@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
-         getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead } from '../api.js';
+         getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
@@ -423,6 +423,7 @@ export default function ChatView() {
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [otherUser, setOtherUser]   = useState(null);
+  const [guildOwnerId, setGuildOwnerId] = useState(null);
   const [hasChannelIcon, setHasChannelIcon] = useState(false);
   const [ctxMenu, setCtxMenu]       = useState(null);
   const [copiedCtx, setCopiedCtx]   = useState(null); // 'text' | 'link' | 'id' | null
@@ -458,63 +459,64 @@ export default function ChatView() {
       return !v;
     });
   }
-  const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const inputRef  = useRef(null);
   const ctxRef    = useRef(null);
   const imageCtxRef = useRef(null);
 
-  // true  → user is at (or snapped to) the bottom; we should keep them there
-  // false → user has scrolled up manually; don't auto-snap on resize
-  const pinnedToBottom = useRef(true);
+  // Track whether the user has scrolled away from the bottom.
+  // When false, we allow reverse flex layout to naturally keep them at bottom.
+  // When true, we lock scrollTop so they stay where they manually scrolled to.
+  const userScrolledAway = useRef(false);
 
-  // Scroll the messages container to the very bottom instantly
-  function scrollToBottom() {
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      pinnedToBottom.current = true;
-    }
-  }
-
-  // Track whether the user is at the bottom so resize snapping is opt-out
+  // Detect when user manually scrolls (not from us setting scrollTop)
   function handleMessagesScroll() {
     const el = scrollRef.current;
     if (!el) return;
-    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+    // Consider "at bottom" if less than 150px of space below current view
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    userScrolledAway.current = !isNearBottom;
   }
 
-  // When the scroll container is resized (e.g. on-screen keyboard opens and
-  // --app-height shrinks) re-snap to the bottom if we were already there.
-  // ResizeObserver fires *after* layout reflow so clientHeight is correct.
+  // When the scroll container is resized (e.g. on-screen keyboard opens),
+  // keep the scroll position locked if user has scrolled away.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
-      if (pinnedToBottom.current) el.scrollTop = el.scrollHeight;
+      // If user scrolled away, maintain their scroll position
+      if (userScrolledAway.current) {
+        // Get current scroll position as a fraction of total scrollable height
+        const scrollFraction = el.scrollTop / (el.scrollHeight - el.clientHeight);
+        // After resize, reapply the same fraction
+        requestAnimationFrame(() => {
+          el.scrollTop = scrollFraction * (el.scrollHeight - el.clientHeight);
+        });
+      }
+      // If at bottom, flexbox handles it naturally with column-reverse
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Also snap via visualViewport.resize so the re-snap happens immediately
-  // when the on-screen keyboard starts animating in/out, before the CSS
-  // variable update has triggered a full DOM layout reflow.
+  // Handle visual viewport resize (keyboard show/hide on mobile)
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     function onVVResize() {
-      if (!pinnedToBottom.current) return;
-      // Defer one rAF so the CSS height variables have been applied and the
-      // scroll container has its new clientHeight before we set scrollTop.
-      requestAnimationFrame(() => {
+      if (userScrolledAway.current) {
         const el = scrollRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
+        if (el) {
+          const scrollFraction = el.scrollTop / (el.scrollHeight - el.clientHeight);
+          requestAnimationFrame(() => {
+            el.scrollTop = scrollFraction * (el.scrollHeight - el.clientHeight);
+          });
+        }
+      }
     }
     vv.addEventListener('resize', onVVResize);
     return () => vv.removeEventListener('resize', onVVResize);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const channelMessages = messages[String(channelId)] ?? [];
 
@@ -735,10 +737,12 @@ export default function ChatView() {
     setLoading(true);
     setChannel(null);
     setOtherUser(null);
+    setGuildOwnerId(null);
     setInput('');
     setSendError(null);
     setMentionPicker(null);
     setMentionData({ members: [], channels: [], roles: [] });
+    userScrolledAway.current = false;
 
     Promise.all([
       getChannel(channelId),
@@ -755,6 +759,10 @@ export default function ChatView() {
         loadGuildPermissions(ch.guildId);
         loadChannelPermissions(ch.guildId, channelId);
         loadGuildMemberColors(ch.guildId, channelId);
+        // Fetch guild info to get owner ID
+        getGuild(ch.guildId).then(guild => {
+          setGuildOwnerId(guild.ownerId);
+        }).catch(console.error);
         // Load mention autocomplete data
         Promise.all([
           getGuildMembers(ch.guildId),
@@ -780,9 +788,8 @@ export default function ChatView() {
       setChannel(ch);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
-      // Scroll to bottom after React has painted the new messages.
-      // requestAnimationFrame fires after the browser has done layout/paint.
-      requestAnimationFrame(() => scrollToBottom());
+      // With flex-direction: column-reverse, the view naturally stays at the bottom.
+      // No explicit scrolling needed.
     }).catch(e => {
       console.error(e);
       setLoading(false);
@@ -836,24 +843,16 @@ export default function ChatView() {
     }
   }, [channelUpdatedEvent, channel]);
 
-  // When a new message arrives and the user is already near the bottom, keep them there.
-  // We intentionally do NOT run this on the initial load — that's handled by the
-  // requestAnimationFrame call inside the fetch .then() above.
+  // When typing indicator appears/disappears, no scroll handling needed
+  // with flex-direction: column-reverse layout
   useEffect(() => {
-    if (searchParams.get('message')) return;
+    // Just mark that we're not scrolled away when typing indicator appears/disappears
+    // This helps detect user activity at the bottom
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) scrollToBottom();
-  }, [channelMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When typing indicator appears/disappears, scroll down if near bottom
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (nearBottom) {
-      requestAnimationFrame(() => scrollToBottom());
+      userScrolledAway.current = false;
     }
   }, [typingUsers[String(channelId)]?.size]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1076,8 +1075,15 @@ export default function ChatView() {
       ...p,
       [String(channelId)]: [...(p[String(channelId)] ?? []), tempMsg],
     }));
-    // Always snap to bottom when the user sends a message
-    requestAnimationFrame(() => scrollToBottom());
+    // Reset the scroll-away flag and snap to bottom when user sends a message
+    userScrolledAway.current = false;
+    // Use requestAnimationFrame to ensure the DOM has updated before scrolling
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
 
     try {
       await sendMessage(channelId, messageContent);
@@ -1297,57 +1303,63 @@ export default function ChatView() {
         )}
 
         {/* Messages area */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ flex: 1, overflowY: 'auto', paddingTop: '0.5rem' }}>
-          
-          {channelMessages.length === 0 && !loading && (
-            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                {channel?.type === 1 ? '👋' : '🎉'}
-              </div>
-              <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
-                {channel?.type === 1
-                  ? `This is the beginning of your conversation with ${channelDisplayName}`
-                  : `Welcome to ${channelDisplayName}!`}
-              </div>
-              <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
-            </div>
-          )}
-
-          {renderUnits.map(unit => {
-            if (unit.type === 'blocked') {
+        <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          paddingTop: '0.5rem',
+          display: 'flex',
+          flexDirection: 'column-reverse',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {renderUnits.map(unit => {
+              if (unit.type === 'blocked') {
+                return (
+                  <BlockedGroupBubble
+                    key={unit.key}
+                    messages={unit.messages}
+                    authorId={unit.authorId}
+                    resolveUser={resolveUser}
+                    currentUserId={currentUser?.id}
+                    onContextMenu={handleContextMenu}
+                    onUserClick={handleUserClick}
+                    getColor={getColor}
+                    mentionData={mentionData}
+                    guildId={guildIdForColor}
+                  />
+                );
+              }
               return (
-                <BlockedGroupBubble
+                <MessageBubble
                   key={unit.key}
-                  messages={unit.messages}
-                  authorId={unit.authorId}
+                  msg={unit.msg}
+                  prevMsg={unit.prevMsg}
                   resolveUser={resolveUser}
                   currentUserId={currentUser?.id}
                   onContextMenu={handleContextMenu}
+                  onImageContextMenu={handleImageContextMenu}
                   onUserClick={handleUserClick}
                   getColor={getColor}
                   mentionData={mentionData}
+                  highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
                   guildId={guildIdForColor}
                 />
               );
-            }
-            return (
-              <MessageBubble
-                key={unit.key}
-                msg={unit.msg}
-                prevMsg={unit.prevMsg}
-                resolveUser={resolveUser}
-                currentUserId={currentUser?.id}
-                onContextMenu={handleContextMenu}
-                onImageContextMenu={handleImageContextMenu}
-                onUserClick={handleUserClick}
-                getColor={getColor}
-                mentionData={mentionData}
-                highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
-                guildId={guildIdForColor}
-              />
-            );
-          })}
-          <div ref={bottomRef} style={{ height: 8 }} />
+            })}
+            {/* Empty state message at the top (since we're reversed) */}
+            {channelMessages.length === 0 && !loading && (
+              <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
+                  {channel?.type === 1 ? '👋' : '🎉'}
+                </div>
+                <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
+                  {channel?.type === 1
+                    ? `This is the beginning of your conversation with ${channelDisplayName}`
+                    : `Welcome to ${channelDisplayName}!`}
+                </div>
+                <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Typing indicator - between messages and input */}
@@ -1645,7 +1657,7 @@ export default function ChatView() {
               <MemberList
                 channelId={channelId}
                 guildId={isGuildChannel ? channel.guildId : null}
-                ownerId={groupChat?.ownerId ?? null}
+                ownerId={isGuildChannel ? guildOwnerId : groupChat?.ownerId ?? null}
                 refreshTick={memberRefreshTick}
                 style={{ width: 'min(85vw, 320px)', height: '100%' }}
               />
@@ -1657,7 +1669,7 @@ export default function ChatView() {
             <MemberList
               channelId={channelId}
               guildId={isGuildChannel ? channel.guildId : null}
-              ownerId={groupChat?.ownerId ?? null}
+              ownerId={isGuildChannel ? guildOwnerId : groupChat?.ownerId ?? null}
               refreshTick={memberRefreshTick}
             />
           )

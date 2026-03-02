@@ -142,7 +142,7 @@ function MemberRow({ member, ownerId, guildId }) {
           {member.username}
         </span>
         {isOwner && (
-          <span title="Group Owner" style={{ fontSize: '0.8rem', flexShrink: 0 }}>👑</span>
+          <span title="Owner" style={{ fontSize: '0.8rem', flexShrink: 0 }}>👑</span>
         )}
       </div>
     </UserInteraction>

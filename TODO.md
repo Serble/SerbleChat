@@ -4,7 +4,6 @@ TODO:
 - More live updates
   - Members changing (profiles)
 - Fix app making TOO MANY requests (cache them or something, react SWR)
-- File uploads (attachments, through Serble Files)
 - Webhooks for sending messages
 - Bot library (self bots)
 - Improve push notification reliability potentially (native app support with browser rendering?)
