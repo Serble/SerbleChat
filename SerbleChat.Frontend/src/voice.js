@@ -103,24 +103,27 @@ class VoiceSession {
     
     checkSpeakingLevels() {
         let hasChanges = false;
-        
-        Object.keys(this.audioGraph).forEach(participantIdentity => {
-            const { analyzer, dataArray } = this.audioGraph.get(participantIdentity);
-            
-            // Get frequency data
-            analyzer.getByteFrequencyData(dataArray);
-            
-            // Calculate average audio level
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                sum += dataArray[i];
+
+        this.audioGraph.forEach(({analyzer, dataArray}, participantIdentity) => {
+            let isSpeaking = false;
+
+            // don't show voice activity for yourself when you are muted
+            if (this.room.localParticipant.identity !== participantIdentity || !this.micTrack.isMuted) {
+                // Get frequency data
+                analyzer.getByteFrequencyData(dataArray);
+
+                // Calculate average audio level
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    sum += dataArray[i];
+                }
+                const average = sum / dataArray.length;
+
+                // Threshold for detecting speech (adjust as needed)
+                const SPEAKING_THRESHOLD = 10; // Lower = more sensitive
+                isSpeaking = average > SPEAKING_THRESHOLD;
             }
-            const average = sum / dataArray.length;
-            
-            // Threshold for detecting speech (adjust as needed)
-            const SPEAKING_THRESHOLD = 10; // Lower = more sensitive
-            const isSpeaking = average > SPEAKING_THRESHOLD;
-            
+
             // Update speaking state if changed
             if (this.speakingStates[participantIdentity] !== isSpeaking) {
                 this.speakingStates[participantIdentity] = isSpeaking;
