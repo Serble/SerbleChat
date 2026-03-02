@@ -33,6 +33,9 @@
 /* Color → --danger (destructive icon/trash buttons) */
 .hov-color-danger:hover { color: var(--danger) !important; }
 
+/* Color → --accent (accent-colored icon buttons) */
+.hov-color-accent:hover { color: var(--accent) !important; }
+
 /* Border-color only → --text-muted (Cancel in CreateChannelModal) */
 .hov-border-only:hover { border-color: var(--text-muted) !important; }
 

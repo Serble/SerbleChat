@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
@@ -15,11 +16,13 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import InviteCard from './InviteCard.jsx';
 import MessageCard from './MessageCard.jsx';
+import FileEmbed from './FileEmbed.jsx';
 import { MentionText, MentionPicker } from './MentionRenderer.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
+import { FileUploadPanel, useFileUploads } from './FileUploadPanel.jsx';
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -29,6 +32,10 @@ const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/([a-zA-Z0-9_-]+)/g;
 // Regex that matches message links: /app/channel/:channelId?message=:messageId
 // Also origin-agnostic for the same reasons as invite links.
 const MESSAGE_RE = () => /https?:\/\/[^\s/]+\/app\/channel\/(\d+)\?message=(\d+)/g;
+
+// Regex that matches files API URLs: /files/something
+// Matches the VITE_SERBLE_FILES_API_URL base with /files/ path
+const FILE_RE = () => /https?:\/\/[^\s/]+\/files\/[^\s]+/g;
 
 /** Extract unique invite IDs from a message string */
 function extractInviteIds(content) {
@@ -58,12 +65,24 @@ function extractMessageLinks(content) {
   return links;
 }
 
+/** Extract unique file URLs from a message string */
+function extractFileUrls(content) {
+  const urls = [];
+  const seen = new Set();
+  let m;
+  const re = FILE_RE();
+  while ((m = re.exec(content)) !== null) {
+    if (!seen.has(m[0])) { seen.add(m[0]); urls.push(m[0]); }
+  }
+  return urls;
+}
+
 
 // Markdown component overrides styled for the dark chat theme
 const mdComponents = {
   p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
-    if (href && (INVITE_RE().test(href) || MESSAGE_RE().test(href))) {
+    if (href && (INVITE_RE().test(href) || MESSAGE_RE().test(href) || FILE_RE().test(href))) {
       return <span style={{ color: 'var(--text-link)' }}>{children}</span>;
     }
     return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', textDecoration: 'underline' }}>{children}</a>;
@@ -156,7 +175,7 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, highlighted, guildId }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onImageContextMenu, onUserClick, getColor, mentionData, highlighted, guildId }) {
   const [author, setAuthor] = useState(null);
 
   // Group consecutive messages from the same author
@@ -170,6 +189,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
   // Memoize invite ID extraction — only re-runs when message content changes
   const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
   const messageLinks = useMemo(() => extractMessageLinks(msg.content), [msg.content]);
+  const fileUrls = useMemo(() => extractFileUrls(msg.content), [msg.content]);
 
   // Resolve color: role color > user profile color > generated hue
   const nameColor = getColor(msg.authorId, author?.username, author?.color);
@@ -211,6 +231,14 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           {messageLinks.map(link => (
             <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
           ))}
+          {fileUrls.map(url => (
+            <FileEmbed 
+              key={url} 
+              fileUrl={url}
+              onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
+              onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
+            />
+          ))}
         </div>
       </div>
     );
@@ -245,6 +273,14 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           ))}
           {messageLinks.map(link => (
             <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
+          ))}
+          {fileUrls.map(url => (
+            <FileEmbed 
+              key={url} 
+              fileUrl={url}
+              onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
+              onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
+            />
           ))}
         </div>
       </div>
@@ -315,6 +351,7 @@ function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, on
             resolveUser={resolveUser}
             currentUserId={currentUserId}
             onContextMenu={onContextMenu}
+            onImageContextMenu={onImageContextMenu}
             onUserClick={onUserClick}
             getColor={getColor}
             mentionData={mentionData}
@@ -401,7 +438,14 @@ export default function ChatView() {
   const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
   const [pickerIndex, setPickerIndex]   = useState(0);
   
-  // Track the highest message ID we've marked as read for this channel
+  // File uploads
+  const fileUploads = useFileUploads();
+  const [dragOver, setDragOver] = useState(false);
+  
+  // Image context menu
+  const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, isModal, messageId? }
+  const [copiedImageCtx, setCopiedImageCtx] = useState(null); // 'link' | 'image' | null
+  
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
   // Debounce timer for typing indicator notifications (max send every 2 seconds)
@@ -418,6 +462,7 @@ export default function ChatView() {
   const scrollRef = useRef(null);
   const inputRef  = useRef(null);
   const ctxRef    = useRef(null);
+  const imageCtxRef = useRef(null);
 
   // true  → user is at (or snapped to) the bottom; we should keep them there
   // false → user has scrolled up manually; don't auto-snap on resize
@@ -615,6 +660,21 @@ export default function ChatView() {
     };
   }, [ctxMenu]);
 
+  // Close image context menu on outside click or Escape
+  useEffect(() => {
+    if (!imageCtxMenu) return;
+    function onDown(e) {
+      if (imageCtxRef.current && !imageCtxRef.current.contains(e.target)) setImageCtxMenu(null);
+    }
+    function onKey(e) { if (e.key === 'Escape') setImageCtxMenu(null); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [imageCtxMenu]);
+
   const handleContextMenu = useCallback((e, msg) => {
     if (msg._pending) return;
     e.preventDefault();
@@ -623,6 +683,14 @@ export default function ChatView() {
     const y = Math.min(e.clientY, window.innerHeight - 160);
     setCtxMenu({ x, y, msg });
     setCopiedCtx(null);
+  }, []);
+
+  const handleImageContextMenu = useCallback((e, imageUrl, filename, isModal = false, messageId = null) => {
+    e.preventDefault();
+    const x = Math.min(e.clientX, window.innerWidth - 200);
+    const y = Math.min(e.clientY, window.innerHeight - 160);
+    setImageCtxMenu({ x, y, imageUrl, filename, isModal, messageId });
+    setCopiedImageCtx(null);
   }, []);
 
   const handleUserClick = useCallback((e, userId, username) => {
@@ -952,9 +1020,46 @@ export default function ChatView() {
   async function handleSend(e) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || !currentUser) return;
+    if ((!text && fileUploads.files.length === 0) || !currentUser) return;
 
     setSendError(null);
+
+    // Check for invalid expiration times before attempting upload
+    if (fileUploads.files.length > 0 && fileUploads.limits) {
+      for (let i = 0; i < fileUploads.files.length; i++) {
+        const expirationHours = fileUploads.fileExpirations?.[i];
+        if (expirationHours !== null && expirationHours > fileUploads.limits.maxExpiryHours) {
+          setSendError(`File ${i + 1}: expiration time exceeds maximum (${fileUploads.limits.maxExpiryHours} hours)`);
+          return;
+        }
+      }
+    }
+
+    // Upload files if present
+    let uploadedFileIds = undefined;
+    if (fileUploads.files.length > 0) {
+      try {
+        uploadedFileIds = await fileUploads.uploadAllFiles();
+        if (uploadedFileIds === null) {
+          // Upload failed, errors are displayed in the panel
+          console.warn('[ChatView] File upload failed');
+          return;
+        }
+      } catch (err) {
+        console.error('[ChatView] Error uploading files:', err);
+        setSendError(`Failed to upload files: ${err.message}`);
+        return;
+      }
+    }
+
+    // Build message content with file links if any
+    let messageContent = text;
+    if (uploadedFileIds && Array.isArray(uploadedFileIds) && uploadedFileIds.length > 0) {
+      const filesBaseUrl = import.meta.env.VITE_SERBLE_FILES_API_URL ?? 'https://api.files.serble.net';
+      const fileLinks = uploadedFileIds.map(id => `${filesBaseUrl}/files/${id}`).join('\n');
+      messageContent = messageContent ? `${messageContent}\n\n${fileLinks}` : fileLinks;
+    }
+
     setInput('');
 
     // Optimistic pending message — will be replaced by the NewMessage signal
@@ -963,7 +1068,7 @@ export default function ChatView() {
       id: tempId,
       channelId: Number(channelId),
       authorId: currentUser.id,
-      content: text,
+      content: messageContent,
       createdAt: new Date().toISOString(),
       _pending: true,
     };
@@ -975,7 +1080,7 @@ export default function ChatView() {
     requestAnimationFrame(() => scrollToBottom());
 
     try {
-      await sendMessage(channelId, text);
+      await sendMessage(channelId, messageContent);
     } catch (err) {
       console.error('Send failed:', err);
       // Remove the pending message on failure
@@ -1013,6 +1118,43 @@ export default function ChatView() {
 
   const channelIcon = channel?.type === 1 ? '👤' : channel?.type === 2 ? '👥' : '#';
 
+  // ── Drag and drop ───────────────────────────────────────────────────────────
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragOver to false if we're leaving the entire input area
+    if (e.target === e.currentTarget) {
+      setDragOver(false);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    
+    // Only accept files
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      fileUploads.addFiles(files);
+    }
+  }
+
+  function handleFileInputChange(e) {
+    if (e.target.files && e.target.files.length > 0) {
+      fileUploads.addFiles(e.target.files);
+      // Reset input so the same file can be selected again
+      e.target.value = '';
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -1027,7 +1169,12 @@ export default function ChatView() {
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Main chat column */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-base)' }}>
+      <div 
+        onDragOver={handleDragOver} 
+        onDragLeave={handleDragLeave} 
+        onDrop={handleDrop}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-base)', position: 'relative' }}
+      >
         {/* Channel header */}
         <div style={{
           height: 48, display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -1108,6 +1255,42 @@ export default function ChatView() {
           <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
         </div>
 
+        {/* Drag and drop overlay */}
+        {dragOver && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(124, 58, 237, 0.15)',
+              border: '2px dashed var(--accent)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 100,
+              pointerEvents: 'none',
+              backdropFilter: 'blur(1px)',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.75rem',
+              fontSize: '1.2rem',
+              color: 'var(--accent)',
+              fontWeight: 600,
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '2.5rem' }}>📎</div>
+              <div>Drop files to upload</div>
+            </div>
+          </div>
+        )}
+
         {/* Voice participants preview (below header buttons, above messages) */}
         {(isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable)) && (
           <VoiceParticipantPreview channelId={channelId} compact={false} />
@@ -1155,6 +1338,7 @@ export default function ChatView() {
                 resolveUser={resolveUser}
                 currentUserId={currentUser?.id}
                 onContextMenu={handleContextMenu}
+                onImageContextMenu={handleImageContextMenu}
                 onUserClick={handleUserClick}
                 getColor={getColor}
                 mentionData={mentionData}
@@ -1187,6 +1371,18 @@ export default function ChatView() {
             <BlockedInputBanner username={otherUser.username} userId={otherUser.id} unblockUser={unblockUser} />
           ) : canSend ? (
           <>
+            {/* File upload panel */}
+            <FileUploadPanel 
+              files={fileUploads.files}
+              fileExpirations={fileUploads.fileExpirations}
+              onFileExpirationChange={fileUploads.setFileExpiration}
+              onRemoveFile={fileUploads.removeFile}
+              uploading={fileUploads.uploading}
+              errors={fileUploads.uploadErrors}
+              maxExpiryHours={fileUploads.limits?.maxExpiryHours}
+              noExpirySingleFileSize={fileUploads.limits?.noExpirySingleFileSize}
+            />
+            
             {sendError && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -1212,7 +1408,62 @@ export default function ChatView() {
                   onHoverIndex={setPickerIndex}
                 />
               )}
-              <div style={{ display: 'flex', alignItems: 'flex-end', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
+              
+              {/* Drag overlay */}
+              {dragOver && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(124, 58, 237, 0.1)',
+                  border: '2px dashed var(--accent)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10,
+                  pointerEvents: 'none',
+                }}>
+                  <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.9rem' }}>
+                    Drop files to upload
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
+                {/* File upload button */}
+                <button
+                  type="button"
+                  onClick={() => fileUploads.fileInputRef.current?.click()}
+                  disabled={fileUploads.uploading}
+                  title="Attach files"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: fileUploads.uploading ? 'var(--text-muted)' : 'var(--text-secondary)',
+                    cursor: fileUploads.uploading ? 'not-allowed' : 'pointer',
+                    fontSize: '1.1rem',
+                    padding: '0.5rem 0.25rem',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '1.5rem',
+                    opacity: fileUploads.uploading ? 0.5 : 1,
+                  }}
+                  className={!fileUploads.uploading ? 'hov-color-accent' : undefined}
+                >
+                  📎
+                </button>
+                
+                {/* Hidden file input */}
+                <input
+                  ref={fileUploads.fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileInputChange}
+                  style={{ display: 'none' }}
+                />
+                
                 <textarea
                   ref={inputRef}
                   rows={1}
@@ -1239,11 +1490,12 @@ export default function ChatView() {
                   onClick={e => detectMention(input, e.target.selectionStart)}
                   maxLength={16384}
                 />
-                {input.trim() && (
+                {(input.trim() || fileUploads.files.length > 0) && (
                   <button type="submit"
-                    style={{ background: 'var(--accent)', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0 }}
-                    className="hov-accent"
-                  >↵</button>
+                    disabled={fileUploads.uploading}
+                    style={{ background: fileUploads.uploading ? 'var(--bg-secondary)' : 'var(--accent)', border: 'none', borderRadius: '4px', cursor: fileUploads.uploading ? 'not-allowed' : 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0, opacity: fileUploads.uploading ? 0.6 : 1 }}
+                    className={!fileUploads.uploading ? 'hov-accent' : undefined}
+                  >{fileUploads.uploading ? '⏳' : '↵'}</button>
                 )}
               </div>
             </form>
@@ -1287,6 +1539,77 @@ export default function ChatView() {
               </>
             )}
           </div>
+        )}
+
+        {/* Image context menu */}
+        {imageCtxMenu && createPortal(
+          <div ref={imageCtxRef} style={{ position: 'fixed', zIndex: 99999, top: imageCtxMenu.y, left: imageCtxMenu.x, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
+            {/* If message context (not modal), show message options first */}
+            {!imageCtxMenu.isModal && imageCtxMenu.messageId && (
+              <>
+                <CtxBtn icon="📋" label="Copy Text"
+                  copied={copiedImageCtx === 'text'}
+                  onClick={() => {
+                    const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
+                    if (msg) {
+                      navigator.clipboard.writeText(msg.content);
+                      setCopiedImageCtx('text');
+                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                    }
+                  }} />
+                <CtxBtn icon="🔗" label="Copy Message Link"
+                  copied={copiedImageCtx === 'link'}
+                  onClick={() => {
+                    const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
+                    if (msg) {
+                      const url = `${FRONTEND_URL}/app/channel/${msg.channelId}?message=${msg.id}`;
+                      navigator.clipboard.writeText(url);
+                      setCopiedImageCtx('link');
+                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                    }
+                  }} />
+                <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
+              </>
+            )}
+            
+            {/* Image-specific options */}
+            <CtxBtn icon="🔗" label="Copy Image Link"
+              copied={copiedImageCtx === 'image-link'}
+              onClick={() => {
+                navigator.clipboard.writeText(imageCtxMenu.imageUrl);
+                setCopiedImageCtx('image-link');
+                setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+              }} />
+            <CtxBtn icon="🌐" label="Open Image"
+              onClick={() => {
+                window.open(imageCtxMenu.imageUrl, '_blank');
+                setImageCtxMenu(null);
+              }} />
+            <CtxBtn icon="📋" label="Copy Image"
+              copied={copiedImageCtx === 'image'}
+              onClick={() => {
+                fetch(imageCtxMenu.imageUrl)
+                  .then(res => res.blob())
+                  .then(blob => {
+                    navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                    setCopiedImageCtx('image');
+                    setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                  })
+                  .catch(err => {
+                    console.error('Failed to copy image:', err);
+                    setImageCtxMenu(null);
+                  });
+              }} />
+            <CtxBtn icon="💾" label="Save Image"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = imageCtxMenu.imageUrl;
+                a.download = imageCtxMenu.filename || 'image';
+                a.click();
+                setImageCtxMenu(null);
+              }} />
+          </div>,
+          document.body
         )}
 
         {popout && (

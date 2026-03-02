@@ -20,6 +20,7 @@ export const OPTION_DEFAULTS = {
     toggleMute: 'CommandOrControl+Shift+M',
     toggleDeafen: 'CommandOrControl+Shift+D',
   },
+  filesApiToken: null, // OAuth token for Files API authentication
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export function ClientOptionsProvider({ children }) {
   const [voiceParticipantSettings, setVoiceParticipantSettingsState] = useState(OPTION_DEFAULTS.voiceParticipantSettings);
   const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
   const [keybinds, setKeybindsState] = useState(OPTION_DEFAULTS.keybinds);
+  const [filesApiToken, setFilesApiTokenState] = useState(OPTION_DEFAULTS.filesApiToken);
 
   // Refs so the debounced save callback always has the latest values without
   // needing to be recreated on every render.
@@ -44,6 +46,7 @@ export function ClientOptionsProvider({ children }) {
   const voiceSettingsRef   = useRef(OPTION_DEFAULTS.voiceParticipantSettings);
   const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
   const keybindsRef        = useRef(OPTION_DEFAULTS.keybinds);
+  const filesApiTokenRef   = useRef(OPTION_DEFAULTS.filesApiToken);
   const themeRef           = useRef({ activeId: theme.activeId, customThemes: theme.customThemes });
   const pendingLoad   = useRef(true);   // skip saves until the initial load is done
   const saveTimerRef  = useRef(null);
@@ -112,6 +115,10 @@ export function ClientOptionsProvider({ children }) {
           });
         }
       }
+      if (typeof parsed.filesApiToken === 'string' && parsed.filesApiToken) {
+        filesApiTokenRef.current = parsed.filesApiToken;
+        setFilesApiTokenState(parsed.filesApiToken);
+      }
     } catch (e) {
       console.warn('[ClientOptions] Failed to load from backend:', e);
     } finally {
@@ -135,6 +142,7 @@ export function ClientOptionsProvider({ children }) {
           voiceAudioOptions: voiceAudioOptionsRef.current,
           keybinds: keybindsRef.current,
           theme: themeRef.current,
+          filesApiToken: filesApiTokenRef.current,
         });
         await setClientOptions(payload);
       } catch (e) {
@@ -237,6 +245,12 @@ export function ClientOptionsProvider({ children }) {
     if (!pendingLoad.current) scheduleSave();
   }
 
+  function setFilesApiToken(token) {
+    filesApiTokenRef.current = token || null;
+    setFilesApiTokenState(token || null);
+    if (!pendingLoad.current) scheduleSave();
+  }
+
   return (
     <ClientOptionsCtx.Provider value={{
       messageLinesLimit,
@@ -252,6 +266,8 @@ export function ClientOptionsProvider({ children }) {
       setVoiceAudioOption,
       keybinds,
       setKeybinds,
+      filesApiToken,
+      setFilesApiToken,
     }}>
       {children}
     </ClientOptionsCtx.Provider>

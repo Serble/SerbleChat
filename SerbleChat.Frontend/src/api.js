@@ -1,5 +1,5 @@
 // Serble OAuth settings
-export const CLIENT_ID = '1ebf51ca-9eae-46ad-aa98-b984c47ad94d';
+export const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 export const REDIRECT_URI = `${window.location.origin}/callback`;
 export const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL?.replace(/\/$/, '') ?? window.location.origin;
 export const OAUTH_URL = 'https://serble.net/oauth/authorize';

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import LandingPage  from './pages/LandingPage.jsx';
 import CallbackPage from './pages/CallbackPage.jsx';
+import FilesCallbackPage from './pages/FilesCallbackPage.jsx';
 import AppShell     from './pages/AppShell.jsx';
 import InvitePage   from './pages/InvitePage.jsx';
 import { AppProvider } from './context/AppContext.jsx';
@@ -25,27 +26,28 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/"                element={<LandingPage />} />
-          <Route path="/callback"        element={<CallbackPage />} />
-          <Route path="/invite/:inviteId" element={<InvitePage />} />
-          <Route path="/app/*"           element={
-            <ProtectedRoute>
-              <AppProvider>
-                <ClientOptionsProvider>
+      <ClientOptionsProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/"                element={<LandingPage />} />
+            <Route path="/callback"        element={<CallbackPage />} />
+            <Route path="/files-callback"  element={<FilesCallbackPage />} />
+            <Route path="/invite/:inviteId" element={<InvitePage />} />
+            <Route path="/app/*"           element={
+              <ProtectedRoute>
+                <AppProvider>
                   <VoiceProvider>
                     <MobileProvider>
                       <AppShell />
                     </MobileProvider>
                   </VoiceProvider>
-                </ClientOptionsProvider>
-              </AppProvider>
-            </ProtectedRoute>
-          } />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+                </AppProvider>
+              </ProtectedRoute>
+            } />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ClientOptionsProvider>
     </ThemeProvider>
   );
 }

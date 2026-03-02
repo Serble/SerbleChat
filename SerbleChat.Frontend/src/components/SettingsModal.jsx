@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,7 @@ import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEn
 import { isInstalled, canInstall, promptInstall, initPWAInstallPrompt } from '../pwa.js';
 import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from '../api.js';
 import Avatar from './Avatar.jsx';
+import { FilesTab } from './FilesTab.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -928,14 +929,14 @@ function ProfileTab() {
             ['---',              'Horizontal rule'],
             ['```\\ncode\\n```', 'Code block'],
           ].map(([syntax, desc]) => (
-            <>
-              <code key={syntax + '-code'} style={{
+            <React.Fragment key={syntax}>
+              <code style={{
                 fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem',
                 color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)',
                 padding: '0.05em 0.3em', borderRadius: '3px', whiteSpace: 'nowrap',
               }}>{syntax}</code>
-              <span key={syntax + '-desc'}>{desc}</span>
-            </>
+              <span>{desc}</span>
+            </React.Fragment>
           ))}
         </div>
       </details>
@@ -2075,6 +2076,7 @@ import { isElectron } from '../electron-utils.js';
 
 const BASE_TABS = [
   { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
+  { id: 'files',         icon: '📁', label: 'Files',         section: 'MY ACCOUNT' },
   { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
   { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
   { id: 'voiceAudio',    icon: '🎙️', label: 'Voice Audio',   section: 'APP SETTINGS' },
@@ -2186,6 +2188,7 @@ export default function SettingsModal({ onClose }) {
           {/* Right: tab content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {activeTab === 'profile'       && <ProfileTab />}
+            {activeTab === 'files'         && <FilesTab isActive={activeTab === 'files'} />}
             {activeTab === 'appearance'    && <AppearanceTab />}
             {activeTab === 'chat'          && <ChatTab />}
             {activeTab === 'voiceAudio'    && <VoiceAudioTab />}
