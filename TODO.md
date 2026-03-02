@@ -1,5 +1,4 @@
 TODO:
-- $ Moderation endpoints (kick/ban)
 - $ Voice activity threshold/push to talk
 - $ pick audio devices in electron app
 

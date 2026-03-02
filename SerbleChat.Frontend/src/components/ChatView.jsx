@@ -215,10 +215,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
     return (
       <div
         data-msgid={msg.id}
-        className={highlighted ? 'msg-highlighted' : undefined}
+        className={`${highlighted ? 'msg-highlighted' : ''} hov-bg`.trim()}
         onContextMenu={e => onContextMenu(e, msg)}
         style={{ padding: '0.1rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-        className="hov-bg"
       >
         <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
           {ts}
@@ -247,10 +246,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
   return (
     <div
       data-msgid={msg.id}
-      className={highlighted ? 'msg-highlighted' : undefined}
+      className={`${highlighted ? 'msg-highlighted' : ''} hov-bg`.trim()}
       onContextMenu={e => onContextMenu(e, msg)}
       style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-      className="hov-bg"
     >
       <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
         <div style={{ flexShrink: 0 }}>
