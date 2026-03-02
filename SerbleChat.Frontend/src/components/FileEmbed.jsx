@@ -50,31 +50,84 @@ function getFilename(url) {
  * If the file is an image, renders it. Otherwise, shows a download button.
  * Props: fileUrl (string) - the full URL to the file, onImageContextMenu (func) - context menu handler for embedded image, onModalImageContextMenu (func) - context menu handler for modal
  */
+/**
+ * Extract filename from Content-Disposition header
+ */
+function getFilenameFromHeader(header) {
+  if (!header) return null;
+  // Handle RFC 5987 format: filename*=UTF-8''encoded
+  const utf8Match = header.match(/filename\*=(?:UTF-8)?'*'?([^;]+)/);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      // Fallback to basic filename if decoding fails
+    }
+  }
+  // Handle standard format: filename="name" or filename=name
+  const basicMatch = header.match(/filename=(?:"([^"]+)"|([^;,\s]+))/);
+  if (basicMatch) {
+    return basicMatch[1] || basicMatch[2];
+  }
+  return null;
+}
+
 export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageContextMenu }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [fileMeta, setFileMeta] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [fileNotFound, setFileNotFound] = useState(false);
+  const [displayFilename, setDisplayFilename] = useState(null);
+  const [imageNotFound, setImageNotFound] = useState(false);
 
   const extension = getFileExtension(fileUrl);
   const isImage = IMAGE_EXTENSIONS.has(extension);
-  const filename = getFilename(fileUrl);
+  const filename = displayFilename || getFilename(fileUrl);
 
-  // Try to fetch file metadata (size, etc.)
+  // Try to fetch file metadata (size, etc.) and extract actual filename
   useEffect(() => {
-    if (!isImage) {
-      // For non-image files, try to get the content-length header
-      fetch(fileUrl, { method: 'HEAD' })
-        .then(res => {
+    fetch(fileUrl, { method: 'HEAD' })
+      .then(res => {
+        if (!res.ok) {
+          // Handle 404 and other error statuses
+          if (!isImage) {
+            setFileNotFound(true);
+          } else {
+            setImageNotFound(true);
+          }
+          return;
+        }
+        // Extract filename from Content-Disposition header
+        const disposition = res.headers.get('content-disposition');
+        const headerFilename = getFilenameFromHeader(disposition);
+        if (headerFilename) {
+          setDisplayFilename(headerFilename);
+        }
+        
+        // For non-image files, also get the content-length
+        if (!isImage) {
           const contentLength = res.headers.get('content-length');
           if (contentLength) {
             setFileMeta({ size: parseInt(contentLength, 10) });
           }
-        })
-        .catch(() => {
+        }
+      })
+      .catch(() => {
+        if (!isImage) {
           // If HEAD fails, try GET with range
           fetch(fileUrl, { headers: { 'Range': 'bytes=0-0' } })
             .then(res => {
+              if (!res.ok) {
+                setFileNotFound(true);
+                return;
+              }
+              // Extract filename from Content-Disposition header
+              const disposition = res.headers.get('content-disposition');
+              const headerFilename = getFilenameFromHeader(disposition);
+              if (headerFilename) {
+                setDisplayFilename(headerFilename);
+              }
               const contentLength = res.headers.get('content-length');
               if (contentLength) {
                 setFileMeta({ size: parseInt(contentLength, 10) });
@@ -83,12 +136,134 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
             .catch(() => {
               // Silently fail, we'll just show the file without size info
             });
-        });
-    }
+        }
+      });
   }, [fileUrl, isImage]);
 
+  // File not found
+  if (fileNotFound) {
+    return (
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          padding: '0.75rem 1rem',
+          marginTop: '0.35rem',
+          maxWidth: 380,
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '6px',
+            flexShrink: 0,
+            background: 'var(--bg-tertiary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.5rem',
+          }}
+        >
+          ❌
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: '0.7rem',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              fontWeight: 700,
+              marginBottom: '0.1rem',
+            }}
+          >
+            File
+          </div>
+          <div
+            style={{
+              fontSize: '0.88rem',
+              color: 'var(--text-primary)',
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            This file does not exist
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Image not found (404)
+  if (isImage && imageNotFound) {
+    return (
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          padding: '0.75rem 1rem',
+          marginTop: '0.35rem',
+          maxWidth: 380,
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '6px',
+            flexShrink: 0,
+            background: 'var(--bg-tertiary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.5rem',
+          }}
+        >
+          ❌
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: '0.7rem',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              fontWeight: 700,
+              marginBottom: '0.1rem',
+            }}
+          >
+            Image
+          </div>
+          <div
+            style={{
+              fontSize: '0.88rem',
+              color: 'var(--text-primary)',
+              fontWeight: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            This image does not exist
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Image renderer
-  if (isImage && !imageError) {
+  if (isImage && !imageError && !imageNotFound) {
     return (
       <>
         <div
@@ -176,8 +351,8 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
     );
   }
 
-  // Fallback for failed image load - show as file embed
-  if (isImage && imageError) {
+  // Fallback for failed image load (generic error) - show as file embed
+  if (isImage && imageError && !imageNotFound) {
     return (
       <div
         style={{
