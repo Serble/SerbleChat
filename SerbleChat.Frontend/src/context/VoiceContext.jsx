@@ -3,6 +3,7 @@ import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as 
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
 import { isElectron } from '../electron-utils.js';
+import { playSound } from '../sound.js';
 
 const VoiceContext = createContext();
 
@@ -21,6 +22,7 @@ export function VoiceProvider({ children }) {
   const [voiceError, setVoiceError] = useState(null); // { message, context, timestamp }
 
   const activeJoinIdRef = useRef(0);
+  const previousParticipantIdsRef = useRef(new Set());
   
   // Refs to access latest state in keybind handlers
   const voiceSessionRef = useRef(voiceSession);
@@ -71,6 +73,10 @@ export function VoiceProvider({ children }) {
       setRemoteScreenShares([]);
       setLocalScreenShare(null);
       setVoiceBusy(false);
+      // Play sound effect when leaving voice channel (only if not an error state)
+      if (!keepError) {
+        playSound('leave').catch(e => console.warn('Failed to play leave sound:', e));
+      }
       if (keepError) {
         setVoiceStatus('error');
       } else {
@@ -113,10 +119,14 @@ export function VoiceProvider({ children }) {
         if (!isCurrentJoin()) return;
         // Handle remote screen share
         setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity }]);
+        // Play sound effect when someone starts screen sharing
+        playSound('stream_start').catch(e => console.warn('Failed to play stream start sound:', e));
       }, (participantIdentity) => {
         if (!isCurrentJoin()) return;
         // Handle remote screen share stop
         setRemoteScreenShares(prev => prev.filter(s => s.participantIdentity !== participantIdentity));
+        // Play sound effect when someone stops screen sharing
+        playSound('stream_end').catch(e => console.warn('Failed to play stream end sound:', e));
       }, (err, context) => {
         if (!isCurrentJoin()) return;
         reportFatalError(err, context);
@@ -147,6 +157,8 @@ export function VoiceProvider({ children }) {
     try {
       await applyVoiceMuted(voiceSession, nextMuted);
       setVoiceMuted(nextMuted);
+      // Play sound effect
+      playSound(nextMuted ? 'mute' : 'unmute').catch(e => console.warn('Failed to play mute sound:', e));
     } catch (err) {
       console.error('setMuted failed:', err);
     }
@@ -162,6 +174,9 @@ export function VoiceProvider({ children }) {
       
       await applyVoiceDeafened(voiceSession, nextDeafened);
       setVoiceDeafened(nextDeafened);
+      
+      // Play sound effect
+      playSound(nextDeafened ? 'deafen' : 'undeafen').catch(e => console.warn('Failed to play deafen sound:', e));
       
       // Update mute state based on deafen state
       if (nextDeafened) {
@@ -225,6 +240,8 @@ export function VoiceProvider({ children }) {
         const nextMuted = !voiceMutedRef.current;
         applyVoiceMuted(session, nextMuted).then(() => {
           setVoiceMuted(nextMuted);
+          // Play sound effect
+          playSound(nextMuted ? 'mute' : 'unmute').catch(e => console.warn('Failed to play mute sound:', e));
         }).catch(err => {
           console.error('Keybind mute failed:', err);
         });
@@ -234,6 +251,9 @@ export function VoiceProvider({ children }) {
         
         applyVoiceDeafened(session, nextDeafened).then(() => {
           setVoiceDeafened(nextDeafened);
+          
+          // Play sound effect
+          playSound(nextDeafened ? 'deafen' : 'undeafen').catch(e => console.warn('Failed to play deafen sound:', e));
           
           if (nextDeafened) {
             if (!voiceMutedRef.current) {
@@ -280,6 +300,48 @@ export function VoiceProvider({ children }) {
     
     return () => clearTimeout(timeoutId);
   }, [voiceParticipants, voiceSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Play sound when other participants join or leave the voice channel
+  useEffect(() => {
+    // Only track after we've successfully connected to voice
+    if (voiceStatus !== 'connected') {
+      previousParticipantIdsRef.current = new Set();
+      return;
+    }
+
+    // Get current remote participant identities (excluding self)
+    const currentRemoteIds = new Set(
+      voiceParticipants
+        .filter(p => !p.isLocal)
+        .map(p => p.identity)
+    );
+    
+    const previousRemoteIds = previousParticipantIdsRef.current;
+    
+    // Only play sounds if we've already been tracking participants (not on initial connection)
+    if (previousRemoteIds.size > 0 || currentRemoteIds.size > 0) {
+      // Check for new participants (someone else joined)
+      for (const id of currentRemoteIds) {
+        if (!previousRemoteIds.has(id)) {
+          console.log(`[Sound] Remote participant joined: ${id}`);
+          playSound('join').catch(e => console.warn('Failed to play join sound:', e));
+          break; // Only play once per update cycle
+        }
+      }
+      
+      // Check for removed participants (someone left)
+      for (const id of previousRemoteIds) {
+        if (!currentRemoteIds.has(id)) {
+          console.log(`[Sound] Remote participant left: ${id}`);
+          playSound('leave').catch(e => console.warn('Failed to play leave sound:', e));
+          break; // Only play once per update cycle
+        }
+      }
+    }
+    
+    // Update the ref for next time
+    previousParticipantIdsRef.current = currentRemoteIds;
+  }, [voiceParticipants, voiceStatus]);
 
   // Apply microphone volume setting when it changes
   useEffect(() => {

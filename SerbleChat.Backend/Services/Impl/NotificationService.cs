@@ -1,9 +1,11 @@
 using System.Threading.Channels;
 using Lib.Net.Http.WebPush;
+using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.SocketHubs;
 using StackExchange.Redis;
 using Channel = SerbleChat.Backend.Database.Structs.Channel;
 using ThreadingChannel = System.Threading.Channels.Channel;
@@ -28,6 +30,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         IUserRepo users = scope.ServiceProvider.GetRequiredService<IUserRepo>();
         PushServiceClient pushClient = scope.ServiceProvider.GetRequiredService<PushServiceClient>();
         IConnectionMultiplexer redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        IHubContext<ChatHub> updates = scope.ServiceProvider.GetRequiredService<IHubContext<ChatHub>>();
         
         logger.LogInformation("Processing message {MessageId} in channel {ChannelId} for notifications", message.Id, channel.Id);
             
@@ -38,7 +41,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         // get actual notif endpoints
         Dictionary<string, IEnumerable<UserWebNotificationHook>> endpoints = 
             await users.GetUsersWebNotificationSubscriptions(userData.Keys);
-            
+        
         // get all prefs from db
         Dictionary<string, UserChannelNotificationPreferences> channelPrefs =
             await users.GetUsersChannelNotificationPreferences(userData.Keys, message.ChannelId);
@@ -58,7 +61,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             message.ChannelNavigation = channel;
         }
         
-        dynamic content = new {
+        object content = new {
             type = "message",
             message
         };
@@ -68,35 +71,8 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         };
 
         List<long> badEndpoints = [];
-            
-        // now we should be sending no more SQL queries, we have everything we need
-        foreach (UserWebNotificationHook hook in EndpointsIterator(redis, message, channel, mentions, endpoints, userData, channelPrefs, guildPrefs)) {
-            // cool, we need to send a notification to this user, let's do it
-            try {
-                logger.LogInformation("Sending notification to user {UserId} for message {MessageId} in channel {ChannelId}", hook.UserId, message.Id, channel.Id);
-                await pushClient.RequestPushMessageDeliveryAsync(hook.ToPushSubscription(), notif);
-            }
-            catch (Exception) {
-                // if this fails, we should just delete the subscription; it's probably invalid
-                badEndpoints.Add(hook.Id);
-            }
-        }
-            
-        // finally, delete any bad endpoints we found
-        if (badEndpoints.Count > 0) {
-            await users.DeleteWebNotificationSubscriptions(badEndpoints.ToArray());
-        }
-    }
-
-    private static IEnumerable<UserWebNotificationHook> EndpointsIterator(
-        IConnectionMultiplexer redis,
-        Message message,
-        Channel channel,
-        IEnumerable<string> mentions,
-        Dictionary<string, IEnumerable<UserWebNotificationHook>> endpoints,
-        Dictionary<string, ChatUser> userData,
-        Dictionary<string, UserChannelNotificationPreferences> channelPrefs,
-        Dictionary<string, UserGuildNotificationPreferences> guildPrefs) {
+        
+        //ASDASDASDSA
         
         HashSet<string> mentionedUsers = mentions.ToHashSet();
 
@@ -106,10 +82,11 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             }
             
             ChatUser user = userData[userId];
+            bool onlyClientNotif = false;
             if (!user.NotificationsWhileOnline) {
                 bool isOnline = redis.GetDatabase().StringGet("status:" + userId).HasValue;
                 if (isOnline) {
-                    continue;  // if they're online, don't send a notification; they can see the message in real time
+                    onlyClientNotif = true;  // if they're online, don't send a notification; they can see the message in real time
                 }
             }
             
@@ -152,9 +129,30 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             }
             
             // if we got here, then send
+            
+            // first off, send a real-time update to their clients
+            await updates.Clients.User(userId).SendAsync("ReceiveNotification", content);
+            
+            // then web push notifications
+            if (onlyClientNotif) continue;
             foreach (UserWebNotificationHook hook in hooks) {
-                yield return hook;
+                // cool, we need to send a notification to this user, let's do it
+                try {
+                    logger.LogInformation("Sending notification to user {UserId} for message {MessageId} in channel {ChannelId}", hook.UserId, message.Id, channel.Id);
+                    await pushClient.RequestPushMessageDeliveryAsync(hook.ToPushSubscription(), notif);
+                }
+                catch (Exception) {
+                    // if this fails, we should just delete the subscription; it's probably invalid
+                    badEndpoints.Add(hook.Id);
+                }
             }
+        }
+        
+        //ASDASDASDASDAS
+            
+        // finally, delete any bad endpoints we found
+        if (badEndpoints.Count > 0) {
+            await users.DeleteWebNotificationSubscriptions(badEndpoints.ToArray());
         }
     }
 }
