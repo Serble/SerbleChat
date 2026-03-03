@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('keybind-triggered', handler);
   },
   
+  // Clipboard management
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+  
   // OAuth flow for Electron
   oauthStartServer: () => ipcRenderer.invoke('oauth-start-server'),
   oauthOpenBrowser: (url) => ipcRenderer.invoke('oauth-open-browser', url),

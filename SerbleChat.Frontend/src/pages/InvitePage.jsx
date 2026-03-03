@@ -43,7 +43,12 @@ export default function InvitePage() {
   async function handleJoin() {
     if (!isLoggedIn) {
       // Store the invite URL so we can redirect back after login
-      sessionStorage.setItem('postLoginRedirect', window.location.pathname);
+      // Support both BrowserRouter (pathname) and HashRouter (hash)
+      let redirectPath = window.location.pathname;
+      if (window.location.hash && window.location.hash.startsWith('#/')) {
+        redirectPath = window.location.hash.slice(1); // Remove the # prefix
+      }
+      sessionStorage.setItem('postLoginRedirect', redirectPath);
       
       // Check if running in Electron
       if (isElectron()) {

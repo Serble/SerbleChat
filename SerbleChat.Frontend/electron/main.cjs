@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, shell, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell, clipboard, desktopCapturer, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -407,6 +407,17 @@ function registerIPCHandlers() {
   // IPC handlers for any Electron-specific features
   ipcMain.handle('is-electron', () => true);
   ipcMain.handle('get-platform', () => process.platform);
+
+  // Clipboard management
+  ipcMain.handle('copy-to-clipboard', (event, text) => {
+    try {
+      clipboard.writeText(text);
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      return { success: false, error: err.message };
+    }
+  });
 
   // Keybind management
   ipcMain.handle('get-keybinds', () => currentKeybinds);

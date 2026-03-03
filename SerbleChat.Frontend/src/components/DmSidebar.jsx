@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
+import { navigateToRoot } from '../electron-utils.js';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import GroupChatSettingsModal from './GroupChatSettingsModal.jsx';
@@ -457,7 +458,10 @@ export default function DmSidebar() {
           </div>
           <button
             title="Log out"
-            onClick={() => { localStorage.removeItem('jwt'); window.location.href = '/'; }}
+            onClick={() => { 
+              localStorage.removeItem('jwt'); 
+              navigateToRoot();
+            }}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '4px',

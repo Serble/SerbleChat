@@ -11,6 +11,7 @@ import {
 } from '../api.js';
 import { resubscribeIfEnabled } from '../push.js';
 import { playSound, preloadSounds } from '../sound.js';
+import { navigateToRoot } from '../electron-utils.js';
 
 const Ctx = createContext(null);
 
@@ -32,8 +33,15 @@ export function AppProvider({ children }) {
   const [channelEvent,  setChannelEvent]  = useState(null); // { type, channelId, data }
   const [guildChannelEvent, setGuildChannelEvent] = useState(null); // { type, channelId, guildId }
   // Initialise from URL so the correct sidebar is shown immediately on page reload
+  // Support both BrowserRouter (pathname) and HashRouter (hash)
   const [activeGuildId, setActiveGuildId] = useState(() => {
-    const m = window.location.pathname.match(/\/app\/guild\/(\d+)/);
+    // Check pathname first (BrowserRouter)
+    let path = window.location.pathname;
+    // If using HashRouter, get path from hash
+    if (window.location.hash && window.location.hash.startsWith('#/')) {
+      path = window.location.hash.slice(1); // Remove the # prefix
+    }
+    const m = path.match(/\/app\/guild\/(\d+)/);
     return m ? m[1] : null;
   });
   // guildId (string) -> GuildPermissions object from server
@@ -128,7 +136,7 @@ export function AppProvider({ children }) {
       await verifyAuth();
     } catch {
       localStorage.removeItem('jwt');
-      window.location.replace('/');
+      navigateToRoot();
       return;
     }
 

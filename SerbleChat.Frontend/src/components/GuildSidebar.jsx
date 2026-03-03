@@ -12,6 +12,7 @@ import {
   getChannelIconUrl, uploadChannelIcon, deleteChannelIcon,
   getGuildBans, unbanGuildMember, getAccountById,
 } from '../api.js';
+import { navigateToRoot, copyToClipboard } from '../electron-utils.js';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
 import ChannelPermsTab from './ChannelPermsTab.jsx';
@@ -333,7 +334,9 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
   }
 
   function copyLink(inv) {
-    navigator.clipboard.writeText(`${FRONTEND_URL}/invite/${inv.id}`);
+    copyToClipboard(`${FRONTEND_URL}/invite/${inv.id}`).catch(err => {
+      console.error('Failed to copy invite link:', err);
+    });
     setCopied(inv.id);
     setTimeout(() => setCopied(null), 2000);
   }
@@ -631,7 +634,7 @@ function InvitePopup({ guildId, onClose }) {
 
   function copyLink() {
     if (!link) return;
-    navigator.clipboard.writeText(link);
+    copyToClipboard(link).catch(err => console.error('Failed to copy invite:', err));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -1579,7 +1582,10 @@ export default function GuildSidebar({ guildId }) {
           </div>
           <button
             title="Log out"
-            onClick={() => { localStorage.removeItem('jwt'); window.location.href = '/'; }}
+            onClick={() => { 
+              localStorage.removeItem('jwt'); 
+              navigateToRoot();
+            }}
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '4px',

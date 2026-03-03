@@ -6,6 +6,7 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
          getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
+import { copyToClipboard } from '../electron-utils.js';
 import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
@@ -23,6 +24,13 @@ import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import { FileUploadPanel, useFileUploads } from './FileUploadPanel.jsx';
+
+/**
+ * Helper: treat -1 as unlimited
+ */
+function isUnlimited(value) {
+  return value === -1;
+}
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different
@@ -1025,7 +1033,7 @@ export default function ChatView() {
     if (fileUploads.files.length > 0 && fileUploads.limits) {
       for (let i = 0; i < fileUploads.files.length; i++) {
         const expirationHours = fileUploads.fileExpirations?.[i];
-        if (expirationHours !== null && expirationHours > fileUploads.limits.maxExpiryHours) {
+        if (expirationHours !== null && !isUnlimited(fileUploads.limits.maxExpiryHours) && expirationHours > fileUploads.limits.maxExpiryHours) {
           setSendError(`File ${i + 1}: expiration time exceeds maximum (${fileUploads.limits.maxExpiryHours} hours)`);
           return;
         }
@@ -1523,7 +1531,7 @@ export default function ChatView() {
             <CtxBtn icon="📋" label="Copy Text"
               copied={copiedCtx === 'text'}
               onClick={() => {
-                navigator.clipboard.writeText(ctxMenu.msg.content);
+                copyToClipboard(ctxMenu.msg.content).catch(err => console.error('Failed to copy text:', err));
                 setCopiedCtx('text');
                 setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
               }} />
@@ -1531,14 +1539,14 @@ export default function ChatView() {
               copied={copiedCtx === 'link'}
               onClick={() => {
                 const url = `${FRONTEND_URL}/app/channel/${ctxMenu.msg.channelId}?message=${ctxMenu.msg.id}`;
-                navigator.clipboard.writeText(url);
+                copyToClipboard(url).catch(err => console.error('Failed to copy message link:', err));
                 setCopiedCtx('link');
                 setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
               }} />
             <CtxBtn icon="🪪" label="Copy Message ID"
               copied={copiedCtx === 'id'}
               onClick={() => {
-                navigator.clipboard.writeText(String(ctxMenu.msg.id));
+                copyToClipboard(String(ctxMenu.msg.id)).catch(err => console.error('Failed to copy message ID:', err));
                 setCopiedCtx('id');
                 setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
               }} />
@@ -1586,7 +1594,7 @@ export default function ChatView() {
             <CtxBtn icon="🔗" label="Copy Image Link"
               copied={copiedImageCtx === 'image-link'}
               onClick={() => {
-                navigator.clipboard.writeText(imageCtxMenu.imageUrl);
+                copyToClipboard(imageCtxMenu.imageUrl).catch(err => console.error('Failed to copy image link:', err));
                 setCopiedImageCtx('image-link');
                 setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
               }} />
@@ -1601,9 +1609,29 @@ export default function ChatView() {
                 fetch(imageCtxMenu.imageUrl)
                   .then(res => res.blob())
                   .then(blob => {
-                    navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                    setCopiedImageCtx('image');
-                    setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                    // Try Electron clipboard first, then fall back to web API
+                    if (window.electron?.copyToClipboard) {
+                      // For Electron, we need to use a workaround since Electron's clipboard doesn't handle binary data directly
+                      // Convert blob to data URL and use the web API
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        // Try web clipboard API with blob
+                        if (navigator.clipboard?.write) {
+                          navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                          setCopiedImageCtx('image');
+                          setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                        } else {
+                          console.error('Clipboard API not available');
+                          setImageCtxMenu(null);
+                        }
+                      };
+                      reader.readAsDataURL(blob);
+                    } else {
+                      // Web environment - use standard clipboard API
+                      navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                      setCopiedImageCtx('image');
+                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
+                    }
                   })
                   .catch(err => {
                     console.error('Failed to copy image:', err);

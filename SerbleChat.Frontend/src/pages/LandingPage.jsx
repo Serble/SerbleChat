@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
-import { isElectron, electronOAuthFlow } from '../electron-utils.js';
+import { isElectron, electronOAuthFlow, getAssetPath } from '../electron-utils.js';
 import { startConfetti } from '../confetti.js';
 
 const PUZZLE_SIZE = 3;
@@ -886,7 +886,7 @@ export default function LandingPage() {
       />
       <nav style={c.nav}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/favicon.webp" alt="Serble Chat" style={c.logoImg} />
+          <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={c.logoImg} />
           <h1 style={c.logoText}>Serble Chat</h1>
         </div>
         <a
@@ -909,7 +909,7 @@ export default function LandingPage() {
       </nav>
 
       <section style={c.hero}>
-        <img src="/favicon.webp" alt="Serble Chat" style={{ width: '12rem', height: '12rem', marginBottom: '2rem', borderRadius: '27px' }} />
+        <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={{ width: '12rem', height: '12rem', marginBottom: '2rem', borderRadius: '27px' }} />
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '0.6rem',
           background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)',
@@ -1124,7 +1124,7 @@ export default function LandingPage() {
                 >
                   <div style={c.ticTacToeCellContent}>
                     {cell.card.isSerble ? (
-                      <img src="/favicon.webp" alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
+                      <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
                     ) : (
                       <div style={c.ticTacToeCellIcon}>{cell.card.icon}</div>
                     )}
@@ -1172,7 +1172,7 @@ export default function LandingPage() {
                 >
                   <div style={c.lightsOutTileContent}>
                     {safeCard.isSerble ? (
-                      <img src="/favicon.webp" alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
+                      <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
                     ) : (
                       <div style={c.lightsOutTileIcon}>{safeCard.icon}</div>
                     )}

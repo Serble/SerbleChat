@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { filesAuthenticateWithCode, filesGetAccount, filesGetLimits, filesGetUsage, formatBytes, FILES_OAUTH_URL, FILES_CLIENT_ID, FILES_REDIRECT_URI } from '../filesApi.js';
+import { isElectron, electronOAuthFlow } from '../electron-utils.js';
+
+/**
+ * Helper: treat -1 as unlimited
+ */
+function isUnlimited(value) {
+  return value === -1;
+}
 
 // ─── Files Tab ────────────────────────────────────────────────────────────────
 
@@ -61,20 +69,64 @@ export function FilesTab({ isActive }) {
     }
   }
 
-  function handleLogin() {
-    // Save state for validation after OAuth callback
-    const state = crypto.getRandomValues(new Uint8Array(16));
-    const stateStr = Array.from(state).map(b => b.toString(16).padStart(2, '0')).join('');
-    sessionStorage.setItem('files_oauth_state', stateStr);
+  async function handleLogin() {
+    setError(null);
+    setLoading(true);
 
-    const oauthUrl = new URL(FILES_OAUTH_URL);
-    oauthUrl.searchParams.set('client_id', FILES_CLIENT_ID);
-    oauthUrl.searchParams.set('redirect_uri', FILES_REDIRECT_URI);
-    oauthUrl.searchParams.set('response_type', 'code');
-    oauthUrl.searchParams.set('state', stateStr);
-    oauthUrl.searchParams.set('scope', 'user_info');
+    try {
+      // Save state for validation after OAuth callback
+      const state = crypto.getRandomValues(new Uint8Array(16));
+      const stateStr = Array.from(state).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    window.location.href = oauthUrl.toString();
+      if (isElectron()) {
+        // Electron: Use external browser with local callback server
+        const electronRedirectUri = 'http://localhost:13579/callback';
+        const oauthUrl = new URL(FILES_OAUTH_URL);
+        oauthUrl.searchParams.set('client_id', FILES_CLIENT_ID);
+        oauthUrl.searchParams.set('redirect_uri', electronRedirectUri);
+        oauthUrl.searchParams.set('response_type', 'code');
+        oauthUrl.searchParams.set('state', stateStr);
+        oauthUrl.searchParams.set('scope', 'user_info');
+
+        // Open browser and wait for callback
+        const callbackData = await electronOAuthFlow(oauthUrl.toString());
+
+        // Verify state
+        if (callbackData.state !== stateStr) {
+          throw new Error('State mismatch - possible security issue');
+        }
+
+        // Check authorization
+        if (callbackData.authorized !== 'true' || !callbackData.code) {
+          throw new Error('Login was cancelled or denied');
+        }
+
+        // Exchange code for token
+        const data = await filesAuthenticateWithCode(callbackData.code);
+        if (!data.accessToken) {
+          throw new Error('Server did not return an access token');
+        }
+
+        setFilesApiToken(data.accessToken);
+        setUser(null); // Force reload user data
+      } else {
+        // Web: Use normal redirect flow
+        sessionStorage.setItem('files_oauth_state', stateStr);
+        const oauthUrl = new URL(FILES_OAUTH_URL);
+        oauthUrl.searchParams.set('client_id', FILES_CLIENT_ID);
+        oauthUrl.searchParams.set('redirect_uri', FILES_REDIRECT_URI);
+        oauthUrl.searchParams.set('response_type', 'code');
+        oauthUrl.searchParams.set('state', stateStr);
+        oauthUrl.searchParams.set('scope', 'user_info');
+
+        window.location.href = oauthUrl.toString();
+      }
+    } catch (err) {
+      setError(`Login failed: ${err.message}`);
+      console.error('[FilesTab] Login error:', err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleLogout() {
@@ -118,6 +170,7 @@ export function FilesTab({ isActive }) {
           </div>
           <button
             onClick={handleLogin}
+            disabled={loading}
             style={{
               background: 'var(--accent)',
               border: 'none',
@@ -126,11 +179,12 @@ export function FilesTab({ isActive }) {
               padding: '0.6rem 1.5rem',
               fontSize: '0.875rem',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
             }}
             className="hov-accent"
           >
-            Login with Serble
+            {loading ? 'Logging in...' : 'Login with Serble'}
           </button>
         </div>
       ) : (
@@ -168,7 +222,7 @@ export function FilesTab({ isActive }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Used / Total</span>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {formatBytes(usage.usedStorage)} / {formatBytes(limits.accountFilesSize)}
+                    {formatBytes(usage.usedStorage)} / {isUnlimited(limits.accountFilesSize) ? 'Unlimited' : formatBytes(limits.accountFilesSize)}
                   </span>
                 </div>
                 <div style={{ width: '100%', height: 8, background: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' }}>
@@ -176,7 +230,7 @@ export function FilesTab({ isActive }) {
                     style={{
                       height: '100%',
                       background: 'var(--accent)',
-                      width: `${Math.min(100, (usage.usedStorage / limits.accountFilesSize) * 100)}%`,
+                      width: isUnlimited(limits.accountFilesSize) ? '0%' : `${Math.min(100, (usage.usedStorage / limits.accountFilesSize) * 100)}%`,
                       transition: 'width 0.3s ease',
                     }}
                   />
@@ -185,13 +239,13 @@ export function FilesTab({ isActive }) {
 
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
                 <div style={{ marginTop: '0.75rem' }}>
-                  <strong style={{ color: 'var(--text-secondary)' }}>Max single file (no expiry):</strong> {formatBytes(limits.noExpirySingleFileSize)}
+                  <strong style={{ color: 'var(--text-secondary)' }}>Max single file (no expiry):</strong> {isUnlimited(limits.noExpirySingleFileSize) ? 'Unlimited' : formatBytes(limits.noExpirySingleFileSize)}
                 </div>
                 <div>
-                  <strong style={{ color: 'var(--text-secondary)' }}>Max single file (with expiry):</strong> {formatBytes(limits.expirySingleFileSize)}
+                  <strong style={{ color: 'var(--text-secondary)' }}>Max single file (with expiry):</strong> {isUnlimited(limits.expirySingleFileSize) ? 'Unlimited' : formatBytes(limits.expirySingleFileSize)}
                 </div>
                 <div>
-                  <strong style={{ color: 'var(--text-secondary)' }}>Max expiry time:</strong> {limits.maxExpiryHours} hours
+                  <strong style={{ color: 'var(--text-secondary)' }}>Max expiry time:</strong> {isUnlimited(limits.maxExpiryHours) ? 'Unlimited' : `${limits.maxExpiryHours} hours`}
                 </div>
               </div>
             </div>

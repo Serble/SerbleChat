@@ -9,6 +9,7 @@ import {
   addFriend, removeFriend, getOrCreateDmChannel, kickGuildMember, banGuildMember,
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
+import { copyToClipboard } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import BanModal from './BanModal.jsx';
 
@@ -340,7 +341,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           {/* User ID */}
           <div style={sectionLabel}>User ID</div>
           <div
-            title="Click to copy" onClick={() => navigator.clipboard?.writeText(userId)}
+            title="Click to copy" onClick={() => copyToClipboard(userId).catch(err => console.error('Failed to copy user ID:', err))}
             style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0.25rem 0.4rem', background: 'var(--bg-tertiary)', borderRadius: '4px', transition: 'background 0.1s' }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
             onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}

@@ -3,6 +3,13 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { filesCreateFile, filesUploadBlob, formatBytes, filesGetLimits } from '../filesApi.js';
 
 /**
+ * Helper: treat -1 as unlimited, return the value as-is otherwise
+ */
+function isUnlimited(value) {
+  return value === -1;
+}
+
+/**
  * File upload item being prepared for upload
  */
 function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, uploading, error, maxExpiryHours, noExpirySingleFileSize }) {
@@ -10,7 +17,9 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
   const [customHours, setCustomHours] = useState('');
 
   // Determine if expiration is required (when noExpirySingleFileSize is 0 or file exceeds it)
-  const expirationRequired = !noExpirySingleFileSize || noExpirySingleFileSize === 0 || file.size > noExpirySingleFileSize;
+  // Treat -1 as unlimited (expiration not required)
+  const noExpireLimit = isUnlimited(noExpirySingleFileSize); // -1 means unlimited, no expiration required
+  const expirationRequired = !noExpireLimit && (!noExpirySingleFileSize || noExpirySingleFileSize === 0 || file.size > noExpirySingleFileSize);
 
   const expirationOptions = expirationRequired
     ? [
@@ -27,11 +36,11 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
         { label: '30 days', value: 30 * 24 },
       ];
 
-  const validOptions = expirationOptions.filter(opt => opt.value === null || opt.value <= maxExpiryHours);
+  const validOptions = expirationOptions.filter(opt => opt.value === null || isUnlimited(maxExpiryHours) || opt.value <= maxExpiryHours);
 
-  // Check if custom value exceeds limit
+  // Check if custom value exceeds limit (unlimited means no limit)
   const customHoursNum = customHours === '' ? null : parseInt(customHours);
-  const customExceedsLimit = customHoursNum !== null && !isNaN(customHoursNum) && customHoursNum > maxExpiryHours;
+  const customExceedsLimit = customHoursNum !== null && !isNaN(customHoursNum) && !isUnlimited(maxExpiryHours) && customHoursNum > maxExpiryHours;
 
   // If expiration is required and no default selected, default to 1 hour
   useEffect(() => {
@@ -57,7 +66,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
         if (!expirationRequired) {
           onExpirationChange(null);
         }
-      } else if (hours > maxExpiryHours) {
+      } else if (!isUnlimited(maxExpiryHours) && hours > maxExpiryHours) {
         // Don't auto-clamp anymore, just leave the value
         // User will see red field and error on send
         onExpirationChange(hours); // Store the invalid value so it shows in UI
@@ -156,10 +165,10 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
               <input
                 type="number"
                 min="1"
-                max={maxExpiryHours}
+                max={isUnlimited(maxExpiryHours) ? undefined : maxExpiryHours}
                 value={customHours}
                 onChange={handleCustomChange}
-                placeholder={`1-${maxExpiryHours}`}
+                placeholder={isUnlimited(maxExpiryHours) ? '1+' : `1-${maxExpiryHours}`}
                 style={{
                   flex: 1,
                   background: 'var(--bg-secondary)',
@@ -208,10 +217,10 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
             {expirationRequired ? (
               <>
                 <span style={{ color: 'var(--accent)' }}>⚠ Expiration required</span>
-                {' '}(Max: {maxExpiryHours} hours / {Math.round(maxExpiryHours / 24)} days)
+                {' '}(Max: {isUnlimited(maxExpiryHours) ? '∞' : `${maxExpiryHours} hours / ${Math.round(maxExpiryHours / 24)} days`})
               </>
             ) : (
-              <>Max allowed: {maxExpiryHours} hours ({Math.round(maxExpiryHours / 24)} days)</>
+              <>Max allowed: {isUnlimited(maxExpiryHours) ? 'unlimited' : `${maxExpiryHours} hours (${Math.round(maxExpiryHours / 24)} days)`}</>
             )}
           </div>
         </>
@@ -274,13 +283,9 @@ export function useFileUploads() {
   const [limits, setLimits] = useState(null); // Account limits
   const fileInputRef = useRef(null);
 
-  // Fetch limits when token changes
+  // Fetch limits when token changes (works with or without auth)
   useEffect(() => {
-    if (!filesApiToken) {
-      setLimits(null);
-      return;
-    }
-
+    // Always fetch limits, even when not logged in (anonymous limits)
     filesGetLimits(filesApiToken).then(limitsData => {
       setLimits(limitsData);
     }).catch(err => {
@@ -345,7 +350,9 @@ export function useFileUploads() {
         const expirationHours = fileExpirations[i];
         
         // Check if expiration is required for this file
-        const expirationRequired = !limits?.noExpirySingleFileSize || limits.noExpirySingleFileSize === 0 || file.size > limits.noExpirySingleFileSize;
+        // Treat -1 noExpirySingleFileSize as unlimited (no expiration required)
+        const noExpireLimit = isUnlimited(limits?.noExpirySingleFileSize);
+        const expirationRequired = !noExpireLimit && (!limits?.noExpirySingleFileSize || limits.noExpirySingleFileSize === 0 || file.size > limits.noExpirySingleFileSize);
 
         // Validate expiration is set when required
         if (expirationRequired && expirationHours === null) {
@@ -364,8 +371,8 @@ export function useFileUploads() {
             throw new Error('Expiration must be at least 1 hour');
           }
 
-          // Enforce max expiration
-          if (expirationHours > limits.maxExpiryHours) {
+          // Enforce max expiration (unless unlimited)
+          if (!isUnlimited(limits.maxExpiryHours) && expirationHours > limits.maxExpiryHours) {
             throw new Error(`Expiration cannot exceed ${limits.maxExpiryHours} hours (max allowed: ${Math.round(limits.maxExpiryHours / 24)} days)`);
           }
         }

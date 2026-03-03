@@ -10,6 +10,84 @@ export const isElectron = () => {
   return userAgent.indexOf(' electron/') > -1;
 };
 
+/**
+ * Copy text to clipboard in both Electron and web environments
+ * @param {string} text - The text to copy
+ * @returns {Promise<void>}
+ */
+export const copyToClipboard = async (text) => {
+  if (isElectron() && window.electron?.copyToClipboard) {
+    // Use Electron's clipboard API
+    try {
+      const result = await window.electron.copyToClipboard(text);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to copy to clipboard');
+      }
+    } catch (error) {
+      console.error('Error copying to clipboard via Electron:', error);
+      // Fallback to web API if Electron method fails
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    // Use standard web Clipboard API
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+  }
+};
+
+/**
+ * Navigate to the root/landing page correctly in both Electron and web environments
+ * In Electron with file:// protocol, we use hash navigation (HashRouter)
+ * In web, we can use normal navigation
+ */
+export const navigateToRoot = () => {
+  if (isElectron() && window.location.protocol === 'file:') {
+    // In Electron with HashRouter, just change the hash to navigate to root
+    window.location.hash = '/';
+  } else {
+    // In web/dev mode, use normal navigation
+    window.location.href = '/';
+  }
+};
+
+/**
+ * Get the correct path for public assets (images, sounds, etc.)
+ * In Electron production (file:// protocol), we need to use absolute file:// paths
+ * In web/dev mode, we can use absolute paths starting with /
+ * 
+ * @param {string} assetPath - The asset path starting with / (e.g., '/favicon.webp', '/sounds/notification.ogg')
+ * @returns {string} - The correct path for the current environment
+ */
+export const getAssetPath = (assetPath) => {
+  // Remove leading slash if present
+  const cleanPath = assetPath.startsWith('/') ? assetPath.slice(1) : assetPath;
+  
+  // In Electron production with file:// protocol, construct absolute path
+  if (isElectron() && window.location.protocol === 'file:') {
+    // Get base URL (everything up to the last slash)
+    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    return `${baseUrl}/${cleanPath}`;
+  }
+  
+  // For web/dev mode, return the path with leading slash
+  return `/${cleanPath}`;
+};
+
 // Get platform information
 export const getPlatform = async () => {
   if (isElectron() && window.electron) {
