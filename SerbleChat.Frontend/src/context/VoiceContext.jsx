@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume, setMicVolume } from '../voice.js';
+import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume, setMicVolume, setOutputDevice } from '../voice.js';
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
 import { isElectron } from '../electron-utils.js';
@@ -9,7 +9,7 @@ const VoiceContext = createContext();
 
 export function VoiceProvider({ children }) {
   const { addToast } = useApp();
-  const { getVoiceParticipantSetting, voiceAudioOptions } = useClientOptions();
+  const { getVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings } = useClientOptions();
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [voiceSession, setVoiceSession] = useState(null);
   const [voiceMuted, setVoiceMuted] = useState(false);
@@ -130,7 +130,11 @@ export function VoiceProvider({ children }) {
       }, (err, context) => {
         if (!isCurrentJoin()) return;
         reportFatalError(err, context);
-      }, voiceAudioOptions);
+      }, {
+        ...voiceAudioOptions,
+        deviceId: localDeviceSettings.inputDeviceId,
+        outputDeviceId: localDeviceSettings.outputDeviceId,
+      });
 
       if (!isCurrentJoin()) {
         await leaveChannel(session);
@@ -349,6 +353,16 @@ export function VoiceProvider({ children }) {
     const micVolume = voiceAudioOptions.micVolume ?? 100;
     setMicVolume(voiceSession, micVolume);
   }, [voiceAudioOptions.micVolume, voiceSession]);
+
+  // Apply output device changes to active voice session
+  useEffect(() => {
+    if (!voiceSession || !localDeviceSettings.outputDeviceId) return;
+    
+    // Apply output device change to the active session
+    setOutputDevice(voiceSession, localDeviceSettings.outputDeviceId).catch(err => {
+      console.warn('Failed to update output device on active session:', err);
+    });
+  }, [localDeviceSettings.outputDeviceId, voiceSession]);
 
   // Function to manually refresh participants (useful after muting/unmuting)
   function refreshParticipants() {

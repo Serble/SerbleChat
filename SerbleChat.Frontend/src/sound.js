@@ -4,17 +4,49 @@
 
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
+// Detect if running in Electron
+const isElectron = () => {
+  return typeof window !== 'undefined' && window.electron !== undefined;
+};
+
+// Get the correct base path for sound files
+function getSoundBasePath() {
+  const protocol = window.location.protocol;
+  const isElectronApp = isElectron();
+  
+  console.log(`[Sound Init] Protocol: ${protocol}, isElectron: ${isElectronApp}`);
+  console.log(`[Sound Init] Location href: ${window.location.href}`);
+  
+  // In Electron production, files are served from file:// protocol
+  if (isElectronApp && protocol === 'file:') {
+    // When loaded via file://, we need to construct the path relative to index.html
+    // The sounds folder is in the same directory as index.html
+    const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    const soundsPath = `${baseUrl}/sounds`;
+    console.log('[Sound Init] Using absolute file:// path for Electron production:', soundsPath);
+    return soundsPath;
+  }
+  
+  // For Electron development (http://localhost) or web deployment
+  console.log('[Sound Init] Using absolute path for web/dev mode');
+  return '/sounds';
+}
+
+const basePath = getSoundBasePath();
+
+console.log(`[Sound] Initialized with base path: ${basePath}`);
+
 // Map of sound names to their file paths
 const SOUND_FILES = {
-  notification: '/sounds/notification.ogg',
-  mute: '/sounds/mute.ogg',
-  unmute: '/sounds/unmute.ogg',
-  deafen: '/sounds/deafen.ogg',
-  undeafen: '/sounds/undeafen.ogg',
-  join: '/sounds/join.ogg',
-  leave: '/sounds/leave.ogg',
-  stream_start: '/sounds/stream_start.ogg',
-  stream_end: '/sounds/stream_end.ogg',
+  notification: `${basePath}/notification.ogg`,
+  mute: `${basePath}/mute.ogg`,
+  unmute: `${basePath}/unmute.ogg`,
+  deafen: `${basePath}/deafen.ogg`,
+  undeafen: `${basePath}/undeafen.ogg`,
+  join: `${basePath}/join.ogg`,
+  leave: `${basePath}/leave.ogg`,
+  stream_start: `${basePath}/stream_start.ogg`,
+  stream_end: `${basePath}/stream_end.ogg`,
 };
 
 // Cache for decoded audio buffers
@@ -36,16 +68,22 @@ async function loadAudioBuffer(soundName) {
   }
 
   try {
+    console.log(`[Sound] Loading sound "${soundName}" from path: ${filePath}`);
+    console.log(`[Sound] Window location: ${window.location.href}`);
+    console.log(`[Sound] Protocol: ${window.location.protocol}`);
+    
     const response = await fetch(filePath);
     if (!response.ok) {
-      throw new Error(`Failed to fetch ${filePath}: ${response.statusText}`);
+      throw new Error(`Failed to fetch ${filePath}: ${response.status} ${response.statusText}`);
     }
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     audioBufferCache[soundName] = audioBuffer;
+    console.log(`[Sound] Successfully loaded sound "${soundName}"`);
     return audioBuffer;
   } catch (error) {
-    console.error(`Failed to load sound "${soundName}":`, error);
+    console.error(`[Sound] Failed to load sound "${soundName}" from ${filePath}:`, error);
+    console.error(`[Sound] Base path: ${basePath}, Full path attempted: ${filePath}`);
     throw error;
   }
 }

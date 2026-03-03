@@ -21,6 +21,11 @@ export const OPTION_DEFAULTS = {
     toggleDeafen: 'CommandOrControl+Shift+D',
   },
   filesApiToken: null, // OAuth token for Files API authentication
+  // Local device settings (Electron only - stored in localStorage, not synced to server)
+  localDeviceSettings: {
+    inputDeviceId: 'default',
+    outputDeviceId: 'default',
+  },
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -37,6 +42,7 @@ export function ClientOptionsProvider({ children }) {
   const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
   const [keybinds, setKeybindsState] = useState(OPTION_DEFAULTS.keybinds);
   const [filesApiToken, setFilesApiTokenState] = useState(OPTION_DEFAULTS.filesApiToken);
+  const [localDeviceSettings, setLocalDeviceSettingsState] = useState(OPTION_DEFAULTS.localDeviceSettings);
 
   // Refs so the debounced save callback always has the latest values without
   // needing to be recreated on every render.
@@ -47,6 +53,7 @@ export function ClientOptionsProvider({ children }) {
   const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
   const keybindsRef        = useRef(OPTION_DEFAULTS.keybinds);
   const filesApiTokenRef   = useRef(OPTION_DEFAULTS.filesApiToken);
+  const localDeviceSettingsRef = useRef(OPTION_DEFAULTS.localDeviceSettings);
   const themeRef           = useRef({ activeId: theme.activeId, customThemes: theme.customThemes });
   const pendingLoad   = useRef(true);   // skip saves until the initial load is done
   const saveTimerRef  = useRef(null);
@@ -61,8 +68,32 @@ export function ClientOptionsProvider({ children }) {
 
   useEffect(() => {
     loadFromBackend();
+    loadLocalDeviceSettings();
     return () => clearTimeout(saveTimerRef.current);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load local device settings from localStorage (Electron only)
+  function loadLocalDeviceSettings() {
+    try {
+      const saved = localStorage.getItem('serbleChat_localDeviceSettings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        localDeviceSettingsRef.current = { ...OPTION_DEFAULTS.localDeviceSettings, ...parsed };
+        setLocalDeviceSettingsState(localDeviceSettingsRef.current);
+      }
+    } catch (e) {
+      console.warn('[ClientOptions] Failed to load local device settings:', e);
+    }
+  }
+
+  // Save local device settings to localStorage (separate from server sync)
+  function saveLocalDeviceSettings() {
+    try {
+      localStorage.setItem('serbleChat_localDeviceSettings', JSON.stringify(localDeviceSettingsRef.current));
+    } catch (e) {
+      console.warn('[ClientOptions] Failed to save local device settings:', e);
+    }
+  }
 
   async function loadFromBackend() {
     if (loadDoneRef.current) return;
@@ -251,6 +282,12 @@ export function ClientOptionsProvider({ children }) {
     if (!pendingLoad.current) scheduleSave();
   }
 
+  function setLocalDeviceSetting(setting) {
+    localDeviceSettingsRef.current = { ...localDeviceSettingsRef.current, ...setting };
+    setLocalDeviceSettingsState(localDeviceSettingsRef.current);
+    saveLocalDeviceSettings();
+  }
+
   return (
     <ClientOptionsCtx.Provider value={{
       messageLinesLimit,
@@ -268,6 +305,8 @@ export function ClientOptionsProvider({ children }) {
       setKeybinds,
       filesApiToken,
       setFilesApiToken,
+      localDeviceSettings,
+      setLocalDeviceSetting,
     }}>
       {children}
     </ClientOptionsCtx.Provider>

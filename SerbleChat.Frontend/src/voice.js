@@ -101,6 +101,26 @@ class VoiceSession {
         }
     }
     
+    /**
+     * Set the audio output device for all remote participants
+     * @param {string} deviceId - The device ID to use for audio output
+     */
+    async setOutputDevice(deviceId) {
+        if (!deviceId || deviceId === 'default') return;
+        
+        // Update output device for all audio elements
+        for (const [participantId, refs] of this.audioGraph.entries()) {
+            if (refs.element && typeof refs.element.setSinkId === 'function') {
+                try {
+                    await refs.element.setSinkId(deviceId);
+                    console.log(`Set output device for ${participantId} to ${deviceId}`);
+                } catch (err) {
+                    console.warn(`Failed to set output device for ${participantId}:`, err);
+                }
+            }
+        }
+    }
+    
     checkSpeakingLevels() {
         let hasChanges = false;
 
@@ -203,7 +223,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     };
 
     // Play remote tracks
-    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+    room.on(RoomEvent.TrackSubscribed, async (track, publication, participant) => {
         if (!session.isActive) return;
         if (!isParticipantPresent(participant)) {
             console.warn('Track subscribed for missing participant, ignoring.', participant?.identity, track?.sid);
@@ -227,6 +247,16 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 const element = track.attach();
                 element.muted = true; // Mute the element so we don't get double audio
                 element.style.display = 'none'; // Hide it
+
+                // Set output device if specified
+                if (audioOptions.outputDeviceId && audioOptions.outputDeviceId !== 'default' && typeof element.setSinkId === 'function') {
+                    try {
+                        await element.setSinkId(audioOptions.outputDeviceId);
+                        console.log(`Set output device to ${audioOptions.outputDeviceId}`);
+                    } catch (err) {
+                        console.warn('Failed to set output device:', err);
+                    }
+                }
 
                 // 3. Create the Web Audio Graph
                 const source = audioContext.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
@@ -374,6 +404,11 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         autoGainControl: audioOptions.autoGainControl ?? false,
         voiceIsolation: audioOptions.voiceIsolation ?? false,
     };
+    
+    // Add deviceId if specified
+    if (audioOptions.deviceId && audioOptions.deviceId !== 'default') {
+        audioTrackOptions.deviceId = audioOptions.deviceId;
+    }
     
     // Create the initial raw microphone track with error handling
     let rawMicTrack;
@@ -823,4 +858,15 @@ export function setParticipantVolume(session, participantIdentity, volume) {
 export function setMicVolume(session, volumePercent) {
     if (!session?.isActive) return;
     session.setMicVolume(volumePercent);
+}
+
+/**
+ * Change the output audio device for an active voice session
+ * @param {VoiceSession} session
+ * @param {string} deviceId - The device ID to use for audio output
+ * @returns {Promise<void>}
+ */
+export async function setOutputDevice(session, deviceId) {
+    if (!session?.isActive) return;
+    await session.setOutputDevice(deviceId);
 }
