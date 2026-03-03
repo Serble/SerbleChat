@@ -379,3 +379,68 @@ export const pickDisplaySourceElectron = async () => {
     throw err;
   }
 }
+
+/**
+ * Request fullscreen with proper browser API support
+ * @param {HTMLElement} element - The element to fullscreen
+ * @returns {Promise<void>}
+ */
+export const requestFullscreenWithElectronSupport = async (element) => {
+  if (!element) return;
+
+  try {
+    // Try to request fullscreen using the appropriate API for this browser
+    const requestFn = element.requestFullscreen || 
+                      element.webkitRequestFullscreen || 
+                      element.mozRequestFullScreen || 
+                      element.msRequestFullscreen;
+    
+    if (!requestFn) {
+      console.warn('Fullscreen API not supported in this browser');
+      return;
+    }
+
+    // Try with options first (preferred)
+    try {
+      const promise = requestFn.call(element, { navigationUI: 'hide' });
+      if (promise && typeof promise.then === 'function') {
+        await promise;
+      }
+    } catch (error) {
+      // If options aren't supported, try without them
+      const promise = requestFn.call(element);
+      if (promise && typeof promise.then === 'function') {
+        await promise;
+      }
+    }
+  } catch (error) {
+    console.error('Browser fullscreen request failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Exit fullscreen with proper browser API support
+ * @returns {Promise<void>}
+ */
+export const exitFullscreenWithElectronSupport = async () => {
+  try {
+    if (document.exitFullscreen) {
+      const promise = document.exitFullscreen();
+      if (promise && typeof promise.then === 'function') {
+        await promise;
+      }
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    } else {
+      console.warn('No fullscreen API available to exit fullscreen');
+    }
+  } catch (error) {
+    console.error('Browser fullscreen exit failed:', error);
+    throw error;
+  }
+};

@@ -49,6 +49,8 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       enableRemoteModule: false,
+      // Enable fullscreen API for elements (not just window)
+      v8CodeCacheOptions: 'code',
     },
     backgroundColor: '#313338',
     show: false,
@@ -228,7 +230,7 @@ app.whenReady().then(() => {
   // Permission handlers for media devices
   // Grant microphone and camera permissions
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'microphone' || permission === 'camera') {
+    if (permission === 'media' || permission === 'microphone' || permission === 'camera' || permission === 'fullscreen') {
       console.log(`Granting permission: ${permission}`);
       callback(true);
     } else {
@@ -237,11 +239,11 @@ app.whenReady().then(() => {
     }
   });
 
-  // Handle permission checks (for camera/microphone access)
+  // Handle permission checks (for camera/microphone access and fullscreen)
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    if (permission === 'camera' || permission === 'microphone' || permission === 'media') {
+    if (permission === 'camera' || permission === 'microphone' || permission === 'media' || permission === 'fullscreen') {
       console.log(`Permission check passed: ${permission}`);
-      return true; // Always allow camera and microphone
+      return true; // Always allow camera, microphone, and fullscreen
     }
     return false;
   });

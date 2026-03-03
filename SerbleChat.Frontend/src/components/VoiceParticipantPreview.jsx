@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
+import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 
@@ -286,23 +287,52 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   // Fullscreen handling
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === panelRef.current);
+      const isCurrentlyFullscreen = 
+        document.fullscreenElement === panelRef.current ||
+        (document.webkitFullscreenElement === panelRef.current);
+      setIsFullscreen(isCurrentlyFullscreen);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
   }, []);
 
   const handleToggleFullscreen = async () => {
     const panel = panelRef.current;
     if (!panel) return;
 
-    if (document.fullscreenElement === panel) {
-      await document.exitFullscreen();
-      return;
-    }
+    try {
+      const isCurrentlyFullscreen = 
+        document.fullscreenElement === panel ||
+        (document.webkitFullscreenElement === panel) ||
+        (document.mozFullScreenElement === panel);
+      
+      if (isCurrentlyFullscreen) {
+        // Exit fullscreen using Electron-aware function
+        await exitFullscreenWithElectronSupport();
+        return;
+      }
 
-    await panel.requestFullscreen();
+      // Request fullscreen using Electron-aware function
+      await requestFullscreenWithElectronSupport(panel);
+    } catch (error) {
+      console.error('Fullscreen toggle failed:', error);
+      // Log the specific error for debugging
+      if (error.name === 'TypeError') {
+        console.warn('Fullscreen request was rejected or cancelled - this may be a security restriction');
+      } else if (error.name === 'NotSupportedError') {
+        console.warn('Fullscreen is not supported for this element');
+      }
+    }
   };
 
   // For compact mode, always show the badge (even if empty)
