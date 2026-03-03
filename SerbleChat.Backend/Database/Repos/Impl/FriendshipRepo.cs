@@ -36,4 +36,13 @@ public class FriendshipRepo(ChatDatabaseContext context) : IFriendshipRepo {
         context.Entry(friendship).State = EntityState.Modified;
         return context.SaveChangesAsync();
     }
+
+    public async Task<bool> IsFriendsWith(string userId, string[] userIds) {
+        // check that there is a friendship between userId and ALL of the userIds
+        return await context.Friendships
+            .Where(f => (f.User1Id == userId && userIds.Contains(f.User2Id)) ||
+                        (f.User2Id == userId && userIds.Contains(f.User1Id)))
+            .GroupBy(f => f.User1Id == userId ? f.User2Id : f.User1Id)
+            .CountAsync() == userIds.Length;
+    }
 }

@@ -1,0 +1,25 @@
+# Node modules
+node_modules/
+
+# Configuration files with tokens
+config.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test results
+test-results/
+results/
+

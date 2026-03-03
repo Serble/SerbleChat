@@ -13,7 +13,8 @@ namespace SerbleChat.Backend.Controllers;
 
 [Route("/auth")]
 [ApiController]
-public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt, IOptions<PushNotificationsSettings> pushSettings) : ControllerBase {
+public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt, IOptions<PushNotificationsSettings> pushSettings, 
+    IOptions<JwtSettings> jwtSettings) : ControllerBase {
     
     [HttpPost]
     public async Task<ActionResult<AuthResponse>> Post(AuthenticateRequest request) {
@@ -75,5 +76,26 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
     [AllowAnonymous]
     public ActionResult<string> GetVapidPublicKey() {
         return Ok(pushSettings.Value.VapidPublicKey);
+    }
+    
+    [HttpGet("tokens/{amount:int}")]
+    public async Task<ActionResult<IEnumerable<string>>> GetTokens(int amount) {
+        if (!jwtSettings.Value.AllowTestingAccountGeneration) {
+            return Forbid();
+        }
+        
+        List<string> tokens = [];
+        for (int i = 0; i < amount; i++) {
+            string name = $"friend-{Guid.NewGuid().ToString().Replace("-", "")[..8]}";
+            ChatUser user = new() {
+                Id = Guid.NewGuid().ToString(),
+                Username = name,
+                RefreshToken = "fake-refresh-token",
+                CreatedAt = DateTime.UtcNow
+            };
+            await users.CreateUser(user);
+            tokens.Add(jwt.GenerateToken(user));
+        }
+        return Ok(tokens);
     }
 }

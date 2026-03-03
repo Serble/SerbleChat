@@ -34,7 +34,7 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
         return await context.GroupChats
             .Where(g => g.ChannelId == channelId)
             .Include(a => a.ChannelNavigation)
-            .FirstAsync();
+            .FirstOrDefaultAsync();
     }
     
     public Task AddGroupChat(GroupChat groupChat, Channel channel) {
@@ -59,7 +59,13 @@ public class GroupChatRepo(ChatDatabaseContext context) : IGroupChatRepo {
             .Where(g => g.GroupChatId == channelId && g.UserId == userId)
             .ExecuteDeleteAsync();
     }
-    
+
+    public Task<bool> AnyAreMembers(long channelId, IEnumerable<string> userIds) {
+        return context.GroupChatMembers
+            .Where(g => g.GroupChatId == channelId && userIds.Contains(g.UserId))
+            .AnyAsync();
+    }
+
     public Task<bool> IsMemberInChat(long channelId, string userId) {
         return Task.FromResult(context.GroupChatMembers
             .Any(g => g.GroupChatId == channelId && g.UserId == userId));

@@ -1,0 +1,121 @@
+{
+  "apiBaseUrl": "http://localhost:5000",
+  "tokens": [
+    "your_auth_token_1",
+    "your_auth_token_2",
+    "your_auth_token_3"
+  ],
+  "numTokens": -1,
+  "additionalUserIds": [],
+  "messagesPerMinute": 60,
+  "enabledActions": {
+    "deleteMessage": true,
+    "fetchMessages": true,
+    "sendFriendRequest": true,
+    "removeFriend": true,
+    "createGuild": true,
+    "deleteGuild": true,
+    "updateGuild": true,
+    "leaveGuild": true,
+    "createChannel": true,
+    "deleteChannel": true,
+    "updateChannel": true,
+    "reorderChannels": true,
+    "createRole": true,
+    "deleteRole": true,
+    "updateRole": true,
+    "assignRole": true,
+    "removeRole": true,
+    "createInvite": true,
+    "acceptInvite": true,
+    "deleteInvite": true,
+    "createGroupChat": true,
+    "deleteGroupChat": true,
+    "addMembersToGroup": true,
+    "createDm": true,
+    "createPermissionOverride": true,
+    "deletePermissionOverride": true,
+    "updatePermissionOverride": true
+  },
+  "actionWeights": {
+    "deleteMessage": 5,
+    "fetchMessages": 15,
+    "sendFriendRequest": 8,
+    "removeFriend": 2,
+    "createGuild": 3,
+    "deleteGuild": 1,
+    "updateGuild": 4,
+    "leaveGuild": 1,
+    "createChannel": 5,
+    "deleteChannel": 2,
+    "updateChannel": 3,
+    "reorderChannels": 2,
+    "createRole": 4,
+    "deleteRole": 2,
+    "updateRole": 3,
+    "assignRole": 5,
+    "removeRole": 2,
+    "createInvite": 4,
+    "acceptInvite": 6,
+    "deleteInvite": 2,
+    "createGroupChat": 3,
+    "deleteGroupChat": 1,
+    "addMembersToGroup": 3,
+    "createDm": 5,
+    "createPermissionOverride": 2,
+    "deletePermissionOverride": 1,
+    "updatePermissionOverride": 2
+  },
+  "limits": {
+    "maxGuildsPerBot": 10,
+    "maxChannelsPerGuild": 20,
+    "maxRolesPerGuild": 15,
+    "maxMessagesPerChannel": 100,
+    "maxGroupChats": 5,
+    "maxFriends": 20
+  },
+  "messageTemplates": [
+    "Hello from bot!",
+    "Testing message #{count}",
+    "Random number: {random}",
+    "Stress test in progress...",
+    "How is everyone doing?",
+    "This is an automated test message",
+    "🤖 Bot message #{count}",
+    "Testing load capacity",
+    "Lorem ipsum dolor sit amet",
+    "Another test message with {random}"
+  ],
+  "guildNameTemplates": [
+    "Test Guild {random}",
+    "Bot Server #{count}",
+    "Stress Test Guild {random}",
+    "Auto-Created Server {random}"
+  ],
+  "channelNameTemplates": [
+    "test-channel-{random}",
+    "bot-chat-{random}",
+    "stress-test-{random}",
+    "auto-channel-#{count}"
+  ],
+  "roleNameTemplates": [
+    "TestRole{random}",
+    "BotRole#{count}",
+    "AutoRole-{random}",
+    "Role{random}"
+  ],
+  "groupChatNameTemplates": [
+    "Group {random}",
+    "Test Group #{count}",
+    "Bot Group {random}"
+  ],
+  "verboseLogging": true,
+  "logActions": true,
+  "logErrors": true,
+  "delayBetweenActionsMs": {
+    "min": 100,
+    "max": 2000
+  },
+  "retryFailedActions": true,
+  "maxRetries": 3
+}

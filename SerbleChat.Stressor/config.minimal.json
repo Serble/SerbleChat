@@ -1,0 +1,102 @@
+{
+  "apiBaseUrl": "http://localhost:5000",
+  "tokens": [
+    "your_first_bot_token_here",
+    "your_second_bot_token_here"
+  ],
+  "numTokens": -1,
+  "additionalUserIds": [],
+  "messagesPerMinute": 30,
+  "enabledActions": {
+    "deleteMessage": false,
+    "fetchMessages": true,
+    "sendFriendRequest": true,
+    "removeFriend": false,
+    "createGuild": true,
+    "deleteGuild": false,
+    "updateGuild": true,
+    "leaveGuild": false,
+    "createChannel": true,
+    "deleteChannel": false,
+    "updateChannel": false,
+    "reorderChannels": false,
+    "createRole": true,
+    "deleteRole": false,
+    "updateRole": false,
+    "assignRole": true,
+    "removeRole": false,
+    "createInvite": true,
+    "acceptInvite": true,
+    "deleteInvite": false,
+    "createGroupChat": true,
+    "deleteGroupChat": false,
+    "addMembersToGroup": true,
+    "createDm": true,
+    "createPermissionOverride": false,
+    "deletePermissionOverride": false,
+    "updatePermissionOverride": false
+  },
+  "actionWeights": {
+    "deleteMessage": 3,
+    "fetchMessages": 20,
+    "sendFriendRequest": 15,
+    "removeFriend": 2,
+    "createGuild": 5,
+    "deleteGuild": 1,
+    "updateGuild": 3,
+    "leaveGuild": 1,
+    "createChannel": 8,
+    "deleteChannel": 2,
+    "updateChannel": 3,
+    "reorderChannels": 2,
+    "createRole": 5,
+    "deleteRole": 2,
+    "updateRole": 3,
+    "assignRole": 7,
+    "removeRole": 2,
+    "createInvite": 6,
+    "acceptInvite": 8,
+    "deleteInvite": 2,
+    "createGroupChat": 4,
+    "deleteGroupChat": 1,
+    "addMembersToGroup": 3,
+    "createDm": 7,
+    "createPermissionOverride": 2,
+    "deletePermissionOverride": 1,
+    "updatePermissionOverride": 2
+  },
+  "limits": {
+    "maxGuildsPerBot": 5,
+    "maxChannelsPerGuild": 10,
+    "maxRolesPerGuild": 10,
+    "maxMessagesPerChannel": 50,
+    "maxGroupChats": 3,
+    "maxFriends": 10
+  },
+  "messageTemplates": [
+    "Test message #{count}",
+    "Hello world! {random}",
+    "Stress testing... {random}"
+  ],
+  "guildNameTemplates": [
+    "Test Guild {random}"
+  ],
+  "channelNameTemplates": [
+    "test-{random}"
+  ],
+  "roleNameTemplates": [
+    "Role{random}"
+  ],
+  "groupChatNameTemplates": [
+    "Group {random}"
+  ],
+  "verboseLogging": false,
+  "logActions": true,
+  "logErrors": true,
+  "delayBetweenActionsMs": {
+    "min": 500,
+    "max": 2000
+  },
+  "retryFailedActions": true,
+  "maxRetries": 2
+}

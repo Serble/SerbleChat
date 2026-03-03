@@ -15,22 +15,22 @@ public class NotificationPreferences {
     /// </summary>
     public NotificationPreference Unreads { get; set; } = NotificationPreference.Inherit;
     
-    public static readonly NotificationPreferences DefaultDmPreferences = new() {
+    public static NotificationPreferences DefaultDmPreferences => new() {
         Notifications = NotificationPreference.AllMessages,
         Unreads = NotificationPreference.AllMessages
     };
     
-    public static readonly NotificationPreferences DefaultGroupPreferences = new() {
+    public static NotificationPreferences DefaultGroupPreferences => new() {
         Notifications = NotificationPreference.MentionsOnly,
         Unreads = NotificationPreference.AllMessages
     };
     
-    public static readonly NotificationPreferences DefaultGuildPreferences = new() {
+    public static NotificationPreferences DefaultGuildPreferences => new() {
         Notifications = NotificationPreference.MentionsOnly,
         Unreads = NotificationPreference.AllMessages
     };
     
-    public static readonly NotificationPreferences DefaultPreferences = new() {
+    public static NotificationPreferences DefaultPreferences => new() {
         Notifications = NotificationPreference.Inherit,
         Unreads = NotificationPreference.Inherit
     };

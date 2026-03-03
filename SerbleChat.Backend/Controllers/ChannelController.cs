@@ -21,7 +21,7 @@ namespace SerbleChat.Backend.Controllers;
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
     IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications,
-    IImagesService images) : ControllerBase {
+    IImagesService images, IFriendshipRepo friends) : ControllerBase {
 
     private Task SignalChannelUpdated(long channelId) {
         return updates.Clients.Group("channel-" + channelId).SendAsync("ChannelUpdated", new {
@@ -74,7 +74,10 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             MessageId = msg.Id,
             ChannelId = channel.Id
         });
-        await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
+
+        if (mentionedUserIds.Count != 0) {
+            await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
+        }
         
         notifications.EnqueueMessageProcessing(channel, msg, mentionedUserIds);
         return Ok();
@@ -322,6 +325,10 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         if (chat.OwnerId != userId) {
             return Forbid();
         }
+
+        if (await groups.AnyAreMembers(groupId, body.UserIds)) {
+            return BadRequest("One or more users are already in the group");
+        }
         
         HashSet<string> members = body.UserIds.ToHashSet();
         await groups.AddMembers(
@@ -378,7 +385,13 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             return Unauthorized();
         }
 
-        GroupChat groupChat = new() { OwnerId = userId };
+        if (!await friends.IsFriendsWith(userId, body.Users.ToArray())) {
+            return Forbid();
+        }
+
+        GroupChat groupChat = new() {
+            OwnerId = userId
+        };
         Channel channel = new() {
             CreatedAt = DateTime.UtcNow,
             Name = body.Name,
@@ -390,7 +403,10 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         HashSet<string> members = body.Users.ToHashSet();
         members.Add(userId);
         await groups.AddMembers(
-            members.Select(id => new GroupChatMember {GroupChatId = groupChat.ChannelId, UserId = id})
+            members.Select(id => new GroupChatMember {
+                GroupChatId = groupChat.ChannelId,
+                UserId = id
+            })
         );
         await updates.Clients.Users(members).SendAsync("NewChannel", channel);
         
@@ -406,6 +422,11 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
+        }
+
+        ChatUser? otherUser = await users.GetUserById(otherId);
+        if (otherUser == null) {
+            return NotFound("User not found");
         }
         
         DmChannel? dmChannel = await dms.GetDmChannel(userId, otherId);

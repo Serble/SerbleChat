@@ -8,4 +8,6 @@ public interface IFriendshipRepo {
     Task AddFriendship(Friendship friendship);
     Task RemoveFriendship(long id);
     Task ModifyFriendship(Friendship friendship);
+    
+    Task<bool> IsFriendsWith(string userId, string[] userIds);
 }

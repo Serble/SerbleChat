@@ -64,5 +64,23 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
         modelBuilder.Entity<GuildBan>()
             .HasIndex(e => new { e.UserId, e.GuildId })
             .IsUnique();
+        
+        modelBuilder.Entity<ChannelPermissionOverride>()
+            .HasOne(cpo => cpo.RoleNavigation)
+            .WithMany()
+            .HasForeignKey(cpo => cpo.RoleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChannelPermissionOverride>()
+            .HasOne(cpo => cpo.UserNavigation)
+            .WithMany()
+            .HasForeignKey(cpo => cpo.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        
+        modelBuilder.Entity<Channel>()
+            .HasOne(c => c.GuildNavigation)
+            .WithMany()
+            .HasForeignKey(c => c.GuildId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

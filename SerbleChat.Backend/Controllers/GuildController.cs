@@ -456,6 +456,19 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         if (request is { RoleId: not null, UserId: not null }) {
             return BadRequest("Cannot specify both RoleId and UserId");
         }
+
+        if (request.UserId != null) {
+            ChatUser? user = await users.GetUserById(request.UserId);
+            if (user == null) {
+                return NotFound("User not found");
+            }
+        }
+        else {
+            Role? role = await roles.GetRole(request.RoleId!.Value);
+            if (role == null || role.GuildId != guildId) {
+                return NotFound("Role not found");
+            }
+        }
         
         ChannelPermissionOverride permissionOverride = new() {
             ChannelId = channelId,
@@ -769,6 +782,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return NotFound("Role not found in this guild");
         }
         
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found");
+        }
+        
         GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
         if (!(perms.ManageRoles.ToBool() || perms.Administrator.ToBool())) {
             return Forbid();
@@ -814,6 +832,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         Role? role = await roles.GetRole(roleId);
         if (role == null || role.GuildId != guildId) {
             return NotFound("Role not found in this guild");
+        }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found");
         }
 
         GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
@@ -865,6 +888,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         if (guild == null) {
             return NotFound("Guild not found");
         }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found");
+        }
 
         GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);
         if (!perms.HasPerm(p => p.KickMembers)) {
@@ -888,6 +916,11 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         Guild? guild = await guilds.GetGuild(guildId);
         if (guild == null) {
             return NotFound("Guild not found");
+        }
+        
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found");
         }
 
         GuildPermissions perms = await guilds.GetUserPermissions(requesterId, guildId);

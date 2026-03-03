@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  stress-test:
+    build: .
+    container_name: serblechat-stress-test
+    volumes:
+      - ./config.json:/app/config/config.json:ro
+    environment:
+      - CONFIG_PATH=/app/config/config.json
+    restart: unless-stopped
+    networks:
+      - serblechat-network
+
+networks:
+  serblechat-network:
+    external: true
+    # If your SerbleChat API is on a different network, configure accordingly

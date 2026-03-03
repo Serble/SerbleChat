@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SerbleChat Stress Test Configuration",
+  "type": "object",
+  "required": ["apiBaseUrl", "tokens", "messagesPerMinute"],
+  "properties": {
+    "apiBaseUrl": {
+      "type": "string",
+      "description": "Base URL of the SerbleChat API",
+      "examples": ["http://localhost:5000", "https://api.serblechat.com"]
+    },
+    "tokens": {
+      "type": "array",
+      "description": "Array of authentication tokens for test bots",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "messagesPerMinute": {
+      "type": "number",
+      "description": "Target number of actions per minute across all bots",
+      "minimum": 1
+    },
+    "enabledActions": {
+      "type": "object",
+      "description": "Enable or disable specific actions",
+      "properties": {
+        "sendMessage": { "type": "boolean" },
+        "deleteMessage": { "type": "boolean" },
+        "sendFriendRequest": { "type": "boolean" },
+        "acceptFriendRequest": { "type": "boolean" },
+        "removeFriend": { "type": "boolean" },
+        "createGuild": { "type": "boolean" },
+        "deleteGuild": { "type": "boolean" },
+        "updateGuild": { "type": "boolean" },
+        "leaveGuild": { "type": "boolean" },
+        "createChannel": { "type": "boolean" },
+        "deleteChannel": { "type": "boolean" },
+        "updateChannel": { "type": "boolean" },
+        "reorderChannels": { "type": "boolean" },
+        "createRole": { "type": "boolean" },
+        "deleteRole": { "type": "boolean" },
+        "updateRole": { "type": "boolean" },
+        "assignRole": { "type": "boolean" },
+        "removeRole": { "type": "boolean" },
+        "createInvite": { "type": "boolean" },
+        "acceptInvite": { "type": "boolean" },
+        "deleteInvite": { "type": "boolean" },
+        "createGroupChat": { "type": "boolean" },
+        "deleteGroupChat": { "type": "boolean" },
+        "addMembersToGroup": { "type": "boolean" },
+        "createDm": { "type": "boolean" },
+        "createPermissionOverride": { "type": "boolean" },
+        "deletePermissionOverride": { "type": "boolean" },
+        "updatePermissionOverride": { "type": "boolean" }
+      }
+    },
+    "actionWeights": {
+      "type": "object",
+      "description": "Relative frequency of each action (higher = more frequent)",
+      "properties": {
+        "sendMessage": { "type": "number", "minimum": 0 },
+        "deleteMessage": { "type": "number", "minimum": 0 },
+        "sendFriendRequest": { "type": "number", "minimum": 0 },
+        "acceptFriendRequest": { "type": "number", "minimum": 0 },
+        "removeFriend": { "type": "number", "minimum": 0 },
+        "createGuild": { "type": "number", "minimum": 0 },
+        "deleteGuild": { "type": "number", "minimum": 0 },
+        "updateGuild": { "type": "number", "minimum": 0 },
+        "leaveGuild": { "type": "number", "minimum": 0 },
+        "createChannel": { "type": "number", "minimum": 0 },
+        "deleteChannel": { "type": "number", "minimum": 0 },
+        "updateChannel": { "type": "number", "minimum": 0 },
+        "reorderChannels": { "type": "number", "minimum": 0 },
+        "createRole": { "type": "number", "minimum": 0 },
+        "deleteRole": { "type": "number", "minimum": 0 },
+        "updateRole": { "type": "number", "minimum": 0 },
+        "assignRole": { "type": "number", "minimum": 0 },
+        "removeRole": { "type": "number", "minimum": 0 },
+        "createInvite": { "type": "number", "minimum": 0 },
+        "acceptInvite": { "type": "number", "minimum": 0 },
+        "deleteInvite": { "type": "number", "minimum": 0 },
+        "createGroupChat": { "type": "number", "minimum": 0 },
+        "deleteGroupChat": { "type": "number", "minimum": 0 },
+        "addMembersToGroup": { "type": "number", "minimum": 0 },
+        "createDm": { "type": "number", "minimum": 0 },
+        "createPermissionOverride": { "type": "number", "minimum": 0 },
+        "deletePermissionOverride": { "type": "number", "minimum": 0 },
+        "updatePermissionOverride": { "type": "number", "minimum": 0 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "description": "Maximum number of entities each bot can create",
+      "properties": {
+        "maxGuildsPerBot": { "type": "number", "minimum": 1 },
+        "maxChannelsPerGuild": { "type": "number", "minimum": 1 },
+        "maxRolesPerGuild": { "type": "number", "minimum": 1 },
+        "maxMessagesPerChannel": { "type": "number", "minimum": 1 },
+        "maxGroupChats": { "type": "number", "minimum": 1 },
+        "maxFriends": { "type": "number", "minimum": 1 }
+      }
+    },
+    "messageTemplates": {
+      "type": "array",
+      "description": "Templates for generating messages ({count} and {random} are replaced)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "guildNameTemplates": {
+      "type": "array",
+      "description": "Templates for generating guild names",
+      "items": {
+        "type": "string"
+      }
+    },
+    "channelNameTemplates": {
+      "type": "array",
+      "description": "Templates for generating channel names",
+      "items": {
+        "type": "string"
+      }
+    },
+    "roleNameTemplates": {
+      "type": "array",
+      "description": "Templates for generating role names",
+      "items": {
+        "type": "string"
+      }
+    },
+    "groupChatNameTemplates": {
+      "type": "array",
+      "description": "Templates for generating group chat names",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verboseLogging": {
+      "type": "boolean",
+      "description": "Enable detailed logging"
+    },
+    "logActions": {
+      "type": "boolean",
+      "description": "Log each action as it's performed"
+    },
+    "logErrors": {
+      "type": "boolean",
+      "description": "Log error messages"
+    },
+    "delayBetweenActionsMs": {
+      "type": "object",
+      "description": "Random delay range between actions in milliseconds",
+      "properties": {
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      },
+      "required": ["min", "max"]
+    },
+    "retryFailedActions": {
+      "type": "boolean",
+      "description": "Automatically retry failed actions"
+    },
+    "maxRetries": {
+      "type": "number",
+      "description": "Maximum number of retry attempts",
+      "minimum": 0
+    }
+  }
+}

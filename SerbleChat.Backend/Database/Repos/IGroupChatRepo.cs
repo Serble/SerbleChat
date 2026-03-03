@@ -11,4 +11,5 @@ public interface IGroupChatRepo {
     public Task RemoveGroupChat(long channelId);
     public Task AddMembers(IEnumerable<GroupChatMember> newMembers);
     public Task RemoveMember(long channelId, string userId);
+    public Task<bool> AnyAreMembers(long channelId, IEnumerable<string> userIds);
 }

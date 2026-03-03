@@ -1,0 +1,27 @@
+{
+  "name": "serblechat-stress-test",
+  "version": "1.0.0",
+  "description": "Stress testing tool for SerbleChat",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "start:minimal": "node index.js config.minimal.json",
+    "test": "node index.js",
+    "token:auth": "node get-token.js auth",
+    "token:test": "node get-token.js test",
+    "token:add": "node get-token.js add",
+    "scenarios": "node generate-scenarios.js"
+  },
+  "keywords": [
+    "stress-test",
+    "load-test",
+    "serblechat"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.7",
+    "axios": "^1.7.9"
+  }
+}
