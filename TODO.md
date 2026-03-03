@@ -1,6 +1,5 @@
 TODO:
 - $ Voice activity threshold/push to talk
-- $ pick audio devices in electron app
 
 - Improve push notification reliability potentially (native app support with browser rendering?)
 - Send whether muted or defeaned to server so we can display when not in vc (and display deafened at all)

@@ -1246,7 +1246,10 @@ function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNot
 // ─── Voice Audio Tab ──────────────────────────────────────────────────────────
 
 function VoiceAudioTab() {
-  const { voiceAudioOptions, setVoiceAudioOption } = useClientOptions();
+  const { voiceAudioOptions, setVoiceAudioOption, localDeviceSettings, setLocalDeviceSetting } = useClientOptions();
+  const [inputDevices, setInputDevices] = useState([]);
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
 
   const options = [
     {
@@ -1275,12 +1278,185 @@ function VoiceAudioTab() {
     },
   ];
 
+  // Load available devices on mount
+  useEffect(() => {
+    loadDevices();
+  }, []);
+
+  async function loadDevices() {
+    setDevicesLoading(true);
+    try {
+      // Request permission first to get device labels
+      // We need to actually get a stream and keep it alive while enumerating
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      
+      // Now enumerate devices - labels will be available since we have permission
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      
+      // Stop the stream after we're done
+      stream.getTracks().forEach(track => track.stop());
+      
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      
+      console.log('Enumerated input devices:', inputs);
+      console.log('Enumerated output devices:', outputs);
+      
+      setInputDevices(inputs);
+      setOutputDevices(outputs);
+    } catch (err) {
+      console.error('Failed to enumerate devices:', err);
+      // Even on error, try to enumerate (will show deviceIds but not labels)
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices.filter(d => d.kind === 'audioinput');
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+        setInputDevices(inputs);
+        setOutputDevices(outputs);
+      } catch (fallbackErr) {
+        console.error('Fallback enumeration also failed:', fallbackErr);
+      }
+    } finally {
+      setDevicesLoading(false);
+    }
+  }
+
   function handleToggle(key) {
     setVoiceAudioOption(key, !voiceAudioOptions[key]);
   }
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem' }}>
+      {/* ── Device Selection ─────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        fontSize: '0.7rem',
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        marginBottom: '1rem',
+        paddingBottom: '0.4rem',
+        borderBottom: '1px solid var(--border)',
+      }}>
+        <span>Audio Devices</span>
+        <button
+          onClick={loadDevices}
+          disabled={devicesLoading}
+          style={{
+            background: 'var(--bg-active)',
+            border: 'none',
+            borderRadius: 4,
+            color: 'var(--text-secondary)',
+            padding: '0.3rem 0.6rem',
+            fontSize: '0.7rem',
+            cursor: devicesLoading ? 'not-allowed' : 'pointer',
+            opacity: devicesLoading ? 0.5 : 1,
+            textTransform: 'none',
+            letterSpacing: 'normal',
+          }}
+          className={!devicesLoading ? 'hov-bg' : undefined}
+        >
+          🔄 Refresh
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+        {/* Input Device */}
+        <div style={{
+          padding: '1rem',
+          borderRadius: 8,
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.95rem' }}>🎤</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Input Device
+            </span>
+          </div>
+          {devicesLoading ? (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+              Loading devices...
+            </div>
+          ) : (
+            <select
+              value={localDeviceSettings.inputDeviceId || 'default'}
+              onChange={(e) => setLocalDeviceSetting({ inputDeviceId: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '0.6rem',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text-primary)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="default">Default - System Default</option>
+              {inputDevices.map((device, index) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Microphone ${index + 1} (${device.deviceId.slice(0, 12)}...)`}
+                </option>
+              ))}
+            </select>
+          )}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+            Select your microphone for voice input. <strong>Note:</strong> You'll need to reconnect to voice for input changes to take effect.
+          </div>
+        </div>
+
+        {/* Output Device */}
+        <div style={{
+          padding: '1rem',
+          borderRadius: 8,
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.95rem' }}>🔊</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Output Device
+            </span>
+          </div>
+          {devicesLoading ? (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+              Loading devices...
+            </div>
+          ) : (
+            <select
+              value={localDeviceSettings.outputDeviceId || 'default'}
+              onChange={(e) => setLocalDeviceSetting({ outputDeviceId: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '0.6rem',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text-primary)',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="default">Default - System Default</option>
+              {outputDevices.map((device, index) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Speaker ${index + 1} (${device.deviceId.slice(0, 12)}...)`}
+                </option>
+              ))}
+            </select>
+          )}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+            Select your speakers or headphones for audio output. Changes take effect immediately.
+          </div>
+        </div>
+      </div>
+      
       {/* ── Microphone Volume ────────────────────────────────────── */}
       <div style={{
         fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',

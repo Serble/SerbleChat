@@ -226,19 +226,21 @@ app.whenReady().then(() => {
   registerIPCHandlers();
 
   // Permission handlers for media devices
-  // Grant microphone permission
-  app.on('permission-request', (webContents, permission, callback) => {
-    if (permission === 'media') {
-      // Grant all media permissions (microphone, camera)
+  // Grant microphone and camera permissions
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'microphone' || permission === 'camera') {
+      console.log(`Granting permission: ${permission}`);
       callback(true);
     } else {
+      console.log(`Denying permission: ${permission}`);
       callback(false);
     }
   });
 
-  // Handle getCameraPermission (for camera access)
+  // Handle permission checks (for camera/microphone access)
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
-    if (permission === 'camera' || permission === 'microphone') {
+    if (permission === 'camera' || permission === 'microphone' || permission === 'media') {
+      console.log(`Permission check passed: ${permission}`);
       return true; // Always allow camera and microphone
     }
     return false;
