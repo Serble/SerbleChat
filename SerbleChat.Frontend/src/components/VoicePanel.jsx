@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
+import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { startScreenShare, stopScreenShare, updateScreenShareQuality } from '../voice.js';
 import { playSound } from '../sound.js';
 import Avatar from './Avatar.jsx';
@@ -29,10 +30,12 @@ export default function VoicePanel({
 }) {
   const { resolveUser, currentUser } = useApp();
   const { setLocalScreenShare } = useVoice();
+  const { voiceAudioOptions } = useClientOptions();
   const [userDetails, setUserDetails] = useState({});
   // Derive isScreenSharing from localScreenShare prop instead of local state
   const isScreenSharing = Boolean(localScreenShare);
   const [showQualityModal, setShowQualityModal] = useState(false);
+  const [isButtonHeld, setIsButtonHeld] = useState(false); // Track if speak button is being held in PTT mode
   const [qualitySettings, setQualitySettings] = useState(() => {
     // Load saved quality settings from localStorage
     try {
@@ -50,6 +53,38 @@ export default function VoicePanel({
   });
   const canControl = voiceSession && voiceStatus === 'connected';
 
+  // In PTT mode, don't allow toggle via button - it's controlled by key binding
+  const handleToggleMuteButton = () => {
+    if (voiceAudioOptions.inputMode === 'push-to-talk') {
+      return; // PTT mode muting is only controlled by key binding
+    }
+    onToggleMute();
+  };
+
+  // Handle mouse down on speak button in PTT mode - unmute
+  const handleSpeakButtonMouseDown = (e) => {
+    e.preventDefault();
+    if (voiceAudioOptions.inputMode !== 'push-to-talk' || !voiceSession || !canControl) return;
+    
+    setIsButtonHeld(true);
+    if (voiceMuted) {
+      // Call onToggleMute to update parent state and unmute
+      onToggleMute();
+    }
+  };
+
+  // Handle mouse up on speak button in PTT mode - mute
+  const handleSpeakButtonMouseUp = (e) => {
+    e.preventDefault();
+    if (voiceAudioOptions.inputMode !== 'push-to-talk' || !voiceSession || !canControl) return;
+    
+    setIsButtonHeld(false);
+    if (!voiceMuted) {
+      // Call onToggleMute to update parent state and mute
+      onToggleMute();
+    }
+  };
+
   // Resolve usernames for all participants whenever the list changes
   useEffect(() => {
     participants.forEach(p => {
@@ -60,6 +95,22 @@ export default function VoicePanel({
       }
     });
   }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle mouse up globally to ensure PTT button is released
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isButtonHeld && voiceAudioOptions.inputMode === 'push-to-talk') {
+        // Call the logic without event object
+        setIsButtonHeld(false);
+        if (voiceSession && canControl && !voiceMuted) {
+          onToggleMute();
+        }
+      }
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isButtonHeld, voiceAudioOptions.inputMode, voiceSession, canControl, voiceMuted, onToggleMute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleScreenShare = async () => {
     if (!canControl) return;
@@ -299,40 +350,66 @@ export default function VoicePanel({
         display: 'flex',
         gap: '0.5rem',
       }}>
-        {/* Mute button */}
-        <button
-          onClick={onToggleMute}
-          disabled={!canControl}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            background: voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '0.4rem',
-            cursor: canControl ? 'pointer' : 'not-allowed',
-            color: voiceMuted ? 'var(--danger)' : 'var(--text-primary)',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            transition: 'background 0.15s',
-            opacity: canControl ? 1 : 0.6,
-            flex: 1,
-          }}
-          onMouseEnter={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.25)' : 'rgba(255,255,255,0.15)';
-          }}
-          onMouseLeave={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)';
-          }}
-          title={voiceMuted ? 'Unmute microphone (M)' : 'Mute microphone (M)'}
-        >
-          <span style={{ fontSize: '1rem' }}>{voiceMuted ? '🔇' : '🎙️'}</span>
-          <span>{voiceMuted ? 'Unmute' : 'Mute'}</span>
-        </button>
+      {/* Mute/Speak button */}
+      <button
+        onClick={(e) => {
+          // In PTT mode, prevent any click action - use mouseDown/mouseUp instead
+          if (voiceAudioOptions.inputMode === 'push-to-talk') {
+            e.preventDefault();
+            return;
+          }
+          handleToggleMuteButton();
+        }}
+        disabled={!canControl}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          background: voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
+          border: 'none',
+          borderRadius: '6px',
+          padding: '0.4rem',
+          cursor: canControl ? 'pointer' : 'not-allowed',
+          color: voiceMuted ? 'var(--danger)' : 'var(--text-primary)',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          transition: 'background 0.15s',
+          opacity: canControl ? 1 : 0.6,
+          flex: 1,
+        }}
+        onMouseEnter={e => {
+          if (!canControl) return;
+          e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.25)' : 'rgba(255,255,255,0.15)';
+        }}
+        onMouseLeave={(e) => {
+          if (!canControl) return;
+          e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)';
+          // If in PTT mode and button is held but mouse left, release the PTT
+          if (isButtonHeld && voiceAudioOptions.inputMode === 'push-to-talk') {
+            setIsButtonHeld(false);
+            if (!voiceMuted) {
+              onToggleMute();
+            }
+          }
+        }}
+        title={voiceAudioOptions.inputMode === 'push-to-talk' 
+          ? (voiceMuted ? 'Speak (hold key or button)' : 'Release to stop speaking')
+          : (voiceMuted ? 'Unmute microphone (M)' : 'Mute microphone (M)')}
+        onMouseDown={handleSpeakButtonMouseDown}
+        onMouseUp={handleSpeakButtonMouseUp}
+      >
+        <span style={{ fontSize: '1rem' }}>
+          {voiceAudioOptions.inputMode === 'push-to-talk'
+            ? (voiceMuted ? '🎙️' : '📢')
+            : (voiceMuted ? '🔇' : '🎙️')}
+        </span>
+        <span>
+          {voiceAudioOptions.inputMode === 'push-to-talk'
+            ? (voiceMuted ? 'Speak' : 'Speaking')
+            : (voiceMuted ? 'Unmute' : 'Mute')}
+        </span>
+      </button>
 
         {/* Deafen button */}
         <button

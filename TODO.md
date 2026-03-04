@@ -1,5 +1,5 @@
 TODO:
-- $ Voice activity threshold/push to talk
+- $ Voice activity threshold setting
 
 - stream audio?
 - Improve push notification reliability potentially (native app support with browser rendering?)

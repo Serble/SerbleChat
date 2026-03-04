@@ -23,6 +23,7 @@ export function VoiceProvider({ children }) {
 
   const activeJoinIdRef = useRef(0);
   const previousParticipantIdsRef = useRef(new Set());
+  const isPushToTalkActiveRef = useRef(false); // Track if PTT key is being held
   
   // Refs to access latest state in keybind handlers
   const voiceSessionRef = useRef(voiceSession);
@@ -146,6 +147,12 @@ export function VoiceProvider({ children }) {
 
       setVoiceSession(session ?? {});
       setVoiceStatus('connected');
+      
+      // If in push-to-talk mode, auto-mute on join
+      if (voiceAudioOptions.inputMode === 'push-to-talk' && !voiceMutedRef.current) {
+        await applyVoiceMuted(session, true);
+        setVoiceMuted(true);
+      }
       
       // Play join sound for the local user who just joined
       // Ensure we're checking the current join ID to avoid playing stale sounds
@@ -271,6 +278,24 @@ export function VoiceProvider({ children }) {
       if (!voiceSession || voiceStatus !== 'connected') return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       
+      // Check for Push to Talk key
+      if (voiceAudioOptions.inputMode === 'push-to-talk' && keybinds.pushToTalk && matchesKeybind(e, keybinds.pushToTalk)) {
+        e.preventDefault();
+        // Unmute on PTT key down
+        if (!isPushToTalkActiveRef.current) {
+          isPushToTalkActiveRef.current = true;
+          if (voiceMutedRef.current) {
+            applyVoiceMuted(voiceSessionRef.current, false).then(() => {
+              setVoiceMuted(false);
+              playSoundSafe('unmute');
+            }).catch(err => {
+              console.error('PTT unmute failed:', err);
+            });
+          }
+        }
+        return;
+      }
+      
       // Check if event matches toggleMute keybind
       if (matchesKeybind(e, keybinds.toggleMute)) {
         e.preventDefault();
@@ -282,9 +307,44 @@ export function VoiceProvider({ children }) {
         handleToggleDeafen();
       }
     }
+
+    function handleKeyUp(e) {
+      // Disable voice shortcuts if keybinds menu is open
+      const keybindsOpen = document.querySelector('[data-keybinds-open="true"]');
+      if (keybindsOpen) return;
+
+      // Only trigger if we're in voice
+      if (!voiceSession || voiceStatus !== 'connected') return;
+      
+      // Don't trigger PTT if typing in an input/textarea (but allow release while editing)
+      // Actually, we should process release even in inputs to properly unmute
+      // This allows PTT to work even while typing in chat
+
+      // Check for Push to Talk key release
+      if (voiceAudioOptions.inputMode === 'push-to-talk' && keybinds.pushToTalk && matchesKeybind(e, keybinds.pushToTalk)) {
+        e.preventDefault();
+        // Mute on PTT key up
+        if (isPushToTalkActiveRef.current) {
+          isPushToTalkActiveRef.current = false;
+          if (!voiceMutedRef.current) {
+            applyVoiceMuted(voiceSessionRef.current, true).then(() => {
+              setVoiceMuted(true);
+              playSoundSafe('mute');
+            }).catch(err => {
+              console.error('PTT mute failed:', err);
+            });
+          }
+        }
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [voiceSession, voiceStatus, voiceMuted, voiceDeafened, keybinds]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [voiceSession, voiceStatus, voiceMuted, voiceDeafened, keybinds, voiceAudioOptions.inputMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Electron global keybinds listener
   useEffect(() => {
@@ -365,6 +425,20 @@ export function VoiceProvider({ children }) {
     
     return () => clearTimeout(timeoutId);
   }, [voiceParticipants, voiceSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle input mode changes (voice-activity vs push-to-talk)
+  useEffect(() => {
+    if (!voiceSession || voiceStatus !== 'connected') return;
+
+    // When switching to push-to-talk mode, auto-mute
+    if (voiceAudioOptions.inputMode === 'push-to-talk' && !voiceMutedRef.current) {
+      applyVoiceMuted(voiceSession, true).then(() => {
+        setVoiceMuted(true);
+      }).catch(err => {
+        console.error('Failed to auto-mute on PTT mode switch:', err);
+      });
+    }
+  }, [voiceAudioOptions.inputMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Play sound when other participants join or leave the voice channel
   useEffect(() => {

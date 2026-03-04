@@ -1580,10 +1580,57 @@ function VoiceAudioTab() {
         })}
       </div>
       
+      {/* ── Voice Input Mode ─────────────────────────────────────── */}
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1rem',
+        paddingTop: '1.5rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--border)',
+      }}>
+        Voice Input Mode
+      </div>
+
+      <div style={{
+        padding: '1rem',
+        borderRadius: 8,
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        marginBottom: '1.5rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <span style={{ fontSize: '0.95rem' }}>🎤</span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            Input Detection Mode
+          </span>
+        </div>
+        <select
+          value={voiceAudioOptions.inputMode || 'voice-activity'}
+          onChange={(e) => setVoiceAudioOption('inputMode', e.target.value)}
+          style={{
+            width: '100%',
+            padding: '0.6rem',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            color: 'var(--text-primary)',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            outline: 'none',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <option value="voice-activity">Voice Activity Detection</option>
+          <option value="push-to-talk">Push to Talk</option>
+        </select>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          <strong>Voice Activity:</strong> Your microphone transmits automatically when you speak.
+          <br/>
+          <strong>Push to Talk:</strong> Hold a key to transmit. Release to stop. Useful in noisy environments.
+        </div>
+      </div>
+      
     </div>
   );
 }
-
 function NotificationsTab() {
   const { currentUser, updateUserDefaultPrefs } = useApp();
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
@@ -2157,6 +2204,12 @@ function KeybindsTab({ isActive }) {
           value={localKeybinds.toggleDeafen}
           onChange={(val) => handleChange('toggleDeafen', val)}
         />
+
+        <KeybindInput
+          label="Push to Talk"
+          value={localKeybinds.pushToTalk}
+          onChange={(val) => handleChange('pushToTalk', val)}
+        />
       </div>
 
       <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', lineHeight: 1.6, marginBottom: '1.5rem' }}>
@@ -2168,7 +2221,7 @@ function KeybindsTab({ isActive }) {
         </ul>
       </div>
 
-      {(hasUnregisterableKey(localKeybinds.toggleMute) || hasUnregisterableKey(localKeybinds.toggleDeafen)) && (
+      {(hasUnregisterableKey(localKeybinds.toggleMute) || hasUnregisterableKey(localKeybinds.toggleDeafen) || hasUnregisterableKey(localKeybinds.pushToTalk)) && (
         <div style={{
           fontSize: '0.8rem',
           color: '#fff',
