@@ -90,10 +90,18 @@ function extractFileUrls(content) {
 const mdComponents = {
   p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
-    if (href && (INVITE_RE().test(href) || MESSAGE_RE().test(href) || FILE_RE().test(href))) {
-      return <span style={{ color: 'var(--text-link)' }}>{children}</span>;
-    }
-    return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', textDecoration: 'underline' }}>{children}</a>;
+    const isEmbedLink = href && (INVITE_RE().test(href) || MESSAGE_RE().test(href) || FILE_RE().test(href));
+    return (
+      <a
+        href={href}
+        target={isEmbedLink ? '_self' : '_blank'}
+        rel="noopener noreferrer"
+        style={{ color: 'var(--text-link)', textDecoration: 'underline' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {children}
+      </a>
+    );
   },
   strong:     ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{children}</strong>,
   em:         ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
