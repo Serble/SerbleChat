@@ -1,6 +1,7 @@
 TODO:
 - $ Voice activity threshold/push to talk
 
+- stream audio?
 - Improve push notification reliability potentially (native app support with browser rendering?)
 - Send whether muted or defeaned to server so we can display when not in vc (and display deafened at all)
 - Fix app making TOO MANY requests (cache them or something, react SWR)

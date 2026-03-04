@@ -72,11 +72,9 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
 
         List<long> badEndpoints = [];
         
-        //ASDASDASDSA
-        
         HashSet<string> mentionedUsers = mentions.ToHashSet();
 
-        foreach ((string userId, IEnumerable<UserWebNotificationHook> hooks) in endpoints) {
+        foreach (string userId in userData.Keys) {
             if (message.AuthorId == userId) {
                 continue;  // don't send notifications to the author of the message
             }
@@ -135,6 +133,10 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             
             // then web push notifications
             if (onlyClientNotif) continue;
+            if (!endpoints.TryGetValue(userId, out IEnumerable<UserWebNotificationHook>? hooks)) {
+                continue;  // no endpoints, skip
+            }
+            
             foreach (UserWebNotificationHook hook in hooks) {
                 // cool, we need to send a notification to this user, let's do it
                 try {
@@ -147,8 +149,6 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
                 }
             }
         }
-        
-        //ASDASDASDASDAS
             
         // finally, delete any bad endpoints we found
         if (badEndpoints.Count > 0) {
