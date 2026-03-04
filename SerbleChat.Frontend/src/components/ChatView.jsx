@@ -1273,6 +1273,33 @@ export default function ChatView() {
     }
   }
 
+  // ── Paste handling ──────────────────────────────────────────────────────────
+
+  function handlePaste(e) {
+    const clipboardItems = e.clipboardData?.items;
+    if (!clipboardItems) return;
+
+    const filesToAdd = [];
+
+    for (let i = 0; i < clipboardItems.length; i++) {
+      const item = clipboardItems[i];
+      
+      // Handle file-like items (images, files)
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          filesToAdd.push(file);
+        }
+      }
+    }
+
+    // If we found files, add them to the upload queue and prevent default paste behavior
+    if (filesToAdd.length > 0) {
+      e.preventDefault();
+      fileUploads.addFiles(filesToAdd);
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -1635,6 +1662,7 @@ export default function ChatView() {
                     }
                   }}
                   onClick={e => detectMention(input, e.target.selectionStart)}
+                  onPaste={handlePaste}
                   maxLength={16384}
                 />
                 {(input.trim() || fileUploads.files.length > 0) && (
