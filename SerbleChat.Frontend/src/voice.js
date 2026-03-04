@@ -925,12 +925,14 @@ export function setParticipantVolume(session, participantIdentity, volume) {
     // Clamp volume to valid range
     const clampedVolume = Math.max(0, Math.min(5, volume));
     
-    // Convert volume to gain:
+    // Convert volume to gain using an exponential curve:
     // volume 0.0 = gain 0 (complete silence)
     // volume 1.0 = gain 1.0 (normal/baseline)
-    // volume 5.0 = gain 5.0 (5x amplified)
-    // Use linear scaling: gain = volume
-    const gainValue = clampedVolume;
+    // volume 5.0 = gain 25.0 (25x amplified for way louder sound)
+    // 
+    // Using exponential scaling: gain = volume^2
+    // This makes the volume increase feel more natural and get loud much quicker
+    const gainValue = clampedVolume === 0 ? 0 : Math.pow(clampedVolume, 2);
     
     // Use the gain node (required for proper volume control with Web Audio API)
     const { gainNode } = session.audioGraph.get(participantIdentity);
