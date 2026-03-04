@@ -1253,28 +1253,10 @@ function VoiceAudioTab() {
 
   const options = [
     {
-      key: 'echoCancellation',
-      label: 'Echo Cancellation',
-      icon: '🔊',
-      description: 'Reduces echo from speakers through the microphone.',
-    },
-    {
-      key: 'noiseSuppression',
-      label: 'Noise Suppression',
-      icon: '🔇',
-      description: 'Filters out background noise to improve audio clarity.',
-    },
-    {
-      key: 'autoGainControl',
-      label: 'Auto Gain Control',
-      icon: '📊',
-      description: 'Automatically adjusts microphone volume to maintain consistent levels.',
-    },
-    {
-      key: 'voiceIsolation',
-      label: 'Voice Isolation',
-      icon: '🎯',
-      description: 'Isolates your voice while suppressing other sounds.',
+      key: 'rnnoise',
+      label: 'AI Noise Suppression (RNNoise)',
+      icon: '🧠',
+      description: 'Uses advanced AI to filter out background noise (recommended).',
     },
   ];
 
@@ -1596,17 +1578,7 @@ function VoiceAudioTab() {
           );
         })}
       </div>
-
-      {/* ── Info ──────────────────────────────────────────────────── */}
-      <div style={{
-        marginTop: '1.5rem', padding: '0.75rem 1rem', borderRadius: 8,
-        background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-      }}>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          💡 <strong>Tip:</strong> These audio processing features can improve voice quality during calls.
-          If you experience issues, try disabling these options one by one to find the best settings for your setup.
-        </div>
-      </div>
+      
     </div>
   );
 }

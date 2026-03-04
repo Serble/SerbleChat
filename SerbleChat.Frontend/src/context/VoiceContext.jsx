@@ -354,6 +354,17 @@ export function VoiceProvider({ children }) {
     setMicVolume(voiceSession, micVolume);
   }, [voiceAudioOptions.micVolume, voiceSession]);
 
+  // Apply RNNoise setting when it changes
+  useEffect(() => {
+    if (!voiceSession) return;
+    const rnnoiseEnabled = voiceAudioOptions.rnnoise ?? true;
+    if (voiceSession.setRnnoise) {
+        voiceSession.setRnnoise(rnnoiseEnabled).catch(err => {
+            console.error('Failed to update RNNoise setting:', err);
+        });
+    }
+  }, [voiceAudioOptions.rnnoise, voiceSession]);
+
   // Apply output device changes to active voice session
   useEffect(() => {
     if (!voiceSession || !localDeviceSettings.outputDeviceId) return;

@@ -14,11 +14,15 @@ export const OPTION_DEFAULTS = {
     noiseSuppression: false,
     autoGainControl: false,
     voiceIsolation: false,
+    rnnoise: true,
     micVolume: 100, // 0-200, default 100 (100% = normal)
+    inputMode: 'voice-activity', // 'voice-activity' | 'push-to-talk'
+    speakingThreshold: 10, // 0-100, default 10
   },
   keybinds: {
     toggleMute: 'CommandOrControl+Shift+M',
     toggleDeafen: 'CommandOrControl+Shift+D',
+    pushToTalk: 'Control+V', // Default PTT key
   },
   filesApiToken: null, // OAuth token for Files API authentication
   // Local device settings (Electron only - stored in localStorage, not synced to server)
@@ -249,7 +253,7 @@ export function ClientOptionsProvider({ children }) {
   }
 
   function setVoiceAudioOption(optionName, value) {
-    const valid = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation', 'micVolume'];
+    const valid = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation', 'rnnoise', 'micVolume'];
     if (!valid.includes(optionName)) return;
     
     // Clamp micVolume to 0-200 range

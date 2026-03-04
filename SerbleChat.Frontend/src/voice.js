@@ -1,7 +1,27 @@
 import {getChannelVoiceToken} from "./api.js";
 import {createLocalAudioTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track} from "livekit-client";
+import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
+import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
 
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+// Global promise to ensure worklet is loaded only once
+let rnnoiseLoadPromise = null;
+async function ensureRnnoiseLoaded(ctx) {
+    if (rnnoiseLoadPromise) return rnnoiseLoadPromise;
+    
+    rnnoiseLoadPromise = (async () => {
+        try {
+            await ctx.audioWorklet.addModule(NoiseSuppressorWorklet);
+            console.log('RNNoise worklet loaded');
+        } catch (err) {
+            console.error('Failed to load RNNoise worklet:', err);
+            throw err;
+        }
+    })();
+    
+    return rnnoiseLoadPromise;
+}
 
 class VoiceSession {
     constructor(room, onParticipantsChange) {
@@ -12,6 +32,12 @@ class VoiceSession {
         this.speakingCheckInterval = null;
         this.micGainNode = null;
         this.micSourceNode = null;
+        this.micRnnoiseNode = null;
+        this.micChannelMerger = null; // For converting RNNoise mono output to stereo
+        this.micDestination = null;
+        this.micAnalyzer = null;
+        this.rawMicTrack = null; // Store raw track to rebuild chain
+        this.rnnoiseEnabled = false;
     }
     /** @type {Room} */
     room;
@@ -25,8 +51,18 @@ class VoiceSession {
     micGainNode;
     /** @type {MediaStreamAudioSourceNode} */
     micSourceNode;
+    /** @type {AudioWorkletNode} */
+    micRnnoiseNode;
+    /** @type {ChannelMergerNode} */
+    micChannelMerger;
+    /** @type {MediaStreamAudioDestinationNode} */
+    micDestination;
+    /** @type {AnalyserNode} */
+    micAnalyzer;
     /** @type {LocalAudioTrack} */
     micTrack;
+    /** @type {LocalAudioTrack} */
+    rawMicTrack;
     /** @type {LocalVideoTrack} */
     streamTrack;
     /** @type {Function} */
@@ -39,6 +75,8 @@ class VoiceSession {
     wasUnmutedBeforeDeafen = null; // Track mute state before deafening
     /** @type {Map<string, {source: MediaStreamAudioSourceNode, muteNode: GainNode | null, gainNode: GainNode, element: HTMLMediaElement | null, analyzer: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>}>} */
     audioGraph = new Map();
+    /** @type {boolean} */
+    rnnoiseEnabled;
 
     getParticipants() {
         if (!this.room) return [];
@@ -186,6 +224,60 @@ class VoiceSession {
         console.log(`✓ Mic volume updated to ${volumePercent}% (gain: ${gainValue.toFixed(2)})`);
         return true;
     }
+
+    async setRnnoise(enabled) {
+        if (this.rnnoiseEnabled === enabled) return;
+        this.rnnoiseEnabled = enabled;
+        console.log(`Toggling RNNoise: ${enabled}`);
+        await this.rebuildMicChain();
+    }
+
+    async rebuildMicChain() {
+        if (!this.micSourceNode || !this.micGainNode || !this.micDestination) return;
+
+        // Disconnect everything first to clear the graph
+        try { this.micSourceNode.disconnect(); } catch (e) {}
+        try { if(this.micRnnoiseNode) this.micRnnoiseNode.disconnect(); } catch (e) {}
+        try { if(this.micChannelMerger) this.micChannelMerger.disconnect(); } catch (e) {}
+        try { this.micGainNode.disconnect(); } catch (e) {}
+
+        let currentNode = this.micSourceNode;
+
+        // Insert RNNoise node if enabled
+        if (this.rnnoiseEnabled) {
+            try {
+                await ensureRnnoiseLoaded(audioContext);
+                if (!this.micRnnoiseNode) {
+                    this.micRnnoiseNode = new AudioWorkletNode(audioContext, NoiseSuppressorWorklet_Name);
+                }
+                currentNode.connect(this.micRnnoiseNode);
+                currentNode = this.micRnnoiseNode;
+                
+                // RNNoise outputs mono, so we need to convert back to stereo
+                // by duplicating the mono output to both left and right channels
+                if (!this.micChannelMerger) {
+                    this.micChannelMerger = audioContext.createChannelMerger(2);
+                }
+                // Connect mono RNNoise output to both channels
+                currentNode.connect(this.micChannelMerger, 0, 0);
+                currentNode.connect(this.micChannelMerger, 0, 1);
+                currentNode = this.micChannelMerger;
+                console.log("RNNoise node connected with stereo conversion");
+            } catch (err) {
+                console.error("Failed to enable RNNoise:", err);
+                // Fallback to bypass if it fails
+            }
+        }
+
+        // Connect to Gain Node (Volume)
+        currentNode.connect(this.micGainNode);
+        
+        // Connect Gain to Destination (Output) and Analyzer (Visualization)
+        this.micGainNode.connect(this.micDestination);
+        this.micGainNode.connect(this.micAnalyzer);
+        
+        console.log("Mic audio chain rebuilt");
+    }
 }
 
 export async function joinChannel(channelId, onParticipantsChange, onRemoteScreenShare, onRemoteUnScreenShare, onFatalError, audioOptions = {}) {
@@ -196,6 +288,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
 
     let room = new Room();
     let session = new VoiceSession(room, onParticipantsChange, onRemoteScreenShare);
+    session.rnnoiseEnabled = audioOptions.rnnoise ?? true;
 
     const reportFatal = (err, context) => {
         if (onFatalError) onFatalError(err, context);
@@ -233,7 +326,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         try {
             console.log(`Subscribed to track type: ${track.kind}`);
             if (track.kind === "audio") {
-                if (session.audioGraph[participant.identity]) return;
+                if (session.audioGraph.get(participant.identity)) return; // Use .get() for Map
 
                 console.log(`Processing audio track for ${participant.identity}`);
 
@@ -397,40 +490,43 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
 
     await room.connect(import.meta.env.VITE_LIVEKIT_URL, token);
 
-    // Publish microphone with audio options
-    const audioTrackOptions = {
-        echoCancellation: audioOptions.echoCancellation ?? false,
-        noiseSuppression: audioOptions.noiseSuppression ?? false,
-        autoGainControl: audioOptions.autoGainControl ?? false,
-        voiceIsolation: audioOptions.voiceIsolation ?? false,
-    };
-    
-    // Add deviceId if specified
-    if (audioOptions.deviceId && audioOptions.deviceId !== 'default') {
-        audioTrackOptions.deviceId = audioOptions.deviceId;
-    }
-    
     // Create the initial raw microphone track with error handling
+    // Browser audio processing is always disabled - all processing is done via RNNoise worklet
     let rawMicTrack;
     try {
+        const audioTrackOptions = {
+            // Explicitly disable all browser audio processing - use RNNoise instead
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            voiceIsolation: false,
+        };
+        
+        // Add deviceId if specified
+        if (audioOptions.deviceId && audioOptions.deviceId !== 'default') {
+            audioTrackOptions.deviceId = audioOptions.deviceId;
+        }
+        
         rawMicTrack = await createLocalAudioTrack(audioTrackOptions);
     } catch (micErr) {
         console.error('Failed to create microphone track:', micErr);
         // Try with minimal constraints as fallback
         try {
-            rawMicTrack = await createLocalAudioTrack({ 
+            rawMicTrack = await createLocalAudioTrack({
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
                 voiceIsolation: false,
             });
-            console.log('Fallback: created microphone track with no audio processing');
+            console.log('Fallback: created microphone track with all browser processing disabled');
         } catch (fallbackErr) {
             console.error('Failed to create microphone track even with fallback:', fallbackErr);
             throw new Error(`Cannot access microphone: ${fallbackErr.message}`);
         }
     }
     
+    session.rawMicTrack = rawMicTrack; // Store raw track
+
     // Setup audio processing chain with gain control for microphone volume
     let processedMicTrack = rawMicTrack; // Default to raw track
     
@@ -457,11 +553,14 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         const bufferLength = analyzer.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         
-        // Connect: source -> gain -> destination (creates processed stream)
-        //                        \-> analyzer (for speaking detection)
-        source.connect(gainNode);
-        gainNode.connect(destination);
-        gainNode.connect(analyzer);
+        // Store nodes in session
+        session.micSourceNode = source;
+        session.micGainNode = gainNode;
+        session.micDestination = destination;
+        session.micAnalyzer = analyzer;
+
+        // Build the chain initially
+        await session.rebuildMicChain();
         
         // Get the processed audio track
         const processedMediaStreamTrack = destination.stream.getAudioTracks()[0];
@@ -477,12 +576,8 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
             writable: false
         });
         
-        // Store references
-        session.micSourceNode = source;
-        session.micGainNode = gainNode;
-
         session.audioGraph.set(room.localParticipant.identity, { source, muteNode: null, gainNode, element: null, analyzer, dataArray });
-        console.log(`Audio processing chain created (mic volume: ${micVolume}%)`);
+        console.log(`Audio processing chain created (mic volume: ${micVolume}%, RNNoise: ${session.rnnoiseEnabled})`);
     } catch (err) {
         console.error('Failed to setup audio processing chain:', err);
         processedMicTrack = rawMicTrack; // Fallback to raw track
