@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
@@ -119,6 +119,10 @@ if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-s
     0%   { background: rgba(124,58,237,0.35); }
     60%  { background: rgba(124,58,237,0.2); }
     100% { background: transparent; }
+  }
+  @keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
   .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
   document.head.appendChild(s);
@@ -453,11 +457,23 @@ export default function ChatView() {
   const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, isModal, messageId? }
   const [copiedImageCtx, setCopiedImageCtx] = useState(null); // 'link' | 'image' | null
   
+  // Older messages loading state
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
   // Debounce timer for typing indicator notifications (max send every 2 seconds)
   const typingIndicatorTimerRef = useRef(null);
   const lastTypingNotifyRef = useRef(0);
+  
+  // Pagination state for loading older messages
+  const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const scrollLoadDebounceRef = useRef(null);
+  const scrollRestoreRef = useRef(null); // { scrollTopBefore, scrollHeightBefore } to restore after loading
+  const isAdjustingScrollRef = useRef(false); // Flag to prevent scroll event during adjustment
+  const lastLoadedHeightRef = useRef(0); // Track total message height when we last loaded
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -479,9 +495,72 @@ export default function ChatView() {
   function handleMessagesScroll() {
     const el = scrollRef.current;
     if (!el) return;
+    
+    // Skip loading check if we're currently adjusting scroll position or already loading
+    if (isAdjustingScrollRef.current || loadingOlderRef.current || !hasMoreRef.current) return;
+    
     // Consider "at bottom" if less than 150px of space below current view
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     userScrolledAway.current = !isNearBottom;
+    
+    // Load older messages when user scrolls NEAR THE TOP
+    // With column-reverse and negative scrollTop:
+    // scrollTop = 0 means at the bottom (newest messages)
+    // scrollTop < 0 means scrolled up toward older messages
+    // scrollTop ≈ -(scrollHeight - clientHeight) means at the very top
+    // We want to load when scrollTop is close to its minimum (most negative)
+    
+    const minScrollTop = -(el.scrollHeight - el.clientHeight);
+    const isNearTop = el.scrollTop < minScrollTop + 100; // Within 100px of the top
+    
+    if (isNearTop) {
+      // Debounce to avoid multiple requests on rapid scrolling
+      clearTimeout(scrollLoadDebounceRef.current);
+      scrollLoadDebounceRef.current = setTimeout(() => {
+        loadOlderMessages();
+      }, 300);
+    }
+  }
+
+  // Load older messages by fetching with increased offset
+  async function loadOlderMessages() {
+    if (loadingOlderRef.current || !hasMoreRef.current) return;
+    
+    const el = scrollRef.current;
+    if (!el) return;
+    
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    
+    try {
+      const olderMessages = await getMessages(channelId, 50, offsetRef.current);
+      
+      if (!olderMessages || olderMessages.length === 0) {
+        hasMoreRef.current = false;
+        return;
+      }
+      
+      // If we got fewer messages than requested, we've reached the end
+      if (olderMessages.length < 50) {
+        hasMoreRef.current = false;
+      }
+      
+      // Update offset for next load
+      offsetRef.current += 50;
+      
+      // Mark that we need to update loading state (useLayoutEffect will handle it)
+      scrollRestoreRef.current = true;
+      
+      // Prepend new messages to the state (reverse them since they come in newest-first order)
+      setMessages(prev => ({
+        ...prev,
+        [String(channelId)]: [...[...olderMessages].reverse(), ...(prev[String(channelId)] ?? [])],
+      }));
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
   }
 
   // When the scroll container is resized (e.g. on-screen keyboard opens),
@@ -736,6 +815,8 @@ export default function ChatView() {
     return () => {
       // When leaving the channel, clear active so new messages are counted
       setActiveChannelId(null);
+      // Clear any pending scroll debounce
+      clearTimeout(scrollLoadDebounceRef.current);
     };
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -749,6 +830,14 @@ export default function ChatView() {
     setMentionPicker(null);
     setMentionData({ members: [], channels: [], roles: [] });
     userScrolledAway.current = false;
+    
+    // Reset pagination state for older messages
+    // Start at offset 50 since initial load gets offset 0-49
+    offsetRef.current = 50;
+    hasMoreRef.current = true;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+    lastLoadedHeightRef.current = 0;
 
     Promise.all([
       getChannel(channelId),
@@ -946,6 +1035,23 @@ export default function ChatView() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 320) + 'px'; // 320px ≈ 20rem
   }, [input]);
+
+  // Restore scroll position after loading older messages
+  useLayoutEffect(() => {
+    if (!scrollRestoreRef.current) return;
+    
+    const el = scrollRef.current;
+    if (!el) return;
+    
+    // When messages are prepended to the top, the browser naturally keeps the user
+    // viewing the same messages they were before - no scroll adjustment needed!
+    // Just reset the loading state flags.
+    
+    scrollRestoreRef.current = null;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+    isAdjustingScrollRef.current = false;
+  }, [channelMessages]); // Runs after messages update
 
   // ── Mention autocomplete ────────────────────────────────────────────────────
 
@@ -1351,6 +1457,29 @@ export default function ChatView() {
                 />
               );
             })}
+            {/* Loading indicator when fetching older messages */}
+            {loadingOlder && (
+              <div style={{ 
+                padding: '1rem', 
+                textAlign: 'center', 
+                color: 'var(--text-muted)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}>
+                <div style={{
+                  display: 'inline-block',
+                  width: '16px',
+                  height: '16px',
+                  border: '2px solid rgba(255,255,255,0.2)',
+                  borderTop: '2px solid var(--text-secondary)',
+                  borderRadius: '50%',
+                  animation: 'spin 0.6s linear infinite',
+                }}></div>
+                <span style={{ fontSize: '0.85rem' }}>Loading older messages...</span>
+              </div>
+            )}
             {/* Empty state message at the top (since we're reversed) */}
             {channelMessages.length === 0 && !loading && (
               <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
