@@ -35,6 +35,11 @@ export function VoiceProvider({ children }) {
     voiceDeafenedRef.current = voiceDeafened;
   }, [voiceSession, voiceMuted, voiceDeafened]);
 
+  // Helper to safely play sounds with consistent error handling
+  const playSoundSafe = (soundName) => {
+    playSound(soundName).catch(e => console.warn(`[Voice] Failed to play ${soundName} sound:`, e));
+  };
+
   function describeVoiceError(err, context) {
     if (err?.message) {
       // Provide specific error messages for common issues
@@ -75,14 +80,12 @@ export function VoiceProvider({ children }) {
       setVoiceBusy(false);
       // Play sound effect when leaving voice channel (only if not an error state)
       if (!keepError) {
-        playSound('leave').catch(e => console.warn('Failed to play leave sound:', e));
-      }
-      if (keepError) {
-        setVoiceStatus('error');
-      } else {
         setVoiceStatus('idle');
         setVoiceChannelId(null);
         setVoiceError(null);
+        playSoundSafe('leave');
+      } else {
+        setVoiceStatus('error');
       }
     }
   }
@@ -120,13 +123,13 @@ export function VoiceProvider({ children }) {
         // Handle remote screen share
         setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity }]);
         // Play sound effect when someone starts screen sharing
-        playSound('stream_start').catch(e => console.warn('Failed to play stream start sound:', e));
+        playSoundSafe('stream_start');
       }, (participantIdentity) => {
         if (!isCurrentJoin()) return;
         // Handle remote screen share stop
         setRemoteScreenShares(prev => prev.filter(s => s.participantIdentity !== participantIdentity));
         // Play sound effect when someone stops screen sharing
-        playSound('stream_end').catch(e => console.warn('Failed to play stream end sound:', e));
+        playSoundSafe('stream_end');
       }, (err, context) => {
         if (!isCurrentJoin()) return;
         reportFatalError(err, context);
@@ -143,6 +146,15 @@ export function VoiceProvider({ children }) {
 
       setVoiceSession(session ?? {});
       setVoiceStatus('connected');
+      
+      // Play join sound for the local user who just joined
+      // Ensure we're checking the current join ID to avoid playing stale sounds
+      if (isCurrentJoin()) {
+        // Use requestAnimationFrame to ensure DOM has updated before playing sound
+        requestAnimationFrame(() => {
+          playSoundSafe('join');
+        });
+      }
     } catch (err) {
       if (!isCurrentJoin()) return;
       console.error('joinChannel failed:', err);
@@ -162,7 +174,7 @@ export function VoiceProvider({ children }) {
       await applyVoiceMuted(voiceSession, nextMuted);
       setVoiceMuted(nextMuted);
       // Play sound effect
-      playSound(nextMuted ? 'mute' : 'unmute').catch(e => console.warn('Failed to play mute sound:', e));
+      playSoundSafe(nextMuted ? 'mute' : 'unmute');
     } catch (err) {
       console.error('setMuted failed:', err);
     }
@@ -180,7 +192,7 @@ export function VoiceProvider({ children }) {
       setVoiceDeafened(nextDeafened);
       
       // Play sound effect
-      playSound(nextDeafened ? 'deafen' : 'undeafen').catch(e => console.warn('Failed to play deafen sound:', e));
+      playSoundSafe(nextDeafened ? 'deafen' : 'undeafen');
       
       // Update mute state based on deafen state
       if (nextDeafened) {
@@ -294,7 +306,7 @@ export function VoiceProvider({ children }) {
         applyVoiceMuted(session, nextMuted).then(() => {
           setVoiceMuted(nextMuted);
           // Play sound effect
-          playSound(nextMuted ? 'mute' : 'unmute').catch(e => console.warn('Failed to play mute sound:', e));
+          playSoundSafe(nextMuted ? 'mute' : 'unmute');
         }).catch(err => {
           console.error('Keybind mute failed:', err);
         });
@@ -306,7 +318,7 @@ export function VoiceProvider({ children }) {
           setVoiceDeafened(nextDeafened);
           
           // Play sound effect
-          playSound(nextDeafened ? 'deafen' : 'undeafen').catch(e => console.warn('Failed to play deafen sound:', e));
+          playSoundSafe(nextDeafened ? 'deafen' : 'undeafen');
           
           if (nextDeafened) {
             if (!voiceMutedRef.current) {
@@ -377,7 +389,7 @@ export function VoiceProvider({ children }) {
       for (const id of currentRemoteIds) {
         if (!previousRemoteIds.has(id)) {
           console.log(`[Sound] Remote participant joined: ${id}`);
-          playSound('join').catch(e => console.warn('Failed to play join sound:', e));
+          playSoundSafe('join');
           break; // Only play once per update cycle
         }
       }
@@ -386,7 +398,7 @@ export function VoiceProvider({ children }) {
       for (const id of previousRemoteIds) {
         if (!currentRemoteIds.has(id)) {
           console.log(`[Sound] Remote participant left: ${id}`);
-          playSound('leave').catch(e => console.warn('Failed to play leave sound:', e));
+          playSoundSafe('leave');
           break; // Only play once per update cycle
         }
       }

@@ -7,6 +7,11 @@ import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
 
+// Helper to safely play sounds with consistent error handling
+const playSoundSafe = (soundName) => {
+  playSound(soundName).catch(e => console.warn(`[VoicePanel] Failed to play ${soundName} sound:`, e));
+};
+
 export default function VoicePanel({ 
   channelId, 
   voiceSession,
@@ -63,7 +68,7 @@ export default function VoicePanel({
         await stopScreenShare(voiceSession, () => {
           setLocalScreenShare(null);
           // Play sound effect when stopping screen share
-          playSound('stream_end').catch(e => console.warn('Failed to play stream end sound:', e));
+          playSoundSafe('stream_end');
         });
       } else {
         await startScreenShare(voiceSession, (videoElement) => {
@@ -72,7 +77,7 @@ export default function VoicePanel({
             username: currentUser?.username || 'Your Screen'
           });
           // Play sound effect when starting screen share
-          playSound('stream_start').catch(e => console.warn('Failed to play stream start sound:', e));
+          playSoundSafe('stream_start');
         }, qualitySettings);
       }
     } catch (error) {

@@ -559,7 +559,7 @@ export function AppProvider({ children }) {
 
     conn.on('ReceiveNotification', async (content) => {
       // Play notification sound
-      playSound('notification').catch(e => console.warn('Failed to play notification sound:', e));
+      playSound('notification').catch(e => console.warn('[AppContext] Failed to play notification sound:', e));
     });
 
     conn.on('DeleteMessage', ({ id }) => {

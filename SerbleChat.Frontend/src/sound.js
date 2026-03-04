@@ -22,6 +22,23 @@ const SOUND_FILES = {
 // Cache for decoded audio buffers
 const audioBufferCache = {};
 
+// Track if user has interacted with the page (required for audio autoplay)
+let userHasInteracted = false;
+
+// Set up user interaction tracking
+if (typeof window !== 'undefined') {
+  const markInteraction = () => {
+    if (!userHasInteracted) {
+      userHasInteracted = true;
+      console.log('[Sound] User interaction detected - audio enabled');
+    }
+  };
+  
+  window.addEventListener('click', markInteraction, { once: false });
+  window.addEventListener('keydown', markInteraction, { once: false });
+  window.addEventListener('touchstart', markInteraction, { once: false });
+}
+
 /**
  * Load and cache an audio file
  * @param {string} soundName - The name of the sound (key in SOUND_FILES)
@@ -67,7 +84,14 @@ export async function playSound(soundName, volume = 1) {
   try {
     // Resume audio context if suspended (required by some browsers)
     if (audioContext.state === 'suspended') {
-      await audioContext.resume();
+      console.log(`[Sound] Audio context suspended, attempting to resume for "${soundName}"`);
+      try {
+        await audioContext.resume();
+        console.log(`[Sound] Audio context resumed successfully`);
+      } catch (err) {
+        console.error(`[Sound] Failed to resume audio context:`, err);
+        // Don't throw, try to play anyway
+      }
     }
 
     const audioBuffer = await loadAudioBuffer(soundName);
@@ -81,8 +105,10 @@ export async function playSound(soundName, volume = 1) {
     gainNode.connect(audioContext.destination);
 
     source.start(0);
+    console.log(`[Sound] Playing sound "${soundName}" (volume: ${gainNode.gain.value.toFixed(2)})`);
   } catch (error) {
-    console.error(`Failed to play sound "${soundName}":`, error);
+    console.error(`[Sound] Failed to play sound "${soundName}":`, error);
+    throw error; // Re-throw so caller knows it failed
   }
 }
 
@@ -115,4 +141,59 @@ export function soundExists(soundName) {
  */
 export function getSoundPath(soundName) {
   return SOUND_FILES[soundName] ?? null;
+}
+
+/**
+ * Get the current audio context state
+ * @returns {string} - 'running', 'suspended', or 'closed'
+ */
+export function getAudioContextState() {
+  return audioContext.state;
+}
+
+/**
+ * Resume the audio context (useful to call after user interaction)
+ * @returns {Promise<void>}
+ */
+export async function resumeAudioContext() {
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+}
+
+/**
+ * SoundManager - A simplified interface for managing sounds
+ */
+export class SoundManager {
+  /**
+   * Play a sound by name
+   * @param {string} soundName - The name of the sound to play
+   * @param {number} [volume=1] - The volume level (0-1)
+   */
+  static async play(soundName, volume = 1) {
+    return playSound(soundName, volume);
+  }
+  
+  /**
+   * Preload sounds for faster playback
+   * @param {string[]} soundNames - Array of sound names to preload
+   */
+  static async preload(soundNames) {
+    return preloadSounds(soundNames);
+  }
+  
+  /**
+   * Check if audio is ready to play
+   * @returns {boolean}
+   */
+  static isReady() {
+    return audioContext.state !== 'suspended';
+  }
+  
+  /**
+   * Ensure audio context is ready
+   */
+  static async ensureReady() {
+    return resumeAudioContext();
+  }
 }
