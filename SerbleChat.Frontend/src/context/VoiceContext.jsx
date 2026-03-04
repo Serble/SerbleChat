@@ -9,7 +9,7 @@ const VoiceContext = createContext();
 
 export function VoiceProvider({ children }) {
   const { addToast } = useApp();
-  const { getVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings } = useClientOptions();
+  const { getVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings, keybinds } = useClientOptions();
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [voiceSession, setVoiceSession] = useState(null);
   const [voiceMuted, setVoiceMuted] = useState(false);
@@ -203,27 +203,76 @@ export function VoiceProvider({ children }) {
     }
   }
 
-  // Global keyboard shortcut: M to toggle mute
+  // Helper function to check if a keyboard event matches a keybind
+  function matchesKeybind(event, keybind) {
+    if (!keybind) return false;
+    
+    const parts = keybind.split('+');
+    const modifiers = [];
+    let key = '';
+    
+    for (const part of parts) {
+      if (part === 'CommandOrControl' || part === 'Ctrl' || part === 'Control') {
+        modifiers.push('ctrl');
+      } else if (part === 'Shift') {
+        modifiers.push('shift');
+      } else if (part === 'Alt') {
+        modifiers.push('alt');
+      } else {
+        key = part;
+      }
+    }
+    
+    // Check modifiers
+    const ctrlPressed = event.ctrlKey || event.metaKey;
+    const shiftPressed = event.shiftKey;
+    const altPressed = event.altKey;
+    
+    const ctrlRequired = modifiers.includes('ctrl');
+    const shiftRequired = modifiers.includes('shift');
+    const altRequired = modifiers.includes('alt');
+    
+    if (ctrlPressed !== ctrlRequired) return false;
+    if (shiftPressed !== shiftRequired) return false;
+    if (altPressed !== altRequired) return false;
+    
+    // Check key
+    let eventKey = event.key;
+    
+    // Normalize special keys
+    if (eventKey === ' ') eventKey = 'Space';
+    else if (eventKey === 'Enter') eventKey = 'Return';
+    else if (eventKey.startsWith('Arrow')) eventKey = eventKey.replace('Arrow', '');
+    
+    // Case-insensitive comparison for letter keys
+    return eventKey.toLowerCase() === key.toLowerCase();
+  }
+
+  // Web keyboard shortcuts with user-configured keybinds
   useEffect(() => {
     function handleKeyDown(e) {
       // Disable voice shortcuts if keybinds menu is open
       const keybindsOpen = document.querySelector('[data-keybinds-open="true"]');
       if (keybindsOpen) return;
       
-      // Only trigger if we're in voice, not typing in an input/textarea, and M is pressed
+      // Only trigger if we're in voice, not typing in an input/textarea
       if (!voiceSession || voiceStatus !== 'connected') return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'm' || e.key === 'M') {
+      
+      // Check if event matches toggleMute keybind
+      if (matchesKeybind(e, keybinds.toggleMute)) {
         e.preventDefault();
         handleToggleMute();
-      } else if (e.key === 'd' || e.key === 'D') {
+      } 
+      // Check if event matches toggleDeafen keybind
+      else if (matchesKeybind(e, keybinds.toggleDeafen)) {
         e.preventDefault();
         handleToggleDeafen();
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [voiceSession, voiceStatus, voiceMuted, voiceDeafened]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voiceSession, voiceStatus, voiceMuted, voiceDeafened, keybinds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Electron global keybinds listener
   useEffect(() => {

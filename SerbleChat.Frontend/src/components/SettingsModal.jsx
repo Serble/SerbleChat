@@ -10,6 +10,7 @@ import { useMobile } from '../context/MobileContext.jsx';
 import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
 import { isInstalled, canInstall, promptInstall, initPWAInstallPrompt } from '../pwa.js';
 import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from '../api.js';
+import { isElectron } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import { FilesTab } from './FilesTab.jsx';
 
@@ -2016,7 +2017,7 @@ function KeybindInput({ label, value, onChange, disabled }) {
       // Allow single key without modifiers, or key with modifiers
       const accelerator = keys.length > 0 ? keys.join('+') + '+' + key : key;
 
-      // Validate with Electron
+      // Validate with Electron if available, otherwise just accept the keybind
       if (window.electron?.validateKeybind) {
         window.electron.validateKeybind(accelerator).then(result => {
           if (result.valid) {
@@ -2029,6 +2030,7 @@ function KeybindInput({ label, value, onChange, disabled }) {
           }
         });
       } else {
+        // Web mode: accept any keybind
         onChange(accelerator);
         setIsRecording(false);
       }
@@ -2138,7 +2140,9 @@ function KeybindsTab({ isActive }) {
         Keybinds
       </h3>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-        Configure global keyboard shortcuts for voice chat controls. These shortcuts work even when the app is not focused.
+        Configure keyboard shortcuts for voice chat controls. {isElectron() 
+          ? 'These shortcuts work globally even when the app is not focused.' 
+          : 'In the web version, these shortcuts only work when SerbleChat is focused. For global shortcuts, use the desktop app.'}
       </p>
 
       <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: '1.25rem', marginBottom: '1.5rem' }}>
@@ -2220,8 +2224,6 @@ function KeybindsTab({ isActive }) {
 
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
-import { isElectron } from '../electron-utils.js';
-
 const BASE_TABS = [
   { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
   { id: 'files',         icon: '📁', label: 'Files',         section: 'MY ACCOUNT' },
@@ -2229,12 +2231,11 @@ const BASE_TABS = [
   { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
   { id: 'voiceAudio',    icon: '🎙️', label: 'Voice Audio',   section: 'APP SETTINGS' },
   { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
+  { id: 'keybinds',      icon: '⌨️', label: 'Keybinds',      section: 'APP SETTINGS' },
 ];
 
-// Add keybinds tab only in Electron
-const TABS = isElectron() 
-  ? [...BASE_TABS, { id: 'keybinds', icon: '⌨️', label: 'Keybinds', section: 'APP SETTINGS' }]
-  : BASE_TABS;
+// Keybinds tab is now always available
+const TABS = BASE_TABS;
 
 const SECTIONS = [...new Set(TABS.map(t => t.section))];
 
