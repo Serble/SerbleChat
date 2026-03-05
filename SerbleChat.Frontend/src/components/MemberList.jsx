@@ -16,7 +16,7 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
   const [loading, setLoading]   = useState(true);
   const [localTick, setLocalTick] = useState(0);
 
-  const { rolesUpdatedEvent, userUpdatedEvent } = useApp();
+  const { rolesUpdatedEvent, userUpdatedEvent, userStatuses } = useApp();
   const isGuild = !!guildId;
 
   // When roles are updated for this guild, bump the local tick to re-fetch
@@ -48,11 +48,15 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
   // Normalise to { id, username, isOnline, color?, userColor? } regardless of source
   // color     = top role colour (guild only)
   // userColor = user's own profile colour
-  const normalised = members.map(m =>
-    isGuild
+  const normalised = members.map(m => {
+    const base = isGuild
       ? { id: m.user.id, username: m.user.username, isOnline: m.user.isOnline, color: m.color, userColor: m.user.color ?? '' }
-      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null, userColor: m.color ?? '' }
-  );
+      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null, userColor: m.color ?? '' };
+    // Override with live SignalR status when available
+    const liveStatus = userStatuses[String(base.id)];
+    if (liveStatus !== undefined) base.isOnline = liveStatus === 'online';
+    return base;
+  });
 
   const online  = normalised.filter(m => m.isOnline);
   const offline = normalised.filter(m => !m.isOnline);

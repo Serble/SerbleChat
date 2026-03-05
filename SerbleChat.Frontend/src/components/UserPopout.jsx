@@ -133,7 +133,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const dropRef   = useRef(null);
   const popoutRef = useRef(null);
 
-  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends } = useApp();
+  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends, userStatuses } = useApp();
   const isSelf         = currentUser?.id === userId;
   const myPerms        = guildId ? getMyPerms(guildId) : null;
   const canManageRoles = !!myPerms && (myPerms.administrator === 0 || myPerms.manageRoles === 0);
@@ -259,7 +259,9 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   if (top + estimatedH > window.innerHeight - 8) top = window.innerHeight - estimatedH - 8;
   if (top < 8) top = 8;
 
-  const sm          = user ? (user.isOnline ? ONLINE : OFFLINE) : null;
+  const liveStatus = userStatuses[String(userId)];
+  const isOnlineResolved = liveStatus !== undefined ? liveStatus === 'online' : (user?.isOnline ?? false);
+  const sm          = user ? (isOnlineResolved ? ONLINE : OFFLINE) : null;
   const displayName = user?.username ?? username;
   const sortedRoles   = guildRoles.slice().sort((a, b) => b.priority - a.priority);
   const assignedRoles = sortedRoles.filter(r =>  userRoleIds.has(Number(r.id ?? r.Id)));

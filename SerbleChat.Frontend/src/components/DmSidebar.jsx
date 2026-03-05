@@ -112,7 +112,7 @@ function VoiceParticipantsBelow({ channelId }) {
 }
 
 function DmItem({ dm, currentChannelId }) {
-  const { currentUser, resolveUser, unreads } = useApp();
+  const { currentUser, resolveUser, unreads, userStatuses } = useApp();
   const nav = useNavigate();
   const [otherUser, setOtherUser] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y }
@@ -128,6 +128,7 @@ function DmItem({ dm, currentChannelId }) {
   const otherId = dm.user1Id === currentUser?.id ? dm.user2Id : dm.user1Id;
   const [hovered, setHovered] = useState(false);
   const unread = unreads[String(dm.channelId)] ?? 0;
+  const isOnline = userStatuses[String(otherId)] === 'online';
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -151,7 +152,15 @@ function DmItem({ dm, currentChannelId }) {
           transition: 'background 0.1s, color 0.1s',
         }}
       >
-        <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
+          <div style={{
+            position: 'absolute', bottom: 0, right: 0,
+            width: 9, height: 9, borderRadius: '50%',
+            background: isOnline ? 'var(--success)' : 'var(--text-subtle)',
+            border: '2px solid var(--bg-secondary)',
+          }} />
+        </div>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
         {unread > 0 && !active && (
           <span style={{
