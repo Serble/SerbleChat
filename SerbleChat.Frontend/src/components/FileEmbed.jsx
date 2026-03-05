@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import ImageModal from './ImageModal.jsx';
+import { triggerDownload } from '../electron-utils.js';
 
 /**
  * Image extensions that we can render directly
@@ -311,11 +312,8 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
           <button
             onClick={e => {
               e.stopPropagation();
-              const a = document.createElement('a');
-            a.href = fileUrl;
-            a.download = filename;
-            a.click();
-          }}
+              triggerDownload(fileUrl, filename);
+            }}
           title="Download image"
           style={{
             position: 'absolute',
@@ -409,12 +407,7 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
           </div>
         </div>
         <button
-          onClick={() => {
-            const a = document.createElement('a');
-            a.href = fileUrl;
-            a.download = filename;
-            a.click();
-          }}
+          onClick={() => triggerDownload(fileUrl, filename)}
           title="Download file"
           style={{
             background: 'var(--accent)',
@@ -511,12 +504,7 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
 
       {/* Download button */}
       <button
-        onClick={() => {
-          const a = document.createElement('a');
-          a.href = fileUrl;
-          a.download = filename;
-          a.click();
-        }}
+        onClick={() => triggerDownload(fileUrl, filename)}
         title="Download file"
         style={{
           background: 'var(--accent)',

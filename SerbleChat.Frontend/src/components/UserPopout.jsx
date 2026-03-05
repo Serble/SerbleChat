@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import { openExternalLink } from '../electron-utils.js';
 import { bannerBg, nameTextColor } from '../userColor.js';
 import {
   getAccountById, getGuildRoles, getUserGuildRoles, addUserGuildRole, removeUserGuildRole,
@@ -21,7 +22,8 @@ function BlurbMarkdown({ content }) {
     p:      ({ children }) => <p style={{ margin: '0 0 0.4em', lineHeight: 1.55 }}>{children}</p>,
     a:      ({ href, children }) => (
       <a href={href} target="_blank" rel="noopener noreferrer"
-        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
+        onClick={(e) => { if (href) { e.preventDefault(); openExternalLink(href); } }}>
         {children}
       </a>
     ),

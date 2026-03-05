@@ -5,6 +5,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electron', {
   isElectron: () => ipcRenderer.invoke('is-electron'),
   platform: () => ipcRenderer.invoke('get-platform'),
+
+  // Open external URLs in the system browser
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Download a file via the native download manager (does not navigate the page)
+  downloadFile: (url) => ipcRenderer.invoke('download-file', url),
   
   // Keybind management
   getKeybinds: () => ipcRenderer.invoke('get-keybinds'),

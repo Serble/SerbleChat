@@ -8,6 +8,7 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { isPushSupported, getPushUnsupportedReason, getPermissionState, isPushEnabled, enablePush, disablePush } from '../push.js';
+import { openExternalLink } from '../electron-utils.js';
 import { isInstalled, canInstall, promptInstall, initPWAInstallPrompt } from '../pwa.js';
 import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from '../api.js';
 import { isElectron } from '../electron-utils.js';
@@ -409,7 +410,8 @@ function BlurbPreviewMarkdown({ content }) {
     p:      ({ children }) => <p style={{ margin: '0 0 0.45em', lineHeight: 1.6 }}>{children}</p>,
     a:      ({ href, children }) => (
       <a href={href} target="_blank" rel="noopener noreferrer"
-        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}>
+        style={{ color: 'var(--accent)', textDecoration: 'underline', wordBreak: 'break-all' }}
+        onClick={(e) => { if (href) { e.preventDefault(); openExternalLink(href); } }}>
         {children}
       </a>
     ),

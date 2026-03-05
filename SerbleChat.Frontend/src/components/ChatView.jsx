@@ -6,7 +6,7 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
          getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
-import { copyToClipboard } from '../electron-utils.js';
+import { copyToClipboard, openExternalLink, triggerDownload } from '../electron-utils.js';
 import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
@@ -91,13 +91,20 @@ const mdComponents = {
   p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
   a:          ({ href, children }) => {
     const isEmbedLink = href && (INVITE_RE().test(href) || MESSAGE_RE().test(href) || FILE_RE().test(href));
+    const handleClick = (e) => {
+      e.stopPropagation();
+      if (!isEmbedLink && href) {
+        e.preventDefault();
+        openExternalLink(href);
+      }
+    };
     return (
       <a
         href={href}
         target={isEmbedLink ? '_self' : '_blank'}
         rel="noopener noreferrer"
         style={{ color: 'var(--text-link)', textDecoration: 'underline' }}
-        onClick={e => e.stopPropagation()}
+        onClick={handleClick}
       >
         {children}
       </a>
@@ -1805,10 +1812,7 @@ export default function ChatView() {
               }} />
             <CtxBtn icon="💾" label="Save Image"
               onClick={() => {
-                const a = document.createElement('a');
-                a.href = imageCtxMenu.imageUrl;
-                a.download = imageCtxMenu.filename || 'image';
-                a.click();
+                triggerDownload(imageCtxMenu.imageUrl, imageCtxMenu.filename || 'image');
                 setImageCtxMenu(null);
               }} />
           </div>,

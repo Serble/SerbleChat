@@ -83,6 +83,22 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Intercept all new-window requests (target="_blank" links) and open in system browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url).catch(err => console.error('Failed to open external URL:', err));
+    return { action: 'deny' };
+  });
+
+  // Also intercept will-navigate to prevent external URLs from navigating the main window
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isFile = url.startsWith('file://');
+    const isLocalhost = url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1');
+    if (!isFile && !isLocalhost) {
+      event.preventDefault();
+      shell.openExternal(url).catch(err => console.error('Failed to open external URL:', err));
+    }
+  });
 }
 
 // Normalize keybind accelerator strings
@@ -409,6 +425,29 @@ function registerIPCHandlers() {
   // IPC handlers for any Electron-specific features
   ipcMain.handle('is-electron', () => true);
   ipcMain.handle('get-platform', () => process.platform);
+
+  // Open an external URL in the system browser
+  ipcMain.handle('open-external', async (event, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to open external URL:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Download a file via Electron's native download manager (no page navigation)
+  ipcMain.handle('download-file', async (event, url) => {
+    try {
+      if (!mainWindow) return { success: false, error: 'No main window' };
+      mainWindow.webContents.downloadURL(url);
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to trigger download:', err);
+      return { success: false, error: err.message };
+    }
+  });
 
   // Clipboard management
   ipcMain.handle('copy-to-clipboard', (event, text) => {

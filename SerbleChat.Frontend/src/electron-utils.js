@@ -66,6 +66,53 @@ export const navigateToRoot = () => {
 };
 
 /**
+ * Open an external URL in the system default browser.
+ * In Electron, uses shell.openExternal via IPC so the link opens outside the app.
+ * In a normal browser, opens a new tab.
+ *
+ * @param {string} url - The URL to open
+ */
+export const openExternalLink = async (url) => {
+  if (!url) return;
+  if (isElectron() && window.electron?.openExternal) {
+    try {
+      await window.electron.openExternal(url);
+      return;
+    } catch (err) {
+      console.error('Failed to open external link via Electron:', err);
+      // Fall through to web fallback
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+/**
+ * Trigger a file download without navigating the page.
+ * In Electron, uses the native download manager via IPC so that WebRTC/voice
+ * connections are NOT disrupted (avoids the will-navigate event).
+ * In a normal browser, opens the URL in a new tab (cross-origin a.download is
+ * ignored by browsers anyway, so this is the most reliable approach).
+ *
+ * @param {string} url - The file URL to download
+ * @param {string} [filename] - Suggested filename (used as fallback in browser only)
+ */
+export const triggerDownload = async (url, filename) => {
+  if (!url) return;
+  if (isElectron() && window.electron?.downloadFile) {
+    try {
+      await window.electron.downloadFile(url);
+      return;
+    } catch (err) {
+      console.error('Failed to trigger download via Electron:', err);
+      // Fall through to web fallback
+    }
+  }
+  // Browser fallback: open in new tab (Content-Disposition on the server
+  // controls whether it's shown inline or downloaded).
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+/**
  * Get the correct path for public assets (images, sounds, etc.)
  * In Electron production (file:// protocol), we need to use absolute file:// paths
  * In web/dev mode, we can use absolute paths starting with /
