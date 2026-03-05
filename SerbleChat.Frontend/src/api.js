@@ -283,6 +283,16 @@ export async function deleteMessage(channelId, messageId) {
   return handle(res);
 }
 
+/** PUT /channel/:channelId/message/:messageId  – edit a message's content */
+export async function editMessage(channelId, messageId, content) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/message/${encodeURIComponent(messageId)}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  return handle(res);
+}
+
 /** POST /channel/:channelId/messages/:messageId/read  – mark messages up to messageId as read */
 export async function markMessagesAsRead(channelId, messageId) {
   const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/read`, {

@@ -130,3 +130,12 @@ For when the user leaves a guild.
     "guildId": int
 }
 ```
+
+`MessageEdited`:
+```json
+{
+    "id": int,
+    "channelId": int,
+    "message": messagedata
+}
+```

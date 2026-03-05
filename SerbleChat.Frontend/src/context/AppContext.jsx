@@ -575,6 +575,19 @@ export function AppProvider({ children }) {
       });
     });
 
+    conn.on('MessageEdited', ({ id, channelId, message }) => {
+      const key = String(channelId);
+      setMessages(p => {
+        const existing = p[key];
+        if (!existing) return p;
+        const idx = existing.findIndex(m => String(m.id) === String(id));
+        if (idx === -1) return p;
+        const updated = [...existing];
+        updated[idx] = message;
+        return { ...p, [key]: updated };
+      });
+    });
+
     conn.on('FriendRequestReceived', async ({ fromUserId }) => {
       await getFriends().then(setFriends).catch(console.error);
       const u = await resolveUser(fromUserId);

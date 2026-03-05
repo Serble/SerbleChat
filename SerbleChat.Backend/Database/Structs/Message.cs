@@ -26,6 +26,9 @@ public class Message {
     [StringLength(16384)]
     [JsonProperty(PropertyName = "content")]
     public string Content { get; set; } = null!;
+
+    [JsonProperty(PropertyName = "edited_at")]
+    public DateTime? EditedAt { get; set; }
     
     // Navigation Properties
     [ApiJsonIgnore]

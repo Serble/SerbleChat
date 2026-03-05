@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
-import { getMessages, sendMessage, getChannel, deleteMessage, leaveOrDeleteGroupChat,
+import { getMessages, sendMessage, getChannel, deleteMessage, editMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
          getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
 import { copyToClipboard, openExternalLink, triggerDownload } from '../electron-utils.js';
@@ -202,8 +202,10 @@ function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   );
 }
 
-const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onImageContextMenu, onUserClick, getColor, mentionData, highlighted, guildId }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onImageContextMenu, onUserClick, getColor, mentionData, highlighted, guildId, isEditing, onEditSave, onEditCancel }) {
   const [author, setAuthor] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
+  const editRef = useRef(null);
 
   // Group consecutive messages from the same author
   const compact = prevMsg && prevMsg.authorId === msg.authorId &&
@@ -212,6 +214,21 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
   useEffect(() => {
     resolveUser(msg.authorId).then(setAuthor);
   }, [msg.authorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When entering edit mode, initialise draft from current content and focus + resize
+  useEffect(() => {
+    if (isEditing) {
+      setEditDraft(msg.content);
+      requestAnimationFrame(() => {
+        const el = editRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
+    }
+  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Memoize invite ID extraction — only re-runs when message content changes
   const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
@@ -238,6 +255,83 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       })();
 
+  // Shared inline edit UI
+  function renderEditArea() {
+    return (
+      <div style={{ marginTop: '0.2rem' }}>
+        <textarea
+          ref={editRef}
+          rows={1}
+          value={editDraft}
+          onChange={e => {
+            setEditDraft(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 320) + 'px';
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEditSave(editDraft); }
+            if (e.key === 'Escape') { e.preventDefault(); onEditCancel(); }
+          }}
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'var(--bg-input)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border)', borderRadius: '6px',
+            padding: '0.45rem 0.75rem', fontSize: '0.9rem',
+            outline: 'none', resize: 'none', lineHeight: 1.5,
+            fontFamily: 'inherit', minHeight: '2.2rem',
+            maxHeight: '20rem', overflowY: 'auto',
+            transition: 'border-color 0.15s',
+          }}
+          onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+          onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+          maxLength={16384}
+        />
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.3rem', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+          <span>Enter <span style={{ color: 'var(--text-subtle)' }}>to save</span></span>
+          <span style={{ color: 'var(--border)' }}>•</span>
+          <span>Esc <span style={{ color: 'var(--text-subtle)' }}>to cancel</span></span>
+        </div>
+      </div>
+    );
+  }
+
+  // Shared content UI (non-editing)
+  function renderContent() {
+    return (
+      <>
+        <MentionText
+          content={msg.content}
+          mdComponents={mdComponents}
+          mentionData={mentionData}
+          resolveUser={resolveUser}
+          onUserClick={onUserClick}
+          appendNode={msg.editedAt ? (
+            <span
+              title={`Edited ${parseUtcDate(msg.editedAt).toLocaleString()}`}
+              style={{ fontSize: '0.65rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginLeft: '0.25rem' }}
+            >
+              (edited)
+            </span>
+          ) : undefined}
+        />
+        {inviteIds.map(id => (
+          <InviteCard key={id} inviteId={id} />
+        ))}
+        {messageLinks.map(link => (
+          <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
+        ))}
+        {fileUrls.map(url => (
+          <FileEmbed
+            key={url}
+            fileUrl={url}
+            onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
+            onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
+          />
+        ))}
+      </>
+    );
+  }
+
   if (compact) {
     return (
       <div
@@ -250,21 +344,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           {ts}
         </span>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
-          <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
-          {inviteIds.map(id => (
-            <InviteCard key={id} inviteId={id} />
-          ))}
-          {messageLinks.map(link => (
-            <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
-          ))}
-          {fileUrls.map(url => (
-            <FileEmbed 
-              key={url} 
-              fileUrl={url}
-              onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
-              onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
-            />
-          ))}
+          {isEditing ? renderEditArea() : renderContent()}
         </div>
       </div>
     );
@@ -292,21 +372,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveU
           <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{tsHeader}</span>
         </div>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-          <MentionText content={msg.content} mdComponents={mdComponents} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} />
-          {inviteIds.map(id => (
-            <InviteCard key={id} inviteId={id} />
-          ))}
-          {messageLinks.map(link => (
-            <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
-          ))}
-          {fileUrls.map(url => (
-            <FileEmbed 
-              key={url} 
-              fileUrl={url}
-              onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
-              onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
-            />
-          ))}
+          {isEditing ? renderEditArea() : renderContent()}
         </div>
       </div>
     </div>
@@ -467,6 +533,9 @@ export default function ChatView() {
   // File uploads
   const fileUploads = useFileUploads();
   const [dragOver, setDragOver] = useState(false);
+  
+  // Message editing
+  const [editingMsgId, setEditingMsgId] = useState(null);
   
   // Image context menu
   const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, isModal, messageId? }
@@ -821,6 +890,43 @@ export default function ChatView() {
     }
   }
 
+  function handleEditFromContext() {
+    if (!ctxMenu) return;
+    setEditingMsgId(ctxMenu.msg.id);
+    setCtxMenu(null);
+  }
+
+  async function handleEditSave(content) {
+    if (!editingMsgId) return;
+    const msgId = editingMsgId;
+    const newContent = content.trim();
+    setEditingMsgId(null);
+    if (!newContent) return;
+
+    const msg = channelMessages.find(m => m.id === msgId);
+    if (!msg) return;
+
+    // Optimistically update the message
+    setMessages(p => ({
+      ...p,
+      [String(msg.channelId)]: (p[String(msg.channelId)] ?? []).map(m =>
+        m.id === msgId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
+      ),
+    }));
+
+    try {
+      await editMessage(msg.channelId, msgId, newContent);
+    } catch (err) {
+      console.error('Edit failed:', err);
+      // The server will send a MessageEdited event with the authoritative state,
+      // or the optimistic update will stand if the server later reconnects.
+    }
+  }
+
+  function handleEditCancel() {
+    setEditingMsgId(null);
+  }
+
   useEffect(() => {
     // Mark this channel as actively viewed (clears its unread count)
     setActiveChannelId(channelId);
@@ -844,6 +950,7 @@ export default function ChatView() {
     setSendError(null);
     setMentionPicker(null);
     setMentionData({ members: [], channels: [], roles: [] });
+    setEditingMsgId(null);
     userScrolledAway.current = false;
     
     // Reset pagination state for older messages
@@ -1243,6 +1350,14 @@ export default function ChatView() {
       e.preventDefault();
       handleSend(e);
     }
+    // Up arrow on empty input — edit last own message (Discord-style)
+    if (e.key === 'ArrowUp' && !input.trim() && !mentionPicker) {
+      const ownMessages = channelMessages.filter(m => !m._pending && m.authorId === currentUser?.id);
+      if (ownMessages.length > 0) {
+        e.preventDefault();
+        setEditingMsgId(ownMessages[ownMessages.length - 1].id);
+      }
+    }
   }
 
   const channelDisplayName = channel?.type === 1
@@ -1496,6 +1611,9 @@ export default function ChatView() {
                   mentionData={mentionData}
                   highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
                   guildId={guildIdForColor}
+                  isEditing={editingMsgId !== null && String(unit.msg.id) === String(editingMsgId)}
+                  onEditSave={handleEditSave}
+                  onEditCancel={handleEditCancel}
                 />
               );
             })}
@@ -1725,6 +1843,9 @@ export default function ChatView() {
             {(ctxMenu.msg.authorId === currentUser?.id || canManageMsgs) && (
               <>
                 <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
+                {ctxMenu.msg.authorId === currentUser?.id && (
+                  <CtxBtn icon="✏️" label="Edit Message" onClick={handleEditFromContext} />
+                )}
                 <CtxBtn icon="🗑" label="Delete Message" danger onClick={handleDelete} />
               </>
             )}

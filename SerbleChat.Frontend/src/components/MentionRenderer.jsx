@@ -134,7 +134,7 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
  *
  * Wrapped in React.memo so it only re-renders when its own props change.
  */
-export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick }) {
+export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick, appendNode }) {
   const [expanded, setExpanded] = useState(false);
   const { messageLinesLimit } = useClientOptions() ?? { messageLinesLimit: 28 };
   const collapsedMaxHeight = `${messageLinesLimit * 1.5}em`;
@@ -159,13 +159,43 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
 
   const isLong = (content.match(/\n/g)?.length ?? 0) >= messageLinesLimit;
 
+  // Index of the last 'text' part — used to decide where to inject inline badge
+  const lastTextIdx = appendNode
+    ? parts.reduce((acc, p, i) => (p.kind === 'text' ? i : acc), -1)
+    : -1;
+
+  /**
+   * Returns a modified mdComponents set where the last paragraph is
+   * display:'inline' so that appendNode follows it on the same line.
+   * A fresh closure is created each call, so the counter always starts at 0.
+   */
+  function makeInlineLastP(textValue) {
+    const total = Math.max(
+      1,
+      textValue.split(/\n\n+/).filter(s => s.trim().length > 0).length
+    );
+    let rendered = 0;
+    return {
+      ...mdComponents,
+      p: ({ children }) => {
+        rendered++;
+        const isLast = rendered >= total;
+        return (
+          <span style={{ display: isLast ? 'inline' : 'block', margin: isLast ? 0 : '0 0 0.45em' }}>
+            {children}
+          </span>
+        );
+      },
+    };
+  }
+
   const body = parts.length === 1 && parts[0].kind === 'text'
-    ? <SafeMarkdown content={content} components={mdComponents} />
+    ? <SafeMarkdown content={content} components={lastTextIdx === 0 ? makeInlineLastP(content) : mdComponents} />
     : (
       <>
         {parts.map((p, i) =>
           p.kind === 'text'
-            ? <SafeMarkdown key={i} content={p.value} components={mdComponents} />
+            ? <SafeMarkdown key={i} content={p.value} components={i === lastTextIdx ? makeInlineLastP(p.value) : mdComponents} />
             : <MentionChip
                 key={i}
                 type={p.type}
@@ -178,7 +208,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
       </>
     );
 
-  if (!isLong) return body;
+  if (!isLong) return <>{body}{appendNode}</>;
 
   return (
     <div>
@@ -208,6 +238,7 @@ export const MentionText = React.memo(function MentionText({ content, mdComponen
       >
         {expanded ? '▲ Show less' : '▼ Show more'}
       </button>
+      {appendNode}
     </div>
   );
 });

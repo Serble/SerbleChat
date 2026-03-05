@@ -83,6 +83,35 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok();
     }
 
+    [HttpPut("{channelId:long}/message/{messageId:long}")]
+    public async Task<ActionResult<Message>> EditMessage(long channelId, long messageId, [FromBody] EditMessageBody body) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+        
+        Message? message = await msgs.GetMessage(messageId);
+        if (message == null || message.ChannelId != channelId) {
+            return NotFound("Message not found");
+        }
+
+        if (message.AuthorId != userId) {
+            return Forbid();
+        }
+        
+        if (body.Content != null) {
+            message.Content = body.Content;
+        }
+        message.EditedAt = DateTime.UtcNow;
+        await msgs.UpdateMessage(message);
+        await updates.Clients.Group($"channel-{channelId}").SendAsync("MessageEdited", new {
+            message.Id,
+            ChannelId = channelId,
+            Message = message
+        });
+        return Ok(message);
+    }
+
     [HttpDelete("{channelId:long}/message/{messageId:long}")]
     public async Task<ActionResult> DeleteMessage(long channelId, long messageId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
