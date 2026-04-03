@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMobile } from '../context/MobileContext.jsx';
 import { updateGuildChannel, deleteGuildChannel, uploadChannelIcon, deleteChannelIcon, getChannelIconUrl } from '../api.js';
+import { CloseIcon } from '../icons.jsx';
 
 const labelStyle = {
   display: 'block', fontSize: '0.72rem', fontWeight: 700,
@@ -138,7 +139,7 @@ export default function ChannelSettingsModal({ guildId, channel, canManage, onCl
               fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem',
               borderRadius: '4px', transition: 'color 0.15s',
             }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
 
         {/* Content */}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme, THEME_PROPS } from '../context/ThemeContext.jsx';
+import { PaletteIcon, CloseIcon, CheckIcon, TrashIcon } from '../icons.jsx';
 
 // Group THEME_PROPS by their group field
 const GROUPS = [...new Set(THEME_PROPS.map(p => p.group))];
@@ -190,13 +191,13 @@ export default function ThemeEditorModal({ onClose }) {
           borderBottom: '1px solid var(--border)', flexShrink: 0,
         }}>
           <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
-            🎨 Themes
+            <><PaletteIcon size={16} /> Themes</>
           </span>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', color: 'var(--text-muted)',
             fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.1rem 0.3rem',
             borderRadius: 4,
-          }}>✕</button>
+          }}><CloseIcon size={14} /></button>
         </div>
 
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -264,7 +265,7 @@ export default function ThemeEditorModal({ onClose }) {
                 }}
                 className="hov-text-secondary-border"
               >
-                ⬆ Import JSON
+                ↑ Import JSON
               </button>
               {importError && (
                 <div style={{ fontSize: '0.72rem', color: 'var(--danger)', padding: '0 0.25rem', lineHeight: 1.4 }}>
@@ -336,7 +337,7 @@ export default function ThemeEditorModal({ onClose }) {
             }}
             className="hov-bg"
           >
-            ⬇ Export JSON
+            ↓ Export JSON
           </button>
 
           <div style={{ display: 'flex', gap: '0.6rem' }}>
@@ -405,7 +406,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
             fontSize: '0.65rem', padding: '0.1rem 0.3rem', cursor: 'pointer',
           }}
         >
-          {active ? '✓' : 'Use'}
+          {active ? <><CheckIcon size={10} /> Active</> : 'Use'}
         </button>
         {/* Delete custom only */}
         {onDelete && (
@@ -419,7 +420,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
             }}
             className="hov-color-danger"
           >
-            🗑
+            <TrashIcon size={14} />
           </button>
         )}
       </div>

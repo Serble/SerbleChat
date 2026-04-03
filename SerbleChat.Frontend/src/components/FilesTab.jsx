@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { filesAuthenticateWithCode, filesGetAccount, filesGetLimits, filesGetUsage, formatBytes, FILES_OAUTH_URL, FILES_CLIENT_ID, FILES_REDIRECT_URI } from '../filesApi.js';
 import { isElectron, electronOAuthFlow } from '../electron-utils.js';
+import { FolderIcon, KeyLockIcon } from '../icons.jsx';
 
 /**
  * Helper: treat -1 as unlimited
@@ -141,7 +142,7 @@ export function FilesTab({ isActive }) {
   return (
     <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
       <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-        📁 Files API
+        <><FolderIcon size={16} /> Files API</>
       </h3>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
         Authenticate with the Files API to upload files for sharing in chat. Files are stored securely and can be set to expire.
@@ -164,7 +165,7 @@ export function FilesTab({ isActive }) {
       {!filesApiToken ? (
         // Not authenticated
         <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: '1.5rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🔐</div>
+          <KeyLockIcon size={32} style={{ marginBottom: '0.75rem' }} />
           <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
             Not connected to Files API
           </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { acceptGuildInvite, getGuildInvite, getGuildIconUrl } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
+import { CastleIcon, CheckIcon } from '../icons.jsx';
 
 /**
  * A compact card shown when a guild invite link appears in a message.
@@ -92,7 +93,7 @@ export default function InviteCard({ inviteId }) {
             }}
           />
         )}
-        {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : '🏰')}
+        {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : <CastleIcon size={24} />)}
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -117,7 +118,7 @@ export default function InviteCard({ inviteId }) {
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flexShrink: 0 }}>Joining…</span>
       )}
       {state === 'joined' && (
-        <span style={{ fontSize: '0.82rem', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}>✓ Joined!</span>
+        <span style={{ fontSize: '0.82rem', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}><><CheckIcon size={12} /> Joined!</></span>
       )}
       {state === 'already' && (
         <button onClick={() => nav(`/app/friends`)}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { XCircleIcon, CloseIcon } from '../icons.jsx';
 
 /**
  * Modal image viewer that displays an image fullscreen with a dark overlay.
@@ -92,7 +93,7 @@ export default function ImageModal({ isOpen, imageUrl, onClose, filename, onCont
               textAlign: 'center',
             }}
           >
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>❌</div>
+            <XCircleIcon size={32} />
             Failed to load image
           </div>
         )}
@@ -151,7 +152,7 @@ export default function ImageModal({ isOpen, imageUrl, onClose, filename, onCont
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
         >
-          ✕
+          <CloseIcon size={14} />
         </button>
 
         {/* Filename display */}

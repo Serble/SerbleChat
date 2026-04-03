@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
+import { InfoIcon, CheckCircleIcon, WarningIcon, ErrorDotIcon, CloseIcon } from '../icons.jsx';
 
 const TYPE_STYLES = {
-  info:    { bg: 'var(--bg-secondary)', border: 'var(--accent)', icon: 'ℹ️' },
-  success: { bg: 'rgba(35, 165, 90, 0.15)', border: 'rgba(35, 165, 90, 0.4)', icon: '✅' },
-  warning: { bg: 'rgba(240, 178, 50, 0.15)', border: 'rgba(240, 178, 50, 0.4)', icon: '⚠️' },
-  danger:  { bg: 'rgba(242, 63, 67, 0.15)', border: 'rgba(242, 63, 67, 0.4)', icon: '🔴' },
+  info:    { bg: 'var(--bg-secondary)', border: 'var(--accent)', icon: InfoIcon },
+  success: { bg: 'rgba(35, 165, 90, 0.15)', border: 'rgba(35, 165, 90, 0.4)', icon: CheckCircleIcon },
+  warning: { bg: 'rgba(240, 178, 50, 0.15)', border: 'rgba(240, 178, 50, 0.4)', icon: WarningIcon },
+  danger:  { bg: 'rgba(242, 63, 67, 0.15)', border: 'rgba(242, 63, 67, 0.4)', icon: ErrorDotIcon },
 };
 
 function Toast({ toast, onRemove }) {
@@ -30,7 +31,7 @@ function Toast({ toast, onRemove }) {
         animation: 'slideIn 0.2s ease',
       }}
     >
-      <span style={{ fontSize: '1rem', flexShrink: 0, lineHeight: 1.4 }}>{style.icon}</span>
+      <span style={{ flexShrink: 0, lineHeight: 1.4 }}><style.icon size={16} /></span>
       <div style={{ flex: 1 }}>
         {toast.title && (
           <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.875rem', marginBottom: toast.body ? '0.2rem' : 0 }}>
@@ -51,7 +52,7 @@ function Toast({ toast, onRemove }) {
         }}
         className="hov-text-primary"
       >
-        ✕
+        <CloseIcon size={14} />
       </button>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMobile } from '../context/MobileContext.jsx';
 import { uploadGroupChatIcon, deleteGroupChatIcon, getGroupChatIconUrl } from '../api.js';
+import { CloseIcon, PeopleIcon } from '../icons.jsx';
 
 const labelStyle = {
   display: 'block', fontSize: '0.72rem', fontWeight: 700,
@@ -100,7 +101,7 @@ export default function GroupChatSettingsModal({ chat, onClose, channelUpdatedEv
               fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem',
               borderRadius: '4px', transition: 'color 0.15s',
             }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
 
         {/* Content */}
@@ -127,7 +128,7 @@ export default function GroupChatSettingsModal({ chat, onClose, channelUpdatedEv
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 ) : (
-                  '👥'
+                  <PeopleIcon size={40} />
                 )}
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

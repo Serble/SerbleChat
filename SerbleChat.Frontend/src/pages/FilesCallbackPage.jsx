@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { filesAuthenticateWithCode } from '../filesApi.js';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { LightningIcon, CheckIcon, WarningIcon } from '../icons.jsx';
 
 // Inject loading animation styles
 if (typeof document !== 'undefined' && !document.getElementById('files-callback-styles')) {
@@ -150,7 +151,7 @@ export default function FilesCallbackPage() {
         {stage === 'init' || stage === 'exchanging' ? (
           <div style={s.loadingContainer}>
             <div style={{ ...s.spinner, ...{} }} className="callback-spinner">
-              ⚡
+              <LightningIcon size={48} />
             </div>
             <h2 style={s.title}>Authenticating Files API...</h2>
             <p style={s.subtitle}>
@@ -162,7 +163,7 @@ export default function FilesCallbackPage() {
         {/* Success State */}
         {stage === 'success' && (
           <div style={s.loadingContainer}>
-            <div style={{ fontSize: '3rem' }}>✓</div>
+            <CheckIcon size={48} />
             <h2 style={s.title}>Files API Connected!</h2>
             <p style={s.subtitle}>Redirecting you to the app...</p>
           </div>
@@ -172,7 +173,7 @@ export default function FilesCallbackPage() {
         {stage === 'error' && (
           <>
             <div style={s.statusError}>
-              <div style={s.errorTitle}>⚠️ {errorTitle}</div>
+              <div style={s.errorTitle}><WarningIcon size={20} /> {errorTitle}</div>
               <div style={s.errorMessage}>{errorMessage}</div>
             </div>
             <div style={s.buttonGroup}>

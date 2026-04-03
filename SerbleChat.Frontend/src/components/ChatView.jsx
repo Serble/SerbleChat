@@ -23,6 +23,7 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
+import { ClipboardIcon, LinkIcon, IdCardIcon, EditIcon, TrashIcon, GlobeIcon, SaveIcon, PersonIcon, PeopleIcon, ChatIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon, AttachmentIcon, WaveIcon, CheckCircleIcon, BlockIcon, CloseIcon, LockIcon, CheckIcon } from '../icons.jsx';
 import { FileUploadPanel, useFileUploads } from './FileUploadPanel.jsx';
 
 /**
@@ -172,7 +173,7 @@ function CtxBtn({ icon, label, onClick, danger, copied }) {
         transition: 'background 0.1s, color 0.1s',
       }}
     >
-      <span style={{ width: '1.1em', textAlign: 'center', flexShrink: 0 }}>{copied ? '✓' : icon}</span>
+      <span style={{ width: '1.1em', textAlign: 'center', flexShrink: 0 }}>{copied ? <CheckIcon size={14} /> : (() => { const I = icon; return I ? <I size={14} /> : null; })()}</span>
       {copied ? 'Copied!' : label}
     </button>
   );
@@ -396,7 +397,7 @@ function BlockedInputBanner({ username, userId, unblockUser }) {
       background: 'rgba(242,63,67,0.08)', border: '1px solid rgba(242,63,67,0.25)',
       borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.875rem',
     }}>
-      <span style={{ flexShrink: 0, fontSize: '1rem' }}>🚫</span>
+      <BlockIcon size={16} style={{ flexShrink: 0 }} />
       <span style={{ flex: 1 }}>
         You have blocked <strong style={{ color: 'var(--text-secondary)' }}>{username}</strong>. You cannot send messages until you unblock them.
       </span>
@@ -489,7 +490,7 @@ function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, on
       }}
       className="hov-bg"
     >
-      <span style={{ fontSize: '0.95rem', flexShrink: 0 }}>🚫</span>
+      <BlockIcon size={15} style={{ flexShrink: 0 }} />
       <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flex: 1 }}>
         {count === 1
           ? `1 message from blocked user ${name}`
@@ -1364,7 +1365,7 @@ export default function ChatView() {
     ? (otherUser?.username ?? '…')
     : (channel?.name ?? `Channel ${channelId}`);
 
-  const channelIcon = channel?.type === 1 ? '👤' : channel?.type === 2 ? '👥' : '#';
+  const channelIcon = channel?.type === 1 ? PersonIcon : channel?.type === 2 ? PeopleIcon : '#';
 
   // ── Drag and drop ───────────────────────────────────────────────────────────
 
@@ -1434,7 +1435,7 @@ export default function ChatView() {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💬</div>
+          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}><ChatIcon size={32} /></div>
           <div>Loading…</div>
         </div>
       </div>
@@ -1466,7 +1467,7 @@ export default function ChatView() {
                 cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
                 padding: '0.25rem', marginRight: '0.15rem', flexShrink: 0,
               }}
-            >☰</button>
+            ><MenuIcon size={18} /></button>
           )}
           {/* Channel icon display */}
           {isGroupChannel && hasChannelIcon ? (
@@ -1482,7 +1483,7 @@ export default function ChatView() {
               }}
             />
           ) : (
-            <span style={{ fontSize: '1rem' }}>{channelIcon}</span>
+            <span style={{ fontSize: '1rem' }}>{typeof channelIcon === 'string' ? channelIcon : (() => { const I = channelIcon; return <I size={16} />; })()}</span>
           )}
           <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             {/* Guild channel icon (if exists) */}
@@ -1514,20 +1515,20 @@ export default function ChatView() {
               active={voiceChannelId === Number(channelId)}
               disabled={voiceBusy || voiceStatus === 'connecting'}
             >
-              {voiceChannelId === Number(channelId) ? '🔊' : '🎙️'}
+              {voiceChannelId === Number(channelId) ? <SpeakerIcon size={16} /> : <MicIcon size={16} />}
             </HeaderBtn>
           )}
 
           {isGroupChannel && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
               {isOwner && (
-                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}>➕</HeaderBtn>
+                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}><PlusIcon size={16} /></HeaderBtn>
               )}
-              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}>🚪</HeaderBtn>
+              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}><DoorIcon size={16} /></HeaderBtn>
             </div>
           )}
 
-          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}>👥</HeaderBtn>
+          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}><PeopleIcon size={16} /></HeaderBtn>
         </div>
 
         {/* Drag and drop overlay */}
@@ -1560,7 +1561,7 @@ export default function ChatView() {
               fontWeight: 600,
               textAlign: 'center',
             }}>
-              <div style={{ fontSize: '2.5rem' }}>📎</div>
+              <div style={{ fontSize: '2.5rem' }}><AttachmentIcon size={40} /></div>
               <div>Drop files to upload</div>
             </div>
           </div>
@@ -1644,7 +1645,7 @@ export default function ChatView() {
             {channelMessages.length === 0 && !loading && (
               <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                  {channel?.type === 1 ? '👋' : '🎉'}
+                  {channel?.type === 1 ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
                 </div>
                 <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
                   {channel?.type === 1
@@ -1697,13 +1698,13 @@ export default function ChatView() {
                 background: 'rgba(242,63,67,0.12)', border: '1px solid rgba(242,63,67,0.35)',
                 borderRadius: '6px', color: '#f23f43', fontSize: '0.83rem',
               }}>
-                <span style={{ flexShrink: 0 }}>🚫</span>
+                <span style={{ flexShrink: 0 }}><BlockIcon size={16} /></span>
                 <span style={{ flex: 1 }}>{sendError}</span>
                 <button
                   onClick={() => setSendError(null)}
                   style={{ background: 'none', border: 'none', color: '#f23f43', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 0.1rem', opacity: 0.7, flexShrink: 0 }}
                   title="Dismiss"
-                >✕</button>
+                ><CloseIcon size={14} /></button>
               </div>
             )}
             <form onSubmit={handleSend} style={{ position: 'relative' }}>
@@ -1759,7 +1760,7 @@ export default function ChatView() {
                   }}
                   className={!fileUploads.uploading ? 'hov-color-accent' : undefined}
                 >
-                  📎
+              <AttachmentIcon size={16} />
                 </button>
                 
                 {/* Hidden file input */}
@@ -1810,7 +1811,7 @@ export default function ChatView() {
           </>
           ) : (
             <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center' }}>
-              🔒 You don't have permission to send messages here.
+              <LockIcon size={14} /> You don't have permission to send messages here.
             </div>
           )}
         </div>
@@ -1818,14 +1819,14 @@ export default function ChatView() {
         {/* Context menu */}
         {ctxMenu && (
           <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
-            <CtxBtn icon="📋" label="Copy Text"
+            <CtxBtn icon={ClipboardIcon} label="Copy Text"
               copied={copiedCtx === 'text'}
               onClick={() => {
                 copyToClipboard(ctxMenu.msg.content).catch(err => console.error('Failed to copy text:', err));
                 setCopiedCtx('text');
                 setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
               }} />
-            <CtxBtn icon="🔗" label="Copy Message Link"
+            <CtxBtn icon={LinkIcon} label="Copy Message Link"
               copied={copiedCtx === 'link'}
               onClick={() => {
                 const url = `${FRONTEND_URL}/app/channel/${ctxMenu.msg.channelId}?message=${ctxMenu.msg.id}`;
@@ -1833,7 +1834,7 @@ export default function ChatView() {
                 setCopiedCtx('link');
                 setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
               }} />
-            <CtxBtn icon="🪪" label="Copy Message ID"
+            <CtxBtn icon={IdCardIcon} label="Copy Message ID"
               copied={copiedCtx === 'id'}
               onClick={() => {
                 copyToClipboard(String(ctxMenu.msg.id)).catch(err => console.error('Failed to copy message ID:', err));
@@ -1844,9 +1845,9 @@ export default function ChatView() {
               <>
                 <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
                 {ctxMenu.msg.authorId === currentUser?.id && (
-                  <CtxBtn icon="✏️" label="Edit Message" onClick={handleEditFromContext} />
+                  <CtxBtn icon={EditIcon} label="Edit Message" onClick={handleEditFromContext} />
                 )}
-                <CtxBtn icon="🗑" label="Delete Message" danger onClick={handleDelete} />
+                <CtxBtn icon={TrashIcon} label="Delete Message" danger onClick={handleDelete} />
               </>
             )}
           </div>
@@ -1858,7 +1859,7 @@ export default function ChatView() {
             {/* If message context (not modal), show message options first */}
             {!imageCtxMenu.isModal && imageCtxMenu.messageId && (
               <>
-                <CtxBtn icon="📋" label="Copy Text"
+                <CtxBtn icon={ClipboardIcon} label="Copy Text"
                   copied={copiedImageCtx === 'text'}
                   onClick={() => {
                     const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
@@ -1868,7 +1869,7 @@ export default function ChatView() {
                       setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
                     }
                   }} />
-                <CtxBtn icon="🔗" label="Copy Message Link"
+                <CtxBtn icon={LinkIcon} label="Copy Message Link"
                   copied={copiedImageCtx === 'link'}
                   onClick={() => {
                     const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
@@ -1884,19 +1885,19 @@ export default function ChatView() {
             )}
             
             {/* Image-specific options */}
-            <CtxBtn icon="🔗" label="Copy Image Link"
+            <CtxBtn icon={LinkIcon} label="Copy Image Link"
               copied={copiedImageCtx === 'image-link'}
               onClick={() => {
                 copyToClipboard(imageCtxMenu.imageUrl).catch(err => console.error('Failed to copy image link:', err));
                 setCopiedImageCtx('image-link');
                 setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
               }} />
-            <CtxBtn icon="🌐" label="Open Image"
+            <CtxBtn icon={GlobeIcon} label="Open Image"
               onClick={() => {
                 window.open(imageCtxMenu.imageUrl, '_blank');
                 setImageCtxMenu(null);
               }} />
-            <CtxBtn icon="📋" label="Copy Image"
+            <CtxBtn icon={ClipboardIcon} label="Copy Image"
               copied={copiedImageCtx === 'image'}
               onClick={() => {
                 fetch(imageCtxMenu.imageUrl)
@@ -1931,7 +1932,7 @@ export default function ChatView() {
                     setImageCtxMenu(null);
                   });
               }} />
-            <CtxBtn icon="💾" label="Save Image"
+            <CtxBtn icon={SaveIcon} label="Save Image"
               onClick={() => {
                 triggerDownload(imageCtxMenu.imageUrl, imageCtxMenu.filename || 'image');
                 setImageCtxMenu(null);

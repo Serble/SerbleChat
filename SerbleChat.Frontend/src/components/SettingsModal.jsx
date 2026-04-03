@@ -14,6 +14,7 @@ import { uploadProfilePicture, deleteProfilePicture, getProfilePictureUrl } from
 import { isElectron } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import { FilesTab } from './FilesTab.jsx';
+import { PersonIcon, FolderIcon, PaletteIcon, ChatIcon, MicIcon, BellIcon, BellOffIcon, KeyboardIcon, BlockIcon, EyeIcon, TrashIcon, BrainIcon, RefreshIcon, SpeakerIcon, CheckIcon, WarningIcon, XCircleIcon, CloseIcon, GearIcon, LightbulbIcon, InheritIcon, ErrorDotIcon } from '../icons.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -109,7 +110,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
             fontSize: '0.65rem', padding: '0.1rem 0.3rem', cursor: 'pointer',
           }}
         >
-          {active ? '✓' : 'Use'}
+          {active ? <CheckIcon size={10} /> : 'Use'}
         </button>
         {onDelete && (
           <button
@@ -122,7 +123,7 @@ function ThemeListItem({ theme, active, editing, onSelect, onActivate, onDelete 
             }}
             className="hov-color-danger"
           >
-            🗑
+            <TrashIcon size={14} />
           </button>
         )}
       </div>
@@ -309,7 +310,7 @@ function AppearanceTab() {
               }}
               className="hov-text-secondary-border"
             >
-              ⬆ Import JSON
+              ↑ Import JSON
             </button>
             {importError && (
               <div style={{ fontSize: '0.72rem', color: 'var(--danger)', padding: '0 0.25rem', lineHeight: 1.4 }}>
@@ -382,7 +383,7 @@ function AppearanceTab() {
           }}
           className="hov-bg"
         >
-          ⬇ Export JSON
+          ↓ Export JSON
         </button>
         <button
           onClick={handleApply}
@@ -676,12 +677,12 @@ function ProfileTab() {
           </button>
           {/* Status messages */}
           {pfpStatus === 'uploading' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Uploading…</span>}
-          {pfpStatus === 'success' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Uploaded</span>}
+          {pfpStatus === 'success' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}><CheckIcon size={11} /> Uploaded</span>}
           {pfpStatus === 'deleting' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Deleting…</span>}
-          {pfpStatus === 'deleted' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Deleted</span>}
-          {pfpStatus === 'error' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed</span>}
-          {pfpStatus === 'error-type' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Only images allowed</span>}
-          {pfpStatus === 'error-size' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Max 5MB</span>}
+          {pfpStatus === 'deleted' && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}><CheckIcon size={11} /> Deleted</span>}
+          {pfpStatus === 'error' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}><XCircleIcon size={11} /> Failed</span>}
+          {pfpStatus === 'error-type' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}><XCircleIcon size={11} /> Only images allowed</span>}
+          {pfpStatus === 'error-size' && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}><XCircleIcon size={11} /> Max 5MB</span>}
         </div>
       </div>
 
@@ -763,8 +764,8 @@ function ProfileTab() {
               </button>
             )}
             {colorSaveStatus === 'saving' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Saving…</span>}
-            {colorSaveStatus === 'saved'  && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Saved</span>}
-            {colorSaveStatus === 'error'  && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed</span>}
+            {colorSaveStatus === 'saved'  && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}><CheckIcon size={11} /> Saved</span>}
+            {colorSaveStatus === 'error'  && <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}><XCircleIcon size={11} /> Failed</span>}
           </div>
         </div>
 
@@ -883,10 +884,10 @@ function ProfileTab() {
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Saving…</span>
           )}
           {saveStatus === 'saved' && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>✓ Saved</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}><CheckIcon size={11} /> Saved</span>
           )}
           {saveStatus === 'error' && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>❌ Failed to save</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}><XCircleIcon size={11} /> Failed to save</span>
           )}
           <button
             onClick={handleSave}
@@ -975,19 +976,19 @@ function ChatTab() {
     {
       id: 'masked',
       label: 'Masked',
-      icon: '🚫',
+      icon: BlockIcon,
       description: 'Show a collapsed "message from blocked user" placeholder that can be expanded on click.',
     },
     {
       id: 'visible',
       label: 'Fully visible',
-      icon: '👁️',
+      icon: EyeIcon,
       description: 'Show messages from blocked users exactly like any other message.',
     },
     {
       id: 'hidden',
       label: 'Hidden',
-      icon: '🗑️',
+      icon: TrashIcon,
       description: 'Completely remove messages from blocked users — they will not appear at all.',
     },
   ];
@@ -1132,7 +1133,7 @@ function ChatTab() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-                    <span style={{ fontSize: '0.95rem' }}>{mode.icon}</span>
+                    <span style={{ fontSize: '0.95rem' }}>{(() => { const I = mode.icon; return I ? <I size={15} /> : null; })()}</span>
                     <span style={{ fontSize: '0.9rem', fontWeight: 600, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                       {mode.label}
                     </span>
@@ -1161,9 +1162,9 @@ function ChatTab() {
 // NotificationPreference enum: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
 // For user defaults, Inherit is NOT valid (they are the bottom of the hierarchy).
 const NOTIF_PREF_OPTIONS = [
-  { value: 1, icon: '🔔', label: 'All Messages',  desc: 'Every new message' },
-  { value: 2, icon: '💬', label: 'Mentions Only', desc: 'Only when @mentioned' },
-  { value: 3, icon: '🔕', label: 'Nothing',       desc: 'Never notify' },
+  { value: 1, icon: BellIcon,    label: 'All Messages',  desc: 'Every new message' },
+  { value: 2, icon: ChatIcon,    label: 'Mentions Only', desc: 'Only when @mentioned' },
+  { value: 3, icon: BellOffIcon, label: 'Nothing',       desc: 'Never notify' },
 ];
 
 function NotifPrefPicker({ label, field, value, onChange }) {
@@ -1197,7 +1198,7 @@ function NotifPrefPicker({ label, field, value, onChange }) {
               }}>
                 {active && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
               </div>
-              <span style={{ fontSize: '1rem' }}>{opt.icon}</span>
+              <span style={{ fontSize: '1rem' }}>{(() => { const I = opt.icon; return I ? <I size={15} /> : null; })()}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '0.875rem', fontWeight: active ? 600 : 400, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                   {opt.label}
@@ -1230,13 +1231,13 @@ function NotifPrefsSection({ title, description, notifValue, unreadsValue, onNot
       )}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
         <NotifPrefPicker
-          label="🔔 Notifications"
+          label={<><BellIcon size={13} /> Notifications</>}
           field="notifications"
           value={notifValue}
           onChange={onNotifChange}
         />
         <NotifPrefPicker
-          label="🔴 Unread Badge"
+          label={<><ErrorDotIcon size={13} /> Unread Badge</>}
           field="unreads"
           value={unreadsValue}
           onChange={onUnreadsChange}
@@ -1258,7 +1259,7 @@ function VoiceAudioTab() {
     {
       key: 'rnnoise',
       label: 'AI Noise Suppression (RNNoise)',
-      icon: '🧠',
+      icon: BrainIcon,
       description: 'Uses advanced AI to filter out background noise (recommended).',
     },
   ];
@@ -1344,7 +1345,7 @@ function VoiceAudioTab() {
           }}
           className={!devicesLoading ? 'hov-bg' : undefined}
         >
-          🔄 Refresh
+          <RefreshIcon size={14} /> Refresh
         </button>
       </div>
 
@@ -1357,7 +1358,7 @@ function VoiceAudioTab() {
           border: '1px solid var(--border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.95rem' }}>🎤</span>
+            <MicIcon size={15} />
             <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Input Device
             </span>
@@ -1403,7 +1404,7 @@ function VoiceAudioTab() {
           border: '1px solid var(--border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.95rem' }}>🔊</span>
+            <SpeakerIcon size={15} />
             <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Output Device
             </span>
@@ -1459,7 +1460,7 @@ function VoiceAudioTab() {
         marginBottom: '1.5rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-          <span style={{ fontSize: '0.95rem' }}>🎤</span>
+          <MicIcon size={15} />
           <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
             Input Volume
           </span>
@@ -1565,7 +1566,7 @@ function VoiceAudioTab() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-                  <span style={{ fontSize: '0.95rem' }}>{opt.icon}</span>
+                  <span style={{ fontSize: '0.95rem' }}>{(() => { const I = opt.icon; return I ? <I size={15} /> : null; })()}</span>
                   <span style={{ fontSize: '0.9rem', fontWeight: 600, color: enabled ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                     {opt.label}
                   </span>
@@ -1599,7 +1600,7 @@ function VoiceAudioTab() {
         marginBottom: '1.5rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-          <span style={{ fontSize: '0.95rem' }}>🎤</span>
+          <MicIcon size={15} />
           <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
             Input Detection Mode
           </span>
@@ -1758,7 +1759,7 @@ function NotificationsTab() {
         )}
         {saveStatus === 'saved' && (
           <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>
-            ✓ Saved
+            <CheckIcon size={11} /> Saved
           </span>
         )}
       </div>
@@ -1774,12 +1775,12 @@ function NotificationsTab() {
 
       {!pushSupported ? (
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.75rem', lineHeight: 1.5 }}>
-          ⚠️ Your browser does not support Web Push notifications.
+          <WarningIcon size={14} /> Your browser does not support Web Push notifications.
         </div>
       ) : getPushUnsupportedReason() ? (
         <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.6, marginBottom: '0.4rem' }}>
-            ⚠️ Push notifications are not available in this environment:
+            <WarningIcon size={14} /> Push notifications are not available in this environment:
           </div>
           <pre style={{
             margin: 0, padding: '0.5rem 0.65rem',
@@ -1825,12 +1826,12 @@ function NotificationsTab() {
           </div>
           {pushStatus.outcome === 'denied' && (
             <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.5 }}>
-              ❌ {pushStatus.message || 'Notification permission was denied. Please allow notifications in your browser settings and try again.'}
+              <XCircleIcon size={14} /> {pushStatus.message || 'Notification permission was denied. Please allow notifications in your browser settings and try again.'}
             </div>
           )}
           {pushStatus.outcome === 'error' && (
             <div style={{ fontSize: '0.78rem', color: 'var(--danger)', lineHeight: 1.6 }}>
-              <div style={{ marginBottom: '0.3rem' }}>❌ Failed to enable push notifications:</div>
+              <div style={{ marginBottom: '0.3rem' }}><XCircleIcon size={14} /> Failed to enable push notifications:</div>
               <pre style={{
                 margin: 0, padding: '0.5rem 0.65rem',
                 background: 'var(--bg-secondary)', borderRadius: 6,
@@ -1842,7 +1843,7 @@ function NotificationsTab() {
           )}
           {pushStatus.outcome === 'granted' && (
             <div style={{ fontSize: '0.78rem', color: 'var(--success)', lineHeight: 1.5 }}>
-              ✓ Push notifications enabled!
+              <CheckIcon size={11} /> Push notifications enabled!
             </div>
           )}
           {getPermissionState() === 'denied' && (
@@ -1912,7 +1913,7 @@ function NotificationsTab() {
               </>
             ) : (
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                💡 SerbleChat can be installed as an app on supported browsers. 
+                <LightbulbIcon size={14} /> SerbleChat can be installed as an app on supported browsers. 
                 The install option will appear automatically when available.
               </div>
             )}
@@ -2234,7 +2235,7 @@ function KeybindsTab({ isActive }) {
           marginBottom: '1.5rem',
           lineHeight: 1.5
         }}>
-          <strong style={{ color: 'var(--warning)' }}>⚠️ Warning:</strong> This key combination cannot be registered as a global shortcut due to OS limitations. The binding will be saved but may not work as a global hotkey.
+          <strong style={{ color: 'var(--warning)' }}><WarningIcon size={14} /> Warning:</strong> This key combination cannot be registered as a global shortcut due to OS limitations. The binding will be saved but may not work as a global hotkey.
         </div>
       )}
 
@@ -2280,13 +2281,13 @@ function KeybindsTab({ isActive }) {
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 const BASE_TABS = [
-  { id: 'profile',       icon: '👤', label: 'Profile',       section: 'MY ACCOUNT' },
-  { id: 'files',         icon: '📁', label: 'Files',         section: 'MY ACCOUNT' },
-  { id: 'appearance',    icon: '🎨', label: 'Appearance',    section: 'APP SETTINGS' },
-  { id: 'chat',          icon: '💬', label: 'Chat',          section: 'APP SETTINGS' },
-  { id: 'voiceAudio',    icon: '🎙️', label: 'Voice Audio',   section: 'APP SETTINGS' },
-  { id: 'notifications', icon: '🔔', label: 'Notifications', section: 'APP SETTINGS' },
-  { id: 'keybinds',      icon: '⌨️', label: 'Keybinds',      section: 'APP SETTINGS' },
+  { id: 'profile',       icon: PersonIcon,   label: 'Profile',       section: 'MY ACCOUNT' },
+  { id: 'files',         icon: FolderIcon,   label: 'Files',         section: 'MY ACCOUNT' },
+  { id: 'appearance',    icon: PaletteIcon,  label: 'Appearance',    section: 'APP SETTINGS' },
+  { id: 'chat',          icon: ChatIcon,     label: 'Chat',          section: 'APP SETTINGS' },
+  { id: 'voiceAudio',    icon: MicIcon,      label: 'Voice Audio',   section: 'APP SETTINGS' },
+  { id: 'notifications', icon: BellIcon,     label: 'Notifications', section: 'APP SETTINGS' },
+  { id: 'keybinds',      icon: KeyboardIcon, label: 'Keybinds',      section: 'APP SETTINGS' },
 ];
 
 // Keybinds tab is now always available
@@ -2339,7 +2340,7 @@ export default function SettingsModal({ onClose }) {
           borderBottom: '1px solid var(--border)', flexShrink: 0,
         }}>
           <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
-            ⚙️ Settings
+            <GearIcon size={14} /> Settings
           </span>
           <button
             onClick={onClose}
@@ -2348,7 +2349,7 @@ export default function SettingsModal({ onClose }) {
               fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.1rem 0.3rem',
               borderRadius: 4,
             }}
-          >✕</button>
+          ><CloseIcon size={14} /></button>
         </div>
 
         {/* ── Body ── */}
@@ -2422,7 +2423,7 @@ function TabButton({ icon, label, active, onClick }) {
         cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s, color 0.1s',
       }}
     >
-      <span style={{ fontSize: '1rem', lineHeight: 1 }}>{icon}</span>
+      <span style={{ fontSize: '1rem', lineHeight: 1 }}>{(() => { const I = icon; return I ? <I size={16} /> : null; })()}</span>
       {label}
     </button>
   );

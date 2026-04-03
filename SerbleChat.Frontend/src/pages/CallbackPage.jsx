@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { exchangeCode } from '../api.js';
+import { LightningIcon, CheckIcon, WarningIcon } from '../icons.jsx';
 
 // Inject loading animation styles
 if (typeof document !== 'undefined' && !document.getElementById('callback-styles')) {
@@ -141,7 +142,7 @@ export default function CallbackPage() {
         {stage === 'init' || stage === 'exchanging' ? (
           <div style={s.loadingContainer}>
             <div style={{ ...s.spinner, ...{} }} className="callback-spinner">
-              ⚡
+              <LightningIcon size={48} />
             </div>
             <h2 style={s.title}>Logging you in...</h2>
             <p style={s.subtitle}>
@@ -153,7 +154,7 @@ export default function CallbackPage() {
         {/* Success State */}
         {stage === 'success' && (
           <div style={s.loadingContainer}>
-            <div style={{ fontSize: '3rem' }}>✓</div>
+            <CheckIcon size={48} />
             <h2 style={s.title}>Welcome back!</h2>
             <p style={s.subtitle}>Redirecting you to the app...</p>
           </div>
@@ -163,7 +164,7 @@ export default function CallbackPage() {
         {stage === 'error' && (
           <>
             <div style={s.statusError}>
-              <div style={s.errorTitle}>⚠️ {errorTitle}</div>
+              <div style={s.errorTitle}><WarningIcon size={20} /> {errorTitle}</div>
               <div style={s.errorMessage}>{errorMessage}</div>
             </div>
             <div style={s.buttonGroup}>

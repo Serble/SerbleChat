@@ -3,47 +3,48 @@ import { useNavigate } from 'react-router-dom';
 import { CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
 import { isElectron, electronOAuthFlow, getAssetPath, openExternalLink } from '../electron-utils.js';
 import { startConfetti } from '../confetti.js';
+import { LightningIcon, KeyLockIcon, VideoIcon, BellIcon, ShieldIcon, AttachmentIcon, LaptopIcon, PaletteIcon, TargetIcon } from '../icons.jsx';
 
 const PUZZLE_SIZE = 3;
 
 const FEATURE_CARDS = [
   {
-    icon: '⚡',
+    icon: LightningIcon,
     title: 'Instant Access, No Email',
     text: 'Create your account in seconds without needing an email address. Start chatting immediately.',
   },
   {
-    icon: '🔐',
+    icon: KeyLockIcon,
     title: 'Privacy First',
     text: 'Deleted messages are purged forever. Control your privacy with the option to toggle sending typing indicators.',
   },
   {
-    icon: '📹',
+    icon: VideoIcon,
     title: 'Voice & Screenshare',
     text: 'Crystal-clear voice calls and screen sharing. Connect face-to-face with your friends instantly.',
   },
   {
-    icon: '🔔',
+    icon: BellIcon,
     title: 'Smart Notifications',
     text: 'Fine-grained control over notifications. Set preferences per channel and per guild to stay focused.',
   },
   {
-    icon: '🛡️',
+    icon: ShieldIcon,
     title: 'Fine-Grained Guild Permission System',
     text: 'Configure detailed role and channel access rules so guilds can be setup however they like.',
   },
   {
-    icon: '📎',
+    icon: AttachmentIcon,
     title: 'File Uploads',
     text: 'Upload files and images directly in chat to quickly share screenshots, media, and documents with your community.',
   },
   {
-    icon: '💻',
+    icon: LaptopIcon,
     title: 'Fully Open Source',
     text: 'Complete transparency and community-driven development. Inspect the code, contribute, and fork it for your own community.',
   },
   {
-    icon: '🎨',
+    icon: PaletteIcon,
     title: 'Client Theming',
     text: 'Customize your experience with flexible theming options. Make Serble Chat look and feel exactly how you want it.',
   },
@@ -51,7 +52,7 @@ const FEATURE_CARDS = [
 
 // Extra card for tic-tac-toe only
 const SERBLE_CHAT_CARD = {
-  icon: '🎯',
+  icon: TargetIcon,
   title: 'Serble Chat',
   text: 'The ultimate chat platform for communities. Fast, secure, and open source.',
   isSerble: true,
@@ -1011,7 +1012,7 @@ export default function LandingPage() {
                       ...c.cardNumber,
                       ...(isTileInCorrectSpot(card, index) ? c.cardNumberCorrect : {}),
                     }}>{card.number}</div>
-                    <div style={c.cardIcon}>{card.icon}</div>
+                    <div style={c.cardIcon}>{(() => { const I = card.icon; return I ? <I size={32} /> : null; })()}</div>
                     <div style={{
                       ...c.cardTitle,
                       ...(isTileInCorrectSpot(card, index) ? c.cardTitleCorrect : {}),
@@ -1074,7 +1075,7 @@ export default function LandingPage() {
                 >
                   {tile.isFlipped && (
                     <>
-                      <div style={c.memoryIcon}>{tile.card.icon}</div>
+                      <div style={c.memoryIcon}>{(() => { const I = tile.card.icon; return I ? <I size={32} /> : null; })()}</div>
                       <div style={c.memoryTitle}>{tile.card.title}</div>
                     </>
                   )}
@@ -1127,7 +1128,7 @@ export default function LandingPage() {
                     {cell.card.isSerble ? (
                       <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
                     ) : (
-                      <div style={c.ticTacToeCellIcon}>{cell.card.icon}</div>
+                      <div style={c.ticTacToeCellIcon}>{(() => { const I = cell.card.icon; return I ? <I size={32} /> : null; })()}</div>
                     )}
                     <div style={c.ticTacToeCellTitle}>{cell.card.title}</div>
                   </div>
@@ -1175,7 +1176,7 @@ export default function LandingPage() {
                     {safeCard.isSerble ? (
                       <img src={getAssetPath('/favicon.webp')} alt="Serble Chat" style={{ width: '1.5rem', height: '1.5rem', borderRadius: '4px' }} />
                     ) : (
-                      <div style={c.lightsOutTileIcon}>{safeCard.icon}</div>
+                      <div style={c.lightsOutTileIcon}>{(() => { const I = safeCard.icon; return I ? <I size={32} /> : null; })()}</div>
                     )}
                     <div style={c.lightsOutTileTitle}>{safeCard.title}</div>
                   </div>

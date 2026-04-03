@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ImageModal from './ImageModal.jsx';
 import { triggerDownload } from '../electron-utils.js';
+import { XCircleIcon, ImageIcon, DocumentIcon } from '../icons.jsx';
 
 /**
  * Image extensions that we can render directly
@@ -167,10 +168,9 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '1.5rem',
           }}
         >
-          ❌
+          <XCircleIcon size={20} />
         </div>
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
           <div
@@ -228,10 +228,9 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '1.5rem',
           }}
         >
-          ❌
+          <XCircleIcon size={20} />
         </div>
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
           <div
@@ -335,7 +334,7 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.8)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.6)')}
         >
-          ⬇️
+          ↓
         </button>
         </div>
         <ImageModal 
@@ -375,10 +374,9 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '1.5rem',
           }}
         >
-          🖼️
+          <ImageIcon size={32} />
         </div>
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
           <div
@@ -457,10 +455,9 @@ export default function FileEmbed({ fileUrl, onImageContextMenu, onModalImageCon
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '1.5rem',
         }}
       >
-        📄
+        <DocumentIcon size={32} />
       </div>
 
       {/* File info */}

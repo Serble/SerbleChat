@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { acceptGuildInvite, getGuildInvite, getGuildIconUrl, CLIENT_ID, REDIRECT_URI, OAUTH_URL, exchangeCode } from '../api.js';
 import { isElectron, electronOAuthFlow } from '../electron-utils.js';
+import { CastleIcon, CheckIcon } from '../icons.jsx';
 
 export default function InvitePage() {
   const { inviteId } = useParams();
@@ -166,7 +167,7 @@ export default function InvitePage() {
               }}
             />
           )}
-          {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : '🏰')}
+          {(!guildInfo || imageError) && (guildInfo ? (guildInfo.name?.[0]?.toUpperCase() || '?') : <CastleIcon size={32} />)}
         </div>
 
         {/* Copy */}
@@ -178,7 +179,7 @@ export default function InvitePage() {
             </>
           ) : state === 'joined' ? (
             <>
-              <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#23a55a', marginBottom: '0.4rem' }}>✓ You joined!</div>
+              <div style={{ fontWeight: 800, fontSize: '1.3rem', color: '#23a55a', marginBottom: '0.4rem' }}><><CheckIcon size={16} /> You joined!</></div>
               <div style={{ color: '#72767d', fontSize: '0.9rem' }}>Welcome to <strong style={{ color: '#f2f3f5' }}>{guildName}</strong>. Redirecting…</div>
             </>
           ) : state === 'already' ? (

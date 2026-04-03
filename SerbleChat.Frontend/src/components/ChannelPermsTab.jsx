@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
+import { TagIcon, PersonIcon, CheckIcon, CrossIcon } from '../icons.jsx';
 import {
   getChannelPermissionOverrides,
   createChannelPermissionOverride,
@@ -84,9 +85,9 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
   useEffect(() => {
     if (override.roleId != null) {
       const role = roles.find(r => r.id === override.roleId);
-      setLabel({ icon: '🏷', name: role?.name ?? `Role #${override.roleId}` });
+      setLabel({ icon: TagIcon, name: role?.name ?? `Role #${override.roleId}` });
     } else if (override.userId) {
-      resolveUser(override.userId).then(u => setLabel({ icon: '👤', name: u?.username ?? override.userId }));
+      resolveUser(override.userId).then(u => setLabel({ icon: PersonIcon, name: u?.username ?? override.userId }));
     }
   }, [override.roleId, override.userId, roles]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -135,13 +136,13 @@ function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, 
         }}
         className={!expanded ? 'hov-bg' : undefined}
       >
-        <span style={{ fontSize: '1rem' }}>{label?.icon ?? '…'}</span>
+        <span>{label?.icon ? (() => { const I = label.icon; return <I size={16} />; })() : '…'}</span>
         <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
           {label?.name ?? 'Loading…'}
         </span>
         {status === 'saving' && <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saving…</span>}
-        {status === 'saved'  && <span style={{ fontSize: '0.68rem', color: 'var(--success)' }}>✓ Saved</span>}
-        {status === 'error'  && <span style={{ fontSize: '0.68rem', color: 'var(--danger)' }} title={err}>✗ Error</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.68rem', color: 'var(--success)' }}><><CheckIcon size={12} /> Saved</></span>}
+        {status === 'error'  && <span style={{ fontSize: '0.68rem', color: 'var(--danger)' }} title={err}><><CrossIcon size={12} /> Error</></span>}
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0, marginLeft: '0.25rem' }}>
           {expanded ? '▲' : '▼'}
         </span>
@@ -226,7 +227,7 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
               color: type === t ? '#fff' : 'var(--text-muted)', fontWeight: 600,
               fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.15s',
             }}>
-            {t === 'role' ? '🏷 Role' : '👤 User'}
+            {t === 'role' ? <><TagIcon size={14} /> Role</> : <><PersonIcon size={14} /> User</>}
           </button>
         ))}
       </div>
@@ -263,7 +264,7 @@ function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existi
             </button>
           </div>
           {lookupErr && <div style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{lookupErr}</div>}
-          {resolvedUser && <div style={{ fontSize: '0.78rem', color: 'var(--success)' }}>✓ Found: {resolvedUser.username}</div>}
+          {resolvedUser && <div style={{ fontSize: '0.78rem', color: 'var(--success)' }}><><CheckIcon size={12} /> Found:</> {resolvedUser.username}</div>}
         </div>
       )}
 

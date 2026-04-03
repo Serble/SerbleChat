@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.jsx';
+import { BellIcon, ChatIcon, BellOffIcon, InheritIcon } from '../icons.jsx';
 
 // NotificationPreference enum: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
 const PREF_OPTIONS = [
-  { value: 0, icon: '↩', label: 'Inherit',       desc: 'Use your user default' },
-  { value: 1, icon: '🔔', label: 'All Messages',  desc: 'Every message in every channel' },
-  { value: 2, icon: '💬', label: 'Mentions Only', desc: 'Only when @mentioned' },
-  { value: 3, icon: '🔕', label: 'Nothing',       desc: 'Never' },
+  { value: 0, icon: InheritIcon, label: 'Inherit',       desc: 'Use your user default' },
+  { value: 1, icon: BellIcon,    label: 'All Messages',  desc: 'Every message in every channel' },
+  { value: 2, icon: ChatIcon,    label: 'Mentions Only', desc: 'Only when @mentioned' },
+  { value: 3, icon: BellOffIcon, label: 'Nothing',       desc: 'Never' },
 ];
 
 function PrefRow({ label, value, onChange, busy }) {
@@ -37,7 +38,7 @@ function PrefRow({ label, value, onChange, busy }) {
               onMouseEnter={e => { if (!active && !busy) e.currentTarget.style.background = 'var(--bg-hover)'; }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
-              <span>{opt.icon}</span>
+              <span>{opt.icon && (() => { const I = opt.icon; return <I size={14} />; })()}</span>
               <span>{opt.label}</span>
             </button>
           );
@@ -126,7 +127,7 @@ export default function GuildNotifContextMenu({ guildId, guildName, x, y, onClos
         borderBottom: '1px solid var(--border)',
       }}>
         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-          🔔 Notifications
+          <><BellIcon size={16} /> Notifications</>
         </div>
         {guildName && (
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem',

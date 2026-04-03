@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { setParticipantMuted, setParticipantVolume } from '../voice.js';
+import { GearIcon, SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
 
 export default function VoiceParticipantSettings({ 
   participantIdentity,
@@ -69,7 +70,7 @@ export default function VoiceParticipantSettings({
         onMouseEnter={e => e.currentTarget.style.opacity = '1'}
         onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
       >
-        ⚙️
+        <GearIcon size={14} />
       </button>
 
       {/* Settings popup */}
@@ -110,7 +111,7 @@ export default function VoiceParticipantSettings({
               e.currentTarget.style.background = isMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.08)';
             }}
           >
-            {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+            {isMuted ? <><SpeakerMutedIcon size={14} /> Unmute</> : <><SpeakerIcon size={14} /> Mute</>}
           </button>
 
           {/* Volume slider */}

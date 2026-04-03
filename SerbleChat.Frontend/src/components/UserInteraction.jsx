@@ -8,6 +8,7 @@ import { setParticipantMuted, setParticipantVolume } from '../voice.js';
 import { getOrCreateDmChannel, kickGuildMember, banGuildMember } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import BanModal from './BanModal.jsx';
+import { SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
 
 /**
  * UserContextMenu
@@ -141,7 +142,7 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
           {voiceSettings && (
             <>
               <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
-              <MenuItem label={voiceSettings.muted ? '🔇 Unmute' : '🔊 Mute'} onClick={handleToggleMute} />
+              <MenuItem label={voiceSettings.muted ? <><SpeakerMutedIcon size={14} /> Unmute</> : <><SpeakerIcon size={14} /> Mute</>} onClick={handleToggleMute} />
               <div style={{ padding: '0.4rem 0.65rem' }}>
                 <label style={{
                   fontSize: '0.7rem',

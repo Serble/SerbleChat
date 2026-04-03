@@ -6,6 +6,7 @@ riderModule.iml
 **/.idea
 *.user
 node_modules/
-.env
+.env*
+-.env.example
 **/dist
 **/dist-electron

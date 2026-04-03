@@ -221,7 +221,7 @@ class VoiceSession {
         // Convert percentage (0-200) to gain value (0.0-2.0)
         const gainValue = volumePercent / 100;
         this.micGainNode.gain.value = gainValue;
-        console.log(`✓ Mic volume updated to ${volumePercent}% (gain: ${gainValue.toFixed(2)})`);
+        console.log(`Mic volume updated to ${volumePercent}% (gain: ${gainValue.toFixed(2)})`);
         return true;
     }
 

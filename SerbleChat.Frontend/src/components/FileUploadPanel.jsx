@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { filesCreateFile, filesUploadBlob, formatBytes, filesGetLimits } from '../filesApi.js';
+import { AttachmentIcon, CloseIcon, WarningIcon } from '../icons.jsx';
 
 /**
  * Helper: treat -1 as unlimited, return the value as-is otherwise
@@ -88,7 +89,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
       fontSize: '0.85rem',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <span style={{ fontSize: '1rem', flexShrink: 0 }}>📎</span>
+        <AttachmentIcon size={16} style={{ flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {file.name}
@@ -122,7 +123,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
             }}
             title="Remove file"
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         )}
       </div>
@@ -185,7 +186,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
               </span>
               {customExceedsLimit && (
                 <span style={{ fontSize: '0.75rem', color: '#f23f43', whiteSpace: 'nowrap' }}>
-                  ✕ Too high
+                  <><CloseIcon size={12} /> Too high</>
                 </span>
               )}
               {!customExceedsLimit && (
@@ -208,7 +209,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
                   }}
                   title="Cancel custom"
                 >
-                  ✕
+                  <CloseIcon size={14} />
                 </button>
               )}
             </div>
@@ -216,7 +217,7 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {expirationRequired ? (
               <>
-                <span style={{ color: 'var(--accent)' }}>⚠ Expiration required</span>
+                <span style={{ color: 'var(--accent)' }}><><WarningIcon size={14} /> Expiration required</></span>
                 {' '}(Max: {isUnlimited(maxExpiryHours) ? '∞' : `${maxExpiryHours} hours / ${Math.round(maxExpiryHours / 24)} days`})
               </>
             ) : (
@@ -249,7 +250,7 @@ export function FileUploadPanel({ files, fileExpirations, onFileExpirationChange
       borderRadius: '8px 8px 0 0',
     }}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        📎 {files.length} file{files.length !== 1 ? 's' : ''} attached
+        <><AttachmentIcon size={14} /> {files.length} file{files.length !== 1 ? 's' : ''} attached</>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         {files.map((file, idx) => (

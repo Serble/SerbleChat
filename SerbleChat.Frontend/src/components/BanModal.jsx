@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { HammerIcon, LockIcon, ClockIcon, CloseIcon } from '../icons.jsx';
 
 /**
  * BanModal
@@ -87,7 +88,7 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-            🔨 Ban User
+            <><HammerIcon size={16} /> Ban User</>
           </div>
           <button
             onClick={onCancel}
@@ -105,7 +106,7 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
               opacity: busy ? 0.5 : 1,
             }}
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
 
@@ -156,7 +157,7 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
                     transition: 'all 0.15s',
                   }}
                 >
-                  {type === 'permanent' ? '🔒 Permanent' : '⏰ Temporary'}
+                  {type === 'permanent' ? <><LockIcon size={14} /> Permanent</> : <><ClockIcon size={14} /> Temporary</>}
                 </button>
               ))}
             </div>

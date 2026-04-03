@@ -3,6 +3,7 @@ import { getChannelMembers, getGuildChannelMembersDetails } from '../api.js';
 import UserInteraction from './UserInteraction.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import Avatar from './Avatar.jsx';
+import { CrownIcon } from '../icons.jsx';
 
 /**
  * Props:
@@ -146,7 +147,7 @@ function MemberRow({ member, ownerId, guildId }) {
           {member.username}
         </span>
         {isOwner && (
-          <span title="Owner" style={{ fontSize: '0.8rem', flexShrink: 0 }}>👑</span>
+          <CrownIcon size={14} title="Owner" />
         )}
       </div>
     </UserInteraction>

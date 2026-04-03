@@ -4,6 +4,7 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
+import { MicIcon, MicOffIcon, SpeakerMutedIcon, BellOffIcon, ScreenShareIcon } from '../icons.jsx';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -357,7 +358,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
           color: userIds.length > 0 ? 'var(--success)' : 'var(--text-muted)',
           cursor: userIds.length > 0 ? 'pointer' : 'default',
         }}>
-          <span>🎙️</span>
+          <MicIcon size={14} />
           <span>{userIds.length}</span>
         </div>
 
@@ -411,23 +412,22 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                       {isSpeaking && !isMuted && (
                         <span 
                           style={{ 
-                            fontSize: '0.7rem', 
                             color: 'var(--success)',
                             animation: 'pulse 1.5s ease-in-out infinite',
                           }} 
                           title="Speaking"
                         >
-                          🎤
+                          <MicIcon size={12} />
                         </span>
                       )}
                       {isMuted && (
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
-                          🔇
+                        <span style={{ color: 'var(--text-muted)' }} title="Muted">
+                          <SpeakerMutedIcon size={12} />
                         </span>
                       )}
                       {isClientMuted && (
-                        <span style={{ fontSize: '0.7rem', color: 'var(--danger)' }} title="You muted this user">
-                          🔕
+                        <span style={{ color: 'var(--danger)' }} title="You muted this user">
+                          <BellOffIcon size={12} />
                         </span>
                       )}
                     </div>
@@ -502,7 +502,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
             color: 'var(--text-secondary)',
             flexShrink: 0,
           }}>
-            <span style={{ fontSize: '0.95rem' }}>🎙️</span>
+            <MicIcon size={15} />
             <span style={{ flex: 1 }}>In Voice ({userIds.length})</span>
             <button
               onClick={handleToggleFullscreen}
@@ -586,23 +586,22 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                     {isSpeaking && !isMuted && (
                       <span 
                         style={{ 
-                          fontSize: '0.7rem', 
                           color: 'var(--success)',
                           animation: 'pulse 1.5s ease-in-out infinite',
                         }} 
                         title="Speaking"
                       >
-                        🎤
+                        <MicIcon size={12} />
                       </span>
                     )}
                     {isMuted && (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title="Muted">
-                        🔇
+                      <span style={{ color: 'var(--text-muted)' }} title="Muted">
+                        <SpeakerMutedIcon size={12} />
                       </span>
                     )}
                     {isClientMuted && (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--danger)' }} title="You muted this user">
-                        🔕
+                      <span style={{ color: 'var(--danger)' }} title="You muted this user">
+                        <BellOffIcon size={12} />
                       </span>
                     )}
                   </div>
@@ -729,7 +728,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}>
-            📺 {username}
+            <ScreenShareIcon size={14} /> {username}
           </span>
           {share.isLocal && (
             <span style={{

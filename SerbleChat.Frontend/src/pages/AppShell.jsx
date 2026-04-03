@@ -10,6 +10,7 @@ import { getGuildChannels } from '../api.js';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { MenuIcon, CastleIcon } from '../icons.jsx';
 
 // Redirect old /app/guild/:guildId/channel/:channelId URLs to /app/channel/:channelId
 function GuildChannelRedirect() {
@@ -56,12 +57,12 @@ function GuildLanding() {
               cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
               padding: '0.25rem', flexShrink: 0,
             }}
-          >☰</button>
+          ><MenuIcon size={18} /></button>
         </div>
       )}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#72767d' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🏰</div>
+          <CastleIcon size={48} style={{ marginBottom: '0.75rem' }} />
           <div style={{ fontWeight: 700, color: '#b5bac1', marginBottom: '0.3rem', fontSize: '1rem' }}>
             No channels yet
           </div>

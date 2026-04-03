@@ -11,6 +11,7 @@ import Avatar from './Avatar.jsx';
 import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { getGroupChatIconUrl } from '../api.js';
+import { GearIcon, PeopleIcon } from '../icons.jsx';
 
 function SidebarItem({ icon, label, active, badge, onClick }) {
   const [hovered, setHovered] = useState(false);
@@ -284,7 +285,7 @@ function GroupItem({ chat, currentChannelId }) {
               flexShrink: 0, transition: 'color 0.1s' 
             }}
             className="hov-text-primary"
-          >⚙</span>
+          ><GearIcon size={14} /></span>
         )}
       </div>
       {ctxMenu && (
@@ -368,7 +369,7 @@ export default function DmSidebar() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.5rem 0' }}>
         {/* Friends */}
         <SidebarItem
-          icon="👥"
+          icon={<PeopleIcon size={16} />}
           label="Friends"
           active={onFriends}
           badge={pendingIncoming}

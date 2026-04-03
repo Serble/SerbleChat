@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { addGroupChatMembers } from '../api.js';
 import Avatar from './Avatar.jsx';
+import { CloseIcon } from '../icons.jsx';
 
 /** groupId: number, existingMemberIds: Set<string>, onClose: fn */
 export default function AddMembersModal({ groupId, existingMemberIds, onClose }) {
@@ -73,7 +74,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', padding: '0.25rem', borderRadius: '4px', lineHeight: 1 }}
             className="hov-text-primary"
-          >✕</button>
+          ><CloseIcon size={14} /></button>
         </div>
 
         <form onSubmit={handleAdd} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>

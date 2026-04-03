@@ -6,6 +6,7 @@ import SettingsModal from './SettingsModal.jsx';
 import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { getGuildIconUrl } from '../api.js';
+import { HomeIcon, GearIcon } from '../icons.jsx';
 
 function StripButton({ title, active, onClick, children }) {
   const base = {
@@ -168,7 +169,7 @@ export default function ServerStrip() {
       {/* Home */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <StripButton title="Home" active={onHome} onClick={handleHomeClick}>
-          🏠
+          <HomeIcon size={22} />
         </StripButton>
         {homeUnreads > 0 && !onHome && (
           <div style={{
@@ -245,7 +246,7 @@ export default function ServerStrip() {
         }}
         onMouseEnter={e => { e.currentTarget.style.borderRadius = '30%'; e.currentTarget.style.background = 'var(--accent)'; }}
         onMouseLeave={e => { e.currentTarget.style.borderRadius = '50%'; e.currentTarget.style.background = 'var(--bg-active)'; }}
-      >⚙️</button>
+      ><GearIcon size={18} /></button>
 
       {showCreate && (
         <CreateGuildModal

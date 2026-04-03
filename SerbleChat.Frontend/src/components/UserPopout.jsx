@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChatIcon, PlusIcon, CloseIcon, CheckIcon, WaveIcon, BootIcon, HammerIcon, BlockIcon } from '../icons.jsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -105,7 +106,7 @@ function ActionButton({ label, icon, onClick, disabled, variant = 'default' }) {
         whiteSpace: 'nowrap',
       }}
     >
-      {icon && <span style={{ fontSize: '0.85rem' }}>{icon}</span>}
+      {icon && (() => { const I = icon; return <I size={14} />; })()}
       {label}
     </button>
   );
@@ -303,25 +304,25 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}>
               <ActionButton
                 label={msgBusy ? '…' : 'Message'}
-                icon="💬"
+                icon={ChatIcon}
                 onClick={handleMessage}
                 disabled={msgBusy}
                 variant="default"
               />
               {!isFriend && !isOutgoing && !isIncoming && (
-                <ActionButton label={friendBusy ? '…' : 'Add Friend'} icon="➕" onClick={handleAddFriend} disabled={friendBusy} variant="green" />
+                <ActionButton label={friendBusy ? '…' : 'Add Friend'} icon={PlusIcon} onClick={handleAddFriend} disabled={friendBusy} variant="green" />
               )}
               {isOutgoing && (
-                <ActionButton label={friendBusy ? '…' : 'Cancel Request'} icon="✕" onClick={handleRemoveFriend} disabled={friendBusy} variant="red" />
+                <ActionButton label={friendBusy ? '…' : 'Cancel Request'} icon={CloseIcon} onClick={handleRemoveFriend} disabled={friendBusy} variant="red" />
               )}
               {isIncoming && (
                 <>
-                  <ActionButton label={friendBusy ? '…' : 'Accept'} icon="✓" onClick={handleAccept}       disabled={friendBusy} variant="green" />
-                  <ActionButton label={friendBusy ? '…' : 'Ignore'} icon="✕" onClick={handleRemoveFriend} disabled={friendBusy} variant="red"   />
+                  <ActionButton label={friendBusy ? '…' : 'Accept'} icon={CheckIcon} onClick={handleAccept}       disabled={friendBusy} variant="green" />
+                  <ActionButton label={friendBusy ? '…' : 'Ignore'} icon={CloseIcon} onClick={handleRemoveFriend} disabled={friendBusy} variant="red"   />
                 </>
               )}
               {isFriend && (
-                <ActionButton label={friendBusy ? '…' : 'Remove Friend'} icon="👋" onClick={handleRemoveFriend} disabled={friendBusy} variant="red" />
+                <ActionButton label={friendBusy ? '…' : 'Remove Friend'} icon={WaveIcon} onClick={handleRemoveFriend} disabled={friendBusy} variant="red" />
               )}
             </div>
           )}
@@ -409,7 +410,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           <div style={{ width: 16, height: 16, borderRadius: '3px', flexShrink: 0, background: has ? 'var(--accent)' : 'transparent', border: `2px solid ${has ? 'var(--accent)' : 'var(--text-subtle)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-                            {has && <span style={{ color: '#fff', fontSize: '0.6rem', fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                            {has && <CheckIcon size={10} style={{ color: '#fff' }} />}
                           </div>
                           <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: role.color || 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }} />
                           <span style={{ flex: 1, fontSize: '0.83rem', fontWeight: 500, color: has ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role.name}</span>
@@ -435,7 +436,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             {canKick && (
               <ActionButton
                 label={kickBusy ? '…' : 'Kick'}
-                icon="👢"
+                icon={BootIcon}
                 onClick={handleKick}
                 disabled={kickBusy}
                 variant="red"
@@ -444,7 +445,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             {canBan && (
               <ActionButton
                 label={banBusy ? '…' : 'Ban'}
-                icon="🔨"
+                icon={HammerIcon}
                 onClick={() => setBanModalOpen(true)}
                 disabled={banBusy}
                 variant="red"
@@ -475,7 +476,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             onMouseEnter={e => { if (!blockBusy) { e.currentTarget.style.background = blocked ? 'rgba(242,63,67,0.22)' : 'rgba(242,63,67,0.1)'; e.currentTarget.style.color = '#f23f43'; e.currentTarget.style.borderColor = 'rgba(242,63,67,0.4)'; } }}
             onMouseLeave={e => { if (!blockBusy) { e.currentTarget.style.background = blocked ? 'rgba(242,63,67,0.12)' : 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = blocked ? '#f23f43' : 'var(--text-muted)'; e.currentTarget.style.borderColor = blocked ? 'rgba(242,63,67,0.35)' : 'var(--border)'; } }}
           >
-            <span>🚫</span>
+            <BlockIcon size={16} />
             {blockBusy ? '…' : blocked ? 'Unblock User' : 'Block User'}
           </button>
         </div>

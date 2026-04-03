@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { updateGuild } from '../api.js';
+import { CheckIcon, CrossIcon } from '../icons.jsx';
 
 const PERM_KEYS = [
   { key: 'administrator',  label: 'Administrator',   desc: 'Grants all permissions (careful!)' },
@@ -63,8 +64,8 @@ export default function DefaultPermsTab({ guild, onSaved }) {
           Default permissions apply to all members that don't have a role overriding them.
         </div>
         {status === 'saving' && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>Saving…</span>}
-        {status === 'saved'  && <span style={{ fontSize: '0.72rem', color: 'var(--success)', flexShrink: 0 }}>✓ Saved</span>}
-        {status === 'error'  && <span style={{ fontSize: '0.72rem', color: 'var(--danger)', flexShrink: 0 }} title={err}>✗ Error</span>}
+        {status === 'saved'  && <span style={{ fontSize: '0.72rem', color: 'var(--success)', flexShrink: 0 }}><><CheckIcon size={12} /> Saved</></span>}
+        {status === 'error'  && <span style={{ fontSize: '0.72rem', color: 'var(--danger)', flexShrink: 0 }} title={err}><><CrossIcon size={12} /> Error</></span>}
       </div>
 
       {PERM_KEYS.map(({ key, label, desc }) => {

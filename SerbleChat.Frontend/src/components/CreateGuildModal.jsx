@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { createGuild } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
+import { CloseIcon } from '../icons.jsx';
 
 export default function CreateGuildModal({ onClose, onCreated }) {
   const { reconnectHub, setActiveGuildId } = useApp();
@@ -70,7 +71,7 @@ export default function CreateGuildModal({ onClose, onCreated }) {
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', flexShrink: 0, marginLeft: '1rem', transition: 'color 0.15s' }}
             onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
             onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-          >✕</button>
+          ><CloseIcon size={14} /></button>
         </div>
 
         <form onSubmit={handleCreate} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>

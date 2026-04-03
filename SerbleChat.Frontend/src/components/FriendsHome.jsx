@@ -5,6 +5,7 @@ import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } f
 import UserInteraction from './UserInteraction.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
+import { MenuIcon, PeopleIcon, HandshakeIcon, MailboxIcon, BlockIcon, CheckIcon, CrossIcon } from '../icons.jsx';
 
 const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
 
@@ -139,13 +140,13 @@ function FriendRow({ friendship, currentUserId, onRefresh }) {
   );
 }
 
-function EmptyState({ icon, title, text }) {
+function EmptyState({ icon: Icon, title, text }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', padding: '4rem 2rem', textAlign: 'center',
     }}>
-      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>{icon}</div>
+      <div style={{ marginBottom: '1rem' }}>{Icon && <Icon size={48} />}</div>
       <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>{title}</div>
       <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{text}</div>
     </div>
@@ -239,10 +240,10 @@ export default function FriendsHome() {
               cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
               padding: '0.25rem', marginRight: '0.25rem', flexShrink: 0,
             }}
-          >☰</button>
+          ><MenuIcon size={18} /></button>
         )}
         <span style={{ fontWeight: 700, color: 'var(--text-primary)', marginRight: '0.75rem', fontSize: '0.95rem' }}>
-          👥 Friends
+          <><PeopleIcon size={16} /> Friends</>
         </span>
         <div style={{ width: 1, height: 20, background: 'var(--border)', marginRight: '0.5rem', flexShrink: 0 }} />
         <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', flex: 1, scrollbarWidth: 'none' }}>
@@ -288,7 +289,7 @@ export default function FriendsHome() {
               All Friends — {accepted.length}
             </div>
             {accepted.length === 0 ? (
-              <EmptyState icon="🤝" title="No friends yet" text="Add friends to start chatting." />
+              <EmptyState icon={HandshakeIcon} title="No friends yet" text="Add friends to start chatting." />
             ) : (
               accepted.map(f => (
                 <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
@@ -301,7 +302,7 @@ export default function FriendsHome() {
         {tab === 'Pending' && (
           <div style={{ padding: '1rem 1.25rem 0' }}>
             {incoming.length === 0 && outgoing.length === 0 ? (
-              <EmptyState icon="📭" title="No pending requests" text="You're all caught up!" />
+              <EmptyState icon={MailboxIcon} title="No pending requests" text="You're all caught up!" />
             ) : (
               <>
                 {incoming.length > 0 && (
@@ -336,7 +337,7 @@ export default function FriendsHome() {
               Blocked — {blockedUsers.length}
             </div>
             {blockedUsers.length === 0 ? (
-              <EmptyState icon="🚫" title="No blocked users" text="Users you block will appear here." />
+              <EmptyState icon={BlockIcon} title="No blocked users" text="Users you block will appear here." />
             ) : (
               blockedUsers.map(u => (
                 <BlockedRow
@@ -394,7 +395,7 @@ export default function FriendsHome() {
                 color: addStatus.ok ? 'var(--success)' : 'var(--danger)',
                 fontSize: '0.85rem', border: `1px solid ${addStatus.ok ? 'rgba(35,165,90,0.3)' : 'rgba(237,66,69,0.3)'}`,
               }}>
-                {addStatus.ok ? '✓ ' : '✗ '}{addStatus.msg}
+                {addStatus.ok ? <><CheckIcon size={14} /> </> : <><CrossIcon size={14} /> </>}{addStatus.msg}
               </div>
             )}
           </div>

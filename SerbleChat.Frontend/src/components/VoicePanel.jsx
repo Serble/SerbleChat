@@ -7,6 +7,7 @@ import { playSound } from '../sound.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
+import { MicIcon, SpeakerMutedIcon, SpeakerIcon, HeadphonesIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, BellOffIcon } from '../icons.jsx';
 
 // Helper to safely play sounds with consistent error handling
 const playSoundSafe = (soundName) => {
@@ -198,7 +199,7 @@ export default function VoicePanel({
       {/* Header with channel name and controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span style={{ fontSize: '0.9rem' }}>🎙️</span>
+          <MicIcon size={14} />
           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: voiceStatus === 'error' ? 'var(--danger)' : 'var(--success)' }}>
             {voiceStatus === 'connecting' ? 'Connecting…' : voiceStatus === 'error' ? 'Voice Error' : 'Voice Connected'}
           </span>
@@ -325,17 +326,17 @@ export default function VoicePanel({
                       }} 
                       title="Speaking"
                     >
-                      🎤
+                      <MicIcon size={12} />
                     </span>
                   )}
                   {p.isMuted && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }} title="Muted">
-                      🔇
+                      <SpeakerMutedIcon size={12} />
                     </span>
                   )}
                   {p.isClientMuted && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }} title="You muted this user">
-                      🔕
+                      <BellOffIcon size={12} />
                     </span>
                   )}
                 </div>
@@ -399,10 +400,10 @@ export default function VoicePanel({
         onMouseDown={handleSpeakButtonMouseDown}
         onMouseUp={handleSpeakButtonMouseUp}
       >
-        <span style={{ fontSize: '1rem' }}>
+        <span>
           {voiceAudioOptions.inputMode === 'push-to-talk'
-            ? (voiceMuted ? '🎙️' : '📢')
-            : (voiceMuted ? '🔇' : '🎙️')}
+            ? (voiceMuted ? <MicIcon size={16} /> : <MegaphoneIcon size={16} />)
+            : (voiceMuted ? <SpeakerMutedIcon size={16} /> : <MicIcon size={16} />)}
         </span>
         <span>
           {voiceAudioOptions.inputMode === 'push-to-talk'
@@ -442,7 +443,7 @@ export default function VoicePanel({
           }}
           title={voiceDeafened ? 'Undeafen (D)' : 'Deafen (D)'}
         >
-          <span style={{ fontSize: '1rem' }}>{voiceDeafened ? '🔇' : '👂'}</span>
+          <span>{voiceDeafened ? <SpeakerMutedIcon size={16} /> : <HeadphonesIcon size={16} />}</span>
           <span>{voiceDeafened ? 'Undeafen' : 'Deafen'}</span>
         </button>
       </div>
@@ -479,7 +480,7 @@ export default function VoicePanel({
           }}
           title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
         >
-          <span style={{ fontSize: '1rem' }}>{isScreenSharing ? '🛑' : '📺'}</span>
+          <span>{isScreenSharing ? <StopScreenShareIcon size={16} /> : <ScreenShareIcon size={16} />}</span>
           <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
         </button>
 
@@ -512,7 +513,7 @@ export default function VoicePanel({
             }}
             title="Screen share quality settings"
           >
-            <span style={{ fontSize: '1rem' }}>⚙️</span>
+            <GearIcon size={16} />
           </button>
         )}
       </div>

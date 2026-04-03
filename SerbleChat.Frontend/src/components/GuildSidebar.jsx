@@ -20,6 +20,7 @@ import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
+import { BellIcon, ChatIcon, BellOffIcon, InheritIcon, CloseIcon, TrashIcon, LinkIcon, CheckIcon, MicIcon, GearIcon, SpeakerIcon } from '../icons.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,10 +34,10 @@ function allowed(perms, key) {
 
 // NotificationPreference: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
 const GUILD_NOTIF_OPTIONS = [
-  { value: 0, icon: '↩', label: 'Inherit',       desc: 'Use your user default' },
-  { value: 1, icon: '🔔', label: 'All Messages',  desc: 'Every message in every channel' },
-  { value: 2, icon: '💬', label: 'Mentions Only', desc: 'Only when @mentioned' },
-  { value: 3, icon: '🔕', label: 'Nothing',       desc: 'Never' },
+  { value: 0, icon: InheritIcon, label: 'Inherit',       desc: 'Use your user default' },
+  { value: 1, icon: BellIcon,    label: 'All Messages',  desc: 'Every message in every channel' },
+  { value: 2, icon: ChatIcon,    label: 'Mentions Only', desc: 'Only when @mentioned' },
+  { value: 3, icon: BellOffIcon, label: 'Nothing',       desc: 'Never' },
 ];
 
 function GuildPrefPicker({ label, value, onChange }) {
@@ -62,7 +63,7 @@ function GuildPrefPicker({ label, value, onChange }) {
             }}
             className={!active ? 'hov-bg' : undefined}
           >
-              <span>{opt.icon}</span> <span>{opt.label}</span>
+              {(() => { const I = opt.icon; return I ? <I size={15} /> : null; })()} <span>{opt.label}</span>
             </button>
           );
         })}
@@ -117,8 +118,8 @@ function GuildNotifTab({ guildId }) {
         Override notification settings for this server. Channels can further override these.
         <br />Choose <strong style={{ color: 'var(--text-secondary)' }}>Inherit</strong> to use your user defaults.
       </div>
-      <GuildPrefPicker label="🔔 Notifications" value={notif}   onChange={setNotif} />
-      <GuildPrefPicker label="🔴 Unread Badge"  value={unreads} onChange={setUnreads} />
+      <GuildPrefPicker label={<><BellIcon size={13} /> Notifications</>} value={notif}   onChange={setNotif} />
+      <GuildPrefPicker label="Unread Badge"  value={unreads} onChange={setUnreads} />
       <button
         onClick={handleSave}
         disabled={saving}
@@ -130,7 +131,7 @@ function GuildNotifTab({ guildId }) {
           alignSelf: 'flex-start', transition: 'background 0.2s',
         }}
       >
-        {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save'}
+        {saving ? 'Saving…' : saved ? <><CheckIcon size={12} /> Saved!</> : 'Save'}
       </button>
     </div>
   );
@@ -392,7 +393,7 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
           <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Guild Settings</div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
 
         {/* Tabs */}
@@ -559,11 +560,11 @@ function GuildSettingsModal({ guild, onClose, onSaved, onDeleted, perms, guildUp
                     </div>
                     <button onClick={() => copyLink(inv)}
                       style={{ background: copied === inv.id ? 'var(--success)' : 'var(--bg-active)', border: 'none', borderRadius: '5px', padding: '0.35rem 0.65rem', color: '#fff', fontSize: '0.78rem', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', fontWeight: 600 }}>
-                      {copied === inv.id ? '✓ Copied' : 'Copy'}
+                      {copied === inv.id ? <><CheckIcon size={12} /> Copied</> : 'Copy'}
                     </button>
                     <button onClick={() => handleDeleteInvite(inv.id)} title="Delete invite"
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem', borderRadius: '4px', flexShrink: 0, lineHeight: 1 }}
-                      className="hov-color-danger">🗑</button>
+                      className="hov-color-danger"><TrashIcon size={16} /></button>
                   </div>
                 );
               })}
@@ -644,9 +645,9 @@ function InvitePopup({ guildId, onClose }) {
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center', padding: isMobile ? 0 : '1rem' }}>
       <div style={{ background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px', width: '100%', maxWidth: isMobile ? '100%' : 400, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', height: isMobile ? '100%' : 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>🔗 Invite People</div>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}><LinkIcon size={16} /> Invite People</div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
         {busy && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Creating invite link…</div>}
         {!busy && invite && (
@@ -655,7 +656,7 @@ function InvitePopup({ guildId, onClose }) {
             <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', padding: '0.65rem 0.75rem', fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{link}</div>
             <button onClick={copyLink}
               style={{ background: copied ? 'var(--success)' : 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.65rem', color: '#fff', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
-              {copied ? '✓ Copied to Clipboard!' : 'Copy Invite Link'}
+              {copied ? <><CheckIcon size={12} /> Copied to Clipboard!</> : 'Copy Invite Link'}
             </button>
           </>
         )}
@@ -707,7 +708,7 @@ function CreateChannelModal({ guildId, onClose, onCreate }) {
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--text-primary)' }}>Create Channel</div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
 
         {/* Form */}
@@ -886,7 +887,7 @@ function ChannelSettingsModal({ guildId, channel, canManage, onClose, onUpdated,
           </div>
           <button onClick={onClose}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1, padding: '0.2rem', borderRadius: '4px', transition: 'color 0.15s' }}
-            className="hov-text-primary">✕</button>
+            className="hov-text-primary"><CloseIcon size={14} /></button>
         </div>
 
         {/* Tabs */}
@@ -1198,7 +1199,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin
             />
           ) : (
             <span style={{ color: hovered || active ? 'var(--text-muted)' : 'var(--text-subtle)', fontSize: '0.85rem', flexShrink: 0, lineHeight: 1 }}>
-              {ch.voiceCapable ? '🔊' : '#'}
+              {ch.voiceCapable ? <SpeakerIcon size={14} /> : '#'}
             </span>
           )}
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
@@ -1224,7 +1225,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin
               fontSize: '0.9rem', flexShrink: 0, transition: 'color 0.1s',
             }}
             className="hov-text-primary"
-          >🎙️</button>
+          ><MicIcon size={16} /></button>
         )}
 
         {/* Settings icon — only visible to managers on hover */}
@@ -1234,7 +1235,7 @@ function ChannelRow({ ch, canManage, active, onNavigate, onSettings, onVoiceJoin
             onClick={e => { e.stopPropagation(); onSettings(); }}
             style={{ cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, flexShrink: 0, transition: 'color 0.1s' }}
             className="hov-text-primary"
-          >⚙</span>
+          ><GearIcon size={16} /></span>
         )}
       </div>
       {ctxMenu && (
@@ -1318,7 +1319,7 @@ function GuildContextMenu({ guild, isOwner, currentUser, x, y, onClose, onLeave,
       }}
     >
       {onOpenSettings && (
-        <ContextMenuItem label="Guild Settings" onClick={() => { onOpenSettings(); onClose(); }} icon="⚙" />
+        <ContextMenuItem label="Guild Settings" onClick={() => { onOpenSettings(); onClose(); }} icon={GearIcon} />
       )}
       {!isOwner && (
         <ContextMenuItem 
@@ -1361,7 +1362,7 @@ function ContextMenuItem({ label, onClick, variant = 'default', icon = null, dis
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      {icon && <span style={{ fontSize: '0.9rem' }}>{icon}</span>}
+      {icon && <span style={{ fontSize: '0.9rem' }}>{(() => { const I = icon; return typeof I === 'string' ? I : <I size={15} />; })()}</span>}
       {label}
     </button>
   );
@@ -1484,12 +1485,12 @@ export default function GuildSidebar({ guildId }) {
         {canCreateInvites && (
           <button title="Create Invite" onClick={() => setShowInvite(true)}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            className="hov-text-primary">🔗</button>
+            className="hov-text-primary"><LinkIcon size={16} /></button>
         )}
         {canOpenSettings && (
           <button title="Guild Settings" onClick={() => setShowSettings(true)}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0.2rem 0.3rem', borderRadius: '4px', lineHeight: 1, transition: 'color 0.15s', flexShrink: 0 }}
-            className="hov-text-primary">⚙</button>
+            className="hov-text-primary"><GearIcon size={16} /></button>
         )}
       </div>
 

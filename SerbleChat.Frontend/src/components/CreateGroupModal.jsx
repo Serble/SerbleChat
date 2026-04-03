@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext.jsx';
 import { createGroupChat } from '../api.js';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
+import { CloseIcon } from '../icons.jsx';
 
 export default function CreateGroupModal({ onClose }) {
   const { friends, currentUser, resolveUser, refreshDms } = useApp();
@@ -109,7 +110,7 @@ export default function CreateGroupModal({ onClose }) {
             onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
             onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
 
