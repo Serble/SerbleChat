@@ -270,8 +270,8 @@ const c = {
     background: 'linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%)',
     color: '#fff', borderRadius: '9999px',
     fontWeight: 700, fontSize: '1rem', cursor: 'pointer', border: 'none',
-    boxShadow: '0 4px 24px rgba(59,130,246,0.45)',
-    transition: 'transform 0.15s, box-shadow 0.15s',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+    transition: 'transform 0.15s, box-shadow 0.15s, background-color 0.15s',
   },
   featureSection: {
     padding: '3rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -341,7 +341,6 @@ const c = {
   cardCorrect: {
     background: 'rgba(34,197,94,0.22)',
     border: '1px solid rgba(74,222,128,0.6)',
-    boxShadow: '0 0 14px rgba(34,197,94,0.2)',
   },
   memoryGrid: {
     display: 'grid',
@@ -374,7 +373,6 @@ const c = {
   memoryTileMatched: {
     background: 'rgba(34,197,94,0.2)',
     border: '1px solid rgba(74,222,128,0.5)',
-    boxShadow: '0 0 12px rgba(34,197,94,0.15)',
   },
   memoryIcon: {
     fontSize: '1.8rem',
@@ -453,13 +451,11 @@ const c = {
     background: 'rgba(34,197,94,0.5)',
     border: '2px solid rgba(74,222,128,0.6)',
     color: '#86efac',
-    boxShadow: '0 0 16px rgba(34,197,94,0.3)',
   },
   ticTacToeCellAI: {
     background: 'rgba(239,68,68,0.5)',
     border: '2px solid rgba(248,113,113,0.6)',
     color: '#fca5a5',
-    boxShadow: '0 0 16px rgba(239,68,68,0.3)',
   },
   ticTacToeScore: {
     display: 'flex',
@@ -514,7 +510,6 @@ const c = {
     background: 'rgba(30,58,138,0.8)',
     border: '2px solid rgba(96,165,250,0.8)',
     color: '#bfdbfe',
-    boxShadow: '0 0 20px rgba(59,130,246,0.6)',
   },
   lightsOutTileContent: {
     display: 'flex',
@@ -1237,11 +1232,11 @@ export default function LandingPage() {
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(139,92,246,0.5)';
-              e.currentTarget.style.boxShadow = '0 0 20px rgba(139,92,246,0.4)';
+              e.currentTarget.style.borderColor = 'rgba(139,92,246,0.9)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'rgba(139,92,246,0.3)';
-              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.borderColor = 'rgba(139,92,246,0.6)';
             }}
             onClick={(e) => { e.preventDefault(); openExternalLink('https://github.com/Serble/SerbleChat'); }}
           >
