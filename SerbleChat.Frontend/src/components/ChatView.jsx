@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
@@ -25,6 +25,12 @@ import Avatar from './Avatar.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import { ClipboardIcon, LinkIcon, IdCardIcon, EditIcon, TrashIcon, GlobeIcon, SaveIcon, PersonIcon, PeopleIcon, ChatIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon, AttachmentIcon, WaveIcon, CheckCircleIcon, BlockIcon, CloseIcon, LockIcon, CheckIcon } from '../icons.jsx';
 import { FileUploadPanel, useFileUploads } from './FileUploadPanel.jsx';
+
+const MESSAGE_PAGE_SIZE = 50;
+// Start fetching older messages when the user is within this distance of the top of the history
+const LOAD_OLDER_THRESHOLD_PX = 600;
+// After a failed fetch, wait this long before scrolling can trigger another attempt
+const LOAD_OLDER_RETRY_MS = 3000;
 
 /**
  * Helper: treat -1 as unlimited
@@ -544,21 +550,15 @@ export default function ChatView() {
   
   // Older messages loading state
   const [loadingOlder, setLoadingOlder] = useState(false);
-  
+  // Pagination state for the current channel's history: { channelId, hasMore, loading, retryAt }.
+  // The object is replaced on every channel change, so in-flight requests detect staleness by identity.
+  const historyRef = useRef(null);
+
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
   // Debounce timer for typing indicator notifications (max send every 2 seconds)
   const typingIndicatorTimerRef = useRef(null);
   const lastTypingNotifyRef = useRef(0);
-  
-  // Pagination state for loading older messages
-  const offsetRef = useRef(0);
-  const hasMoreRef = useRef(true);
-  const loadingOlderRef = useRef(false);
-  const scrollLoadDebounceRef = useRef(null);
-  const scrollRestoreRef = useRef(null); // { scrollTopBefore, scrollHeightBefore } to restore after loading
-  const isAdjustingScrollRef = useRef(false); // Flag to prevent scroll event during adjustment
-  const lastLoadedHeightRef = useRef(0); // Track total message height when we last loaded
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -571,124 +571,46 @@ export default function ChatView() {
   const ctxRef    = useRef(null);
   const imageCtxRef = useRef(null);
 
-  // Track whether the user has scrolled away from the bottom.
-  // When false, we allow reverse flex layout to naturally keep them at bottom.
-  // When true, we lock scrollTop so they stay where they manually scrolled to.
-  const userScrolledAway = useRef(false);
+  const channelMessages = messages[String(channelId)] ?? [];
 
-  // Detect when user manually scrolls (not from us setting scrollTop)
-  function handleMessagesScroll() {
+  // The message list is a column-reverse scroller: the browser keeps the view anchored to the
+  // bottom when the list or viewport resizes, and prepending history doesn't move what's on screen.
+  // In that layout scrollTop is 0 at the bottom and goes negative as the user scrolls up.
+  function loadOlderIfNearTop() {
     const el = scrollRef.current;
-    if (!el) return;
-    
-    // Skip loading check if we're currently adjusting scroll position or already loading
-    if (isAdjustingScrollRef.current || loadingOlderRef.current || !hasMoreRef.current) return;
-    
-    // Consider "at bottom" if less than 150px of space below current view
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-    userScrolledAway.current = !isNearBottom;
-    
-    // Load older messages when user scrolls NEAR THE TOP
-    // With column-reverse and negative scrollTop:
-    // scrollTop = 0 means at the bottom (newest messages)
-    // scrollTop < 0 means scrolled up toward older messages
-    // scrollTop ≈ -(scrollHeight - clientHeight) means at the very top
-    // We want to load when scrollTop is close to its minimum (most negative)
-    
-    const minScrollTop = -(el.scrollHeight - el.clientHeight);
-    const isNearTop = el.scrollTop < minScrollTop + 100; // Within 100px of the top
-    
-    if (isNearTop) {
-      // Debounce to avoid multiple requests on rapid scrolling
-      clearTimeout(scrollLoadDebounceRef.current);
-      scrollLoadDebounceRef.current = setTimeout(() => {
-        loadOlderMessages();
-      }, 300);
-    }
+    const history = historyRef.current;
+    // The channelId check covers the render between a channel switch and its reset effect
+    if (!el || history?.channelId !== String(channelId)) return;
+    if (!history.hasMore || history.loading || Date.now() < history.retryAt) return;
+    const distanceFromTop = el.scrollHeight - el.clientHeight + el.scrollTop;
+    if (distanceFromTop < LOAD_OLDER_THRESHOLD_PX) loadOlderMessages(history);
   }
 
-  // Load older messages by fetching with increased offset
-  async function loadOlderMessages() {
-    if (loadingOlderRef.current || !hasMoreRef.current) return;
-    
-    const el = scrollRef.current;
-    if (!el) return;
-    
-    loadingOlderRef.current = true;
+  async function loadOlderMessages(history) {
+    const key = history.channelId;
+    // Live new/deleted messages are mirrored in the local list, so its length tracks the server offset
+    const offset = channelMessages.filter(m => !m._pending).length;
+    history.loading = true;
     setLoadingOlder(true);
-    
     try {
-      const olderMessages = await getMessages(channelId, 50, offsetRef.current);
-      
-      if (!olderMessages || olderMessages.length === 0) {
-        hasMoreRef.current = false;
-        return;
+      const page = await getMessages(key, MESSAGE_PAGE_SIZE, offset);
+      if (historyRef.current !== history) return;
+      // Pages come newest-first; drop any overlap caused by messages arriving mid-request
+      const known = new Set(channelMessages.map(m => String(m.id)));
+      const older = page.filter(m => !known.has(String(m.id))).reverse();
+      // A full page with nothing new means the offset no longer lines up; stop instead of refetching it forever
+      history.hasMore = page.length === MESSAGE_PAGE_SIZE && older.length > 0;
+      if (older.length > 0) {
+        setMessages(prev => ({ ...prev, [key]: [...older, ...(prev[key] ?? [])] }));
       }
-      
-      // If we got fewer messages than requested, we've reached the end
-      if (olderMessages.length < 50) {
-        hasMoreRef.current = false;
-      }
-      
-      // Update offset for next load
-      offsetRef.current += 50;
-      
-      // Mark that we need to update loading state (useLayoutEffect will handle it)
-      scrollRestoreRef.current = true;
-      
-      // Prepend new messages to the state (reverse them since they come in newest-first order)
-      setMessages(prev => ({
-        ...prev,
-        [String(channelId)]: [...[...olderMessages].reverse(), ...(prev[String(channelId)] ?? [])],
-      }));
     } catch (err) {
       console.error('Failed to load older messages:', err);
-      loadingOlderRef.current = false;
-      setLoadingOlder(false);
+      history.retryAt = Date.now() + LOAD_OLDER_RETRY_MS;
+    } finally {
+      history.loading = false;
+      if (historyRef.current === history) setLoadingOlder(false);
     }
   }
-
-  // When the scroll container is resized (e.g. on-screen keyboard opens),
-  // keep the scroll position locked if user has scrolled away.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => {
-      // If user scrolled away, maintain their scroll position
-      if (userScrolledAway.current) {
-        // Get current scroll position as a fraction of total scrollable height
-        const scrollFraction = el.scrollTop / (el.scrollHeight - el.clientHeight);
-        // After resize, reapply the same fraction
-        requestAnimationFrame(() => {
-          el.scrollTop = scrollFraction * (el.scrollHeight - el.clientHeight);
-        });
-      }
-      // If at bottom, flexbox handles it naturally with column-reverse
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Handle visual viewport resize (keyboard show/hide on mobile)
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    function onVVResize() {
-      if (userScrolledAway.current) {
-        const el = scrollRef.current;
-        if (el) {
-          const scrollFraction = el.scrollTop / (el.scrollHeight - el.clientHeight);
-          requestAnimationFrame(() => {
-            el.scrollTop = scrollFraction * (el.scrollHeight - el.clientHeight);
-          });
-        }
-      }
-    }
-    vv.addEventListener('resize', onVVResize);
-    return () => vv.removeEventListener('resize', onVVResize);
-  }, []);
-
-  const channelMessages = messages[String(channelId)] ?? [];
 
   // Derive group chat info
   const isGroupChannel = channel?.type === 2;
@@ -937,8 +859,6 @@ export default function ChatView() {
     return () => {
       // When leaving the channel, clear active so new messages are counted
       setActiveChannelId(null);
-      // Clear any pending scroll debounce
-      clearTimeout(scrollLoadDebounceRef.current);
     };
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -952,20 +872,18 @@ export default function ChatView() {
     setMentionPicker(null);
     setMentionData({ members: [], channels: [], roles: [] });
     setEditingMsgId(null);
-    userScrolledAway.current = false;
-    
-    // Reset pagination state for older messages
-    // Start at offset 50 since initial load gets offset 0-49
-    offsetRef.current = 50;
-    hasMoreRef.current = true;
-    loadingOlderRef.current = false;
+
+    // Fresh pagination state; hasMore stays false until the first page tells us otherwise
+    const history = { channelId: String(channelId), hasMore: false, loading: false, retryAt: 0 };
+    historyRef.current = history;
     setLoadingOlder(false);
-    lastLoadedHeightRef.current = 0;
 
     Promise.all([
       getChannel(channelId),
-      getMessages(channelId, 50, 0),
+      getMessages(channelId, MESSAGE_PAGE_SIZE, 0),
     ]).then(([ch, msgs]) => {
+      // Ignore responses for a channel we've already navigated away from
+      if (historyRef.current !== history) return;
       // Keep the correct sidebar active based on the channel type
       setActiveGuildId(ch.type === 0 ? String(ch.guildId) : null);
       // Register channel metadata for tiered unread resolution
@@ -1004,11 +922,11 @@ export default function ChatView() {
         }).catch(console.error);
       }
       setChannel(ch);
+      history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
-      // With flex-direction: column-reverse, the view naturally stays at the bottom.
-      // No explicit scrolling needed.
     }).catch(e => {
+      if (historyRef.current !== history) return;
       console.error(e);
       setLoading(false);
     });
@@ -1061,18 +979,11 @@ export default function ChatView() {
     }
   }, [channelUpdatedEvent, channel]);
 
-  // When typing indicator appears/disappears, no scroll handling needed
-  // with flex-direction: column-reverse layout
+  // Scrolling isn't the only way the top of the history can end up on screen: the first page, a
+  // short page, or hidden blocked messages may not fill the viewport. Re-check whenever the list changes.
   useEffect(() => {
-    // Just mark that we're not scrolled away when typing indicator appears/disappears
-    // This helps detect user activity at the bottom
-    const el = scrollRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-    if (nearBottom) {
-      userScrolledAway.current = false;
-    }
-  }, [typingUsers[String(channelId)]?.size]); // eslint-disable-line react-hooks/exhaustive-deps
+    loadOlderIfNearTop();
+  }, [renderUnits, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to and highlight a linked message once messages have loaded
   useEffect(() => {
@@ -1158,23 +1069,6 @@ export default function ChatView() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 320) + 'px'; // 320px ≈ 20rem
   }, [input]);
-
-  // Restore scroll position after loading older messages
-  useLayoutEffect(() => {
-    if (!scrollRestoreRef.current) return;
-    
-    const el = scrollRef.current;
-    if (!el) return;
-    
-    // When messages are prepended to the top, the browser naturally keeps the user
-    // viewing the same messages they were before - no scroll adjustment needed!
-    // Just reset the loading state flags.
-    
-    scrollRestoreRef.current = null;
-    loadingOlderRef.current = false;
-    setLoadingOlder(false);
-    isAdjustingScrollRef.current = false;
-  }, [channelMessages]); // Runs after messages update
 
   // ── Mention autocomplete ────────────────────────────────────────────────────
 
@@ -1310,14 +1204,9 @@ export default function ChatView() {
       ...p,
       [String(channelId)]: [...(p[String(channelId)] ?? []), tempMsg],
     }));
-    // Reset the scroll-away flag and snap to bottom when user sends a message
-    userScrolledAway.current = false;
-    // Use requestAnimationFrame to ensure the DOM has updated before scrolling
+    // Snap to the bottom (scrollTop 0 in the column-reverse list) once the DOM has updated
     requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-      }
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
     });
 
     try {
@@ -1573,14 +1462,48 @@ export default function ChatView() {
         )}
 
         {/* Messages area */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
+        <div ref={scrollRef} onScroll={loadOlderIfNearTop} style={{
+          flex: 1,
+          overflowY: 'auto',
           paddingTop: '0.5rem',
           display: 'flex',
           flexDirection: 'column-reverse',
         }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {/* Loading indicator above the oldest loaded message, where the older ones will appear */}
+            {loadingOlder && (
+              <div style={{
+                padding: '1rem',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}>
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  border: '2px solid rgba(255,255,255,0.2)',
+                  borderTop: '2px solid var(--text-secondary)',
+                  borderRadius: '50%',
+                  animation: 'spin 0.6s linear infinite',
+                }}></div>
+                <span style={{ fontSize: '0.85rem' }}>Loading older messages...</span>
+              </div>
+            )}
+            {channelMessages.length === 0 && !loading && (
+              <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
+                  {channel?.type === 1 ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
+                </div>
+                <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
+                  {channel?.type === 1
+                    ? `This is the beginning of your conversation with ${channelDisplayName}`
+                    : `Welcome to ${channelDisplayName}!`}
+                </div>
+                <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
+              </div>
+            )}
             {renderUnits.map(unit => {
               if (unit.type === 'blocked') {
                 return (
@@ -1618,43 +1541,6 @@ export default function ChatView() {
                 />
               );
             })}
-            {/* Loading indicator when fetching older messages */}
-            {loadingOlder && (
-              <div style={{ 
-                padding: '1rem', 
-                textAlign: 'center', 
-                color: 'var(--text-muted)',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}>
-                <div style={{
-                  display: 'inline-block',
-                  width: '16px',
-                  height: '16px',
-                  border: '2px solid rgba(255,255,255,0.2)',
-                  borderTop: '2px solid var(--text-secondary)',
-                  borderRadius: '50%',
-                  animation: 'spin 0.6s linear infinite',
-                }}></div>
-                <span style={{ fontSize: '0.85rem' }}>Loading older messages...</span>
-              </div>
-            )}
-            {/* Empty state message at the top (since we're reversed) */}
-            {channelMessages.length === 0 && !loading && (
-              <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                  {channel?.type === 1 ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
-                </div>
-                <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
-                  {channel?.type === 1
-                    ? `This is the beginning of your conversation with ${channelDisplayName}`
-                    : `Welcome to ${channelDisplayName}!`}
-                </div>
-                <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
-              </div>
-            )}
           </div>
         </div>
 

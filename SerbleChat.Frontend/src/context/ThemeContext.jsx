@@ -119,6 +119,10 @@ function applyTheme(colors) {
       60%  { background: ${accent}33; }
       100% { background: transparent; }
     }
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
     .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
   }
 }
