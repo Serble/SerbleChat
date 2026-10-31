@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMessage, getChannel } from '../api.js';
-import { useApp } from '../context/AppContext.jsx';
-import Avatar from './Avatar.jsx';
+import { getMessage, getChannel } from '../../api.js';
+import { useApp } from '../../context/AppContext.jsx';
+import Avatar from '../Avatar.jsx';
+import { parseUtcDate } from './utils.js';
+import './chat.css';
+
+const cardStyle = {
+  display: 'inline-flex', alignItems: 'center', gap: '0.75rem',
+  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+  borderRadius: '8px', padding: '0.75rem 1rem',
+  marginTop: '0.35rem', maxWidth: 440,
+};
 
 /**
  * A compact card shown when a message link appears in a message.
@@ -56,12 +65,7 @@ export default function MessageCard({ channelId, messageId }) {
 
   if (state === 'loading') {
     return (
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.75rem',
-        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '8px', padding: '0.75rem 1rem',
-        marginTop: '0.35rem', maxWidth: 440,
-      }}>
+      <div style={cardStyle}>
         <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Loading message…</div>
       </div>
     );
@@ -69,12 +73,7 @@ export default function MessageCard({ channelId, messageId }) {
 
   if (state === 'error' || !message) {
     return (
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.75rem',
-        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '8px', padding: '0.75rem 1rem',
-        marginTop: '0.35rem', maxWidth: 440,
-      }}>
+      <div style={cardStyle}>
         <span style={{ fontSize: '0.82rem', color: 'var(--danger)' }}>
           Message not found or no access
         </span>
@@ -82,8 +81,9 @@ export default function MessageCard({ channelId, messageId }) {
     );
   }
 
-  const authorColor = getMemberColor?.(message.authorId) || author?.color;
-  const timestamp = new Date(message.createdAt + 'Z').toLocaleString([], {
+  // Role colour (for guild channels) > profile colour > generated hue
+  const authorColor = getMemberColor(channel?.guildId ?? null, message.authorId, author?.username, author?.color);
+  const timestamp = parseUtcDate(message.createdAt).toLocaleString([], {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -99,22 +99,8 @@ export default function MessageCard({ channelId, messageId }) {
   return (
     <div
       onClick={handleClick}
-      style={{
-        display: 'inline-flex', alignItems: 'flex-start', gap: '0.75rem',
-        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '8px', padding: '0.75rem 1rem',
-        marginTop: '0.35rem', maxWidth: 440,
-        cursor: 'pointer',
-        transition: 'background 0.15s, border-color 0.15s',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.background = 'var(--bg-active)';
-        e.currentTarget.style.borderColor = 'var(--border-hover)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = 'var(--bg-secondary)';
-        e.currentTarget.style.borderColor = 'var(--border)';
-      }}
+      className="chat-message-card"
+      style={{ ...cardStyle, alignItems: 'flex-start', cursor: 'pointer' }}
     >
       {/* Author avatar */}
       <Avatar
@@ -152,7 +138,7 @@ export default function MessageCard({ channelId, messageId }) {
         }}>
           <span style={{
             fontSize: '0.85rem',
-            color: authorColor || 'var(--text-primary)',
+            color: authorColor,
             fontWeight: 600,
             overflow: 'hidden',
             textOverflow: 'ellipsis',

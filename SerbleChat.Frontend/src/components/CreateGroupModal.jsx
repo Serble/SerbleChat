@@ -1,34 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { createGroupChat } from '../api.js';
-import { useMobile } from '../context/MobileContext.jsx';
-import Avatar from './Avatar.jsx';
-import { CloseIcon } from '../icons.jsx';
+import { Modal, Button, TextInput, ErrorBox, Hint } from './ui/index.js';
+import { FieldLabel } from './ui/index.js';
+import FriendPicker, { friendIdOf } from './FriendPicker.jsx';
 
 export default function CreateGroupModal({ onClose }) {
-  const { friends, currentUser, resolveUser, refreshDms } = useApp();
+  const { friends, currentUser, refreshDms } = useApp();
   const nav = useNavigate();
 
   const [name, setName]         = useState('');
   const [selected, setSelected] = useState(new Set());
-  const [userMap, setUserMap]   = useState({});
   const [busy, setBusy]         = useState(false);
   const [error, setError]       = useState(null);
-  const backdropRef             = useRef(null);
-  const { isMobile }            = useMobile();
 
   // Accepted friends only
-  const acceptedFriends = friends.filter(f => !f.pending);
-
-  // Resolve all friend usernames up front
-  useEffect(() => {
-    acceptedFriends.forEach(f => {
-      const otherId = f.user1Id === currentUser?.id ? f.user2Id : f.user1Id;
-      resolveUser(otherId).then(u => setUserMap(p => ({ ...p, [otherId]: u })));
-    });
-  }, [friends]); // eslint-disable-line react-hooks/exhaustive-deps
+  const friendIds = friends.filter(f => !f.pending).map(f => friendIdOf(f, currentUser?.id));
+  // Ignore selections for anyone who stopped being a friend while the modal was open
+  const picked = friendIds.filter(id => selected.has(id));
 
   function toggle(id) {
     setSelected(prev => {
@@ -40,12 +30,13 @@ export default function CreateGroupModal({ onClose }) {
 
   async function handleCreate(e) {
     e.preventDefault();
+    if (busy) return;
     if (!name.trim()) { setError('Please enter a group name.'); return; }
-    if (selected.size === 0) { setError('Select at least one friend.'); return; }
+    if (picked.length === 0) { setError('Select at least one friend.'); return; }
     setBusy(true);
     setError(null);
     try {
-      const chat = await createGroupChat(name.trim(), [...selected]);
+      const chat = await createGroupChat(name.trim(), picked);
       await refreshDms();
       onClose();
       nav(`/app/channel/${chat.channelId}`);
@@ -55,190 +46,43 @@ export default function CreateGroupModal({ onClose }) {
     }
   }
 
-  // Close on backdrop click
-  function handleBackdrop(e) {
-    if (e.target === backdropRef.current) onClose();
-  }
+  return (
+    <Modal onClose={onClose} title="Create a Group Chat" width={460}>
+      <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: '1 1 auto', minHeight: 0 }}>
+        <Hint>Give it a name and pick your friends.</Hint>
 
-  // Close on Escape
-  useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      ref={backdropRef}
-      onClick={handleBackdrop}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: isMobile ? 'stretch' : 'center',
-        padding: isMobile ? 0 : '1rem',
-      }}
-    >
-      <div style={{
-        background: 'var(--bg-base)', borderRadius: isMobile ? 0 : '12px',
-        width: '100%', maxWidth: isMobile ? '100%' : 460,
-        height: isMobile ? '100%' : 'auto',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '1.25rem 1.5rem 0',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-              Create a Group Chat
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-              Give it a name and pick your friends.
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent', border: 'none', color: 'var(--text-muted)',
-              fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1,
-              padding: '0.25rem', borderRadius: '4px',
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-          >
-            <CloseIcon size={14} />
-          </button>
+        {/* Group name */}
+        <div>
+          <FieldLabel htmlFor="create-group-name">Group Name</FieldLabel>
+          <TextInput
+            id="create-group-name"
+            autoFocus
+            placeholder="My Awesome Group"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            maxLength={64}
+          />
         </div>
 
-          <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, overflow: 'hidden' }}>
-          {/* Group name */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
-              Group Name
-            </label>
-            <input
-              autoFocus
-              style={{
-                width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                borderRadius: '6px', padding: '0.6rem 0.75rem', color: 'var(--text-primary)',
-                fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.15s',
-              }}
-              placeholder="My Awesome Group"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              maxLength={64}
-              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
-          </div>
+        {/* Friend picker */}
+        <FriendPicker
+          label="Add Friends"
+          userIds={friendIds}
+          selected={selected}
+          onToggle={toggle}
+          emptyText="You have no friends to add yet."
+        />
 
-          {/* Friend picker */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
-              Add Friends {selected.size > 0 && <span style={{ color: 'var(--accent)' }}>— {selected.size} selected</span>}
-            </label>
-            <div style={{
-              background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px',
-              flex: 1, overflowY: 'auto', minHeight: 0,
-            }}>
-              {acceptedFriends.length === 0 && (
-                <div style={{ padding: '1rem', color: 'var(--text-subtle)', fontSize: '0.85rem', textAlign: 'center' }}>
-                  You have no friends to add yet.
-                </div>
-              )}
-              {acceptedFriends.map(f => {
-                const otherId = f.user1Id === currentUser?.id ? f.user2Id : f.user1Id;
-                const u = userMap[otherId];
-                const isSelected = selected.has(otherId);
-                return (
-                  <div
-                    key={f.id}
-                    onClick={() => toggle(otherId)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      padding: '0.55rem 0.75rem', cursor: 'pointer',
-                      background: isSelected ? 'rgba(124,58,237,0.15)' : 'transparent',
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <Avatar userId={otherId} name={u?.username} size={32} color={u?.color} />
-                    <span style={{
-                      flex: 1, color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: isSelected ? 600 : 400,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {u?.username ?? '…'}
-                    </span>
-                    {/* Checkbox */}
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--text-subtle)'}`,
-                      background: isSelected ? 'var(--accent)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'background 0.15s, border-color 0.15s',
-                    }}>
-                      {isSelected && (
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <ErrorBox>{error}</ErrorBox>
 
-          {error && (
-            <div style={{
-              padding: '0.6rem 0.75rem', borderRadius: '6px',
-              background: 'rgba(237,66,69,0.15)', color: 'var(--danger)',
-              fontSize: '0.82rem', border: '1px solid rgba(237,66,69,0.3)',
-            }}>
-              {error}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: '0.6rem 1.25rem', borderRadius: '6px',
-                background: 'transparent', border: 'none',
-                color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.875rem',
-                cursor: 'pointer', transition: 'color 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={busy || !name.trim() || selected.size === 0}
-              style={{
-                padding: '0.6rem 1.5rem', borderRadius: '6px',
-                background: busy || !name.trim() || selected.size === 0 ? 'var(--bg-active)' : 'var(--accent)',
-                border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.875rem',
-                cursor: busy || !name.trim() || selected.size === 0 ? 'default' : 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = 'var(--accent-hover)'; }}
-              onMouseLeave={e => { if (!busy && name.trim() && selected.size > 0) e.currentTarget.style.background = 'var(--accent)'; }}
-            >
-              {busy ? 'Creating…' : 'Create Group'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem', flexShrink: 0 }}>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" disabled={busy || !name.trim() || picked.length === 0}>
+            {busy ? 'Creating…' : 'Create Group'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

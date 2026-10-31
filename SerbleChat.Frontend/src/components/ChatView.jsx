@@ -1,30 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
-import { useVoice } from '../context/VoiceContext.jsx';
+import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { useMobile } from '../context/MobileContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, editMessage, leaveOrDeleteGroupChat,
-         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers, FRONTEND_URL,
+         getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers,
          getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
-import { copyToClipboard, openExternalLink, triggerDownload } from '../electron-utils.js';
 import UserPopout from './UserPopout.jsx';
-import UserInteraction from './UserInteraction.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
-import InviteCard from './InviteCard.jsx';
-import MessageCard from './MessageCard.jsx';
-import FileEmbed from './FileEmbed.jsx';
-import { MentionText, MentionPicker } from './MentionRenderer.jsx';
-import { useClientOptions } from '../context/ClientOptionsContext.jsx';
-import { useMobile } from '../context/MobileContext.jsx';
-import Avatar from './Avatar.jsx';
-import TypingIndicator from './TypingIndicator.jsx';
-import { ClipboardIcon, LinkIcon, IdCardIcon, EditIcon, TrashIcon, GlobeIcon, SaveIcon, PersonIcon, PeopleIcon, ChatIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon, AttachmentIcon, WaveIcon, CheckCircleIcon, BlockIcon, CloseIcon, LockIcon, CheckIcon } from '../icons.jsx';
-import { FileUploadPanel, useFileUploads } from './FileUploadPanel.jsx';
+import ChatHeader from './chat/ChatHeader.jsx';
+import Composer, { BlockedInputBanner, NoPermissionNotice } from './chat/Composer.jsx';
+import { MessageBubble, BlockedGroupBubble } from './chat/MessageBubble.jsx';
+import { MessageContextMenu, ImageContextMenu } from './chat/MessageMenus.jsx';
+import TypingIndicator from './chat/TypingIndicator.jsx';
+import { useFileUploads } from './chat/FileUploadPanel.jsx';
+import { isUnlimited } from './chat/utils.js';
+import { ChatIcon, AttachmentIcon, WaveIcon, CheckCircleIcon } from '../icons.jsx';
 
 const MESSAGE_PAGE_SIZE = 50;
 // Start fetching older messages when the user is within this distance of the top of the history
@@ -32,489 +25,33 @@ const LOAD_OLDER_THRESHOLD_PX = 600;
 // After a failed fetch, wait this long before scrolling can trigger another attempt
 const LOAD_OLDER_RETRY_MS = 3000;
 
-/**
- * Helper: treat -1 as unlimited
- */
-function isUnlimited(value) {
-  return value === -1;
-}
-
-// Regex that matches invite links anywhere in a message.
-// Intentionally origin-agnostic so that links shared from a different
-// hostname/port (or after a Vite port reassignment on reload) still work.
-const INVITE_RE = () => /https?:\/\/[^\s/]+\/invite\/([a-zA-Z0-9_-]+)/g;
-
-// Regex that matches message links: /app/channel/:channelId?message=:messageId
-// Also origin-agnostic for the same reasons as invite links.
-const MESSAGE_RE = () => /https?:\/\/[^\s/]+\/app\/channel\/(\d+)\?message=(\d+)/g;
-
-// Regex that matches files API URLs: /files/something
-// Matches the VITE_SERBLE_FILES_API_URL base with /files/ path
-const FILE_RE = () => /https?:\/\/[^\s/]+\/files\/[^\s]+/g;
-
-/** Extract unique invite IDs from a message string */
-function extractInviteIds(content) {
-  const ids = [];
-  const seen = new Set();
-  let m;
-  const re = INVITE_RE();
-  while ((m = re.exec(content)) !== null) {
-    if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-  }
-  return ids;
-}
-
-/** Extract unique message links (channelId, messageId pairs) from a message string */
-function extractMessageLinks(content) {
-  const links = [];
-  const seen = new Set();
-  let m;
-  const re = MESSAGE_RE();
-  while ((m = re.exec(content)) !== null) {
-    const key = `${m[1]}-${m[2]}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      links.push({ channelId: m[1], messageId: m[2] });
-    }
-  }
-  return links;
-}
-
-/** Extract unique file URLs from a message string */
-function extractFileUrls(content) {
-  const urls = [];
-  const seen = new Set();
-  let m;
-  const re = FILE_RE();
-  while ((m = re.exec(content)) !== null) {
-    if (!seen.has(m[0])) { seen.add(m[0]); urls.push(m[0]); }
-  }
-  return urls;
-}
-
-
-// Markdown component overrides styled for the dark chat theme
-const mdComponents = {
-  p:          ({ children }) => <span style={{ display: 'block', margin: '0 0 0.45em' }}>{children}</span>,
-  a:          ({ href, children }) => {
-    const isEmbedLink = href && (INVITE_RE().test(href) || MESSAGE_RE().test(href) || FILE_RE().test(href));
-    const handleClick = (e) => {
-      e.stopPropagation();
-      if (!isEmbedLink && href) {
-        e.preventDefault();
-        openExternalLink(href);
-      }
-    };
-    return (
-      <a
-        href={href}
-        target={isEmbedLink ? '_self' : '_blank'}
-        rel="noopener noreferrer"
-        style={{ color: 'var(--text-link)', textDecoration: 'underline' }}
-        onClick={handleClick}
-      >
-        {children}
-      </a>
-    );
-  },
-  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{children}</strong>,
-  em:         ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
-  del:        ({ children }) => <del style={{ textDecoration: 'line-through', opacity: 0.7 }}>{children}</del>,
-  code:       ({ inline, children }) => inline
-    ? <code style={{ background: 'var(--bg-secondary)', borderRadius: 3, padding: '0.1em 0.35em', fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{children}</code>
-    : <code>{children}</code>,
-  pre:        ({ children }) => <pre style={{ background: 'var(--bg-secondary)', borderRadius: 6, padding: '0.6rem 0.8rem', overflowX: 'auto', margin: '0.3rem 0', fontSize: '0.85em', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{children}</pre>,
-  blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid var(--text-subtle)', paddingLeft: '0.6rem', margin: '0.2rem 0', color: 'var(--text-secondary)' }}>{children}</blockquote>,
-  ul:         ({ children }) => <ul style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ul>,
-  ol:         ({ children }) => <ol style={{ paddingLeft: '1.2em', margin: '0.2rem 0' }}>{children}</ol>,
-  li:         ({ children }) => <li style={{ margin: '0.1rem 0' }}>{children}</li>,
-  h1:         ({ children }) => <strong style={{ fontSize: '1.1em', display: 'block' }}>{children}</strong>,
-  h2:         ({ children }) => <strong style={{ fontSize: '1.05em', display: 'block' }}>{children}</strong>,
-  h3:         ({ children }) => <strong style={{ fontSize: '1em', display: 'block' }}>{children}</strong>,
-};
-
-// Inject the highlight-flash keyframe once (ThemeContext updates it when accent changes)
-if (typeof document !== 'undefined' && !document.getElementById('msg-highlight-style')) {
-  const s = document.createElement('style');
-  s.id = 'msg-highlight-style';
-  s.textContent = `@keyframes msgHighlight {
-    0%   { background: rgba(124,58,237,0.35); }
-    60%  { background: rgba(124,58,237,0.2); }
-    100% { background: transparent; }
-  }
-  @keyframes spin {
-    0%   { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
-  document.head.appendChild(s);
-}
+const EMPTY_MENTION_DATA = { members: [], channels: [], roles: [] };
 
 /**
- * Parse a timestamp string from the server as UTC.
- * The backend sends ISO-8601 strings without a timezone designator (e.g.
- * "2026-02-24T14:30:00"), which JS Date parses as *local* time — wrong.
- * Appending 'Z' forces UTC interpretation.
+ * Check whether an image URL loads; calls `onResult(bool)` unless cancelled.
+ * Returns a cancel function so a slow probe can't report for a channel we've left.
  */
-function parseUtcDate(str) {
-  if (!str) return new Date(NaN);
-  return new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(str) ? str : str + 'Z');
+function probeImage(url, onResult) {
+  let cancelled = false;
+  const img = new Image();
+  img.onload = () => { if (!cancelled) onResult(true); };
+  img.onerror = () => { if (!cancelled) onResult(false); };
+  img.src = url;
+  return () => { cancelled = true; };
 }
 
-function CtxBtn({ icon, label, onClick, danger, copied }) {
-  const [hov, setHov] = useState(false);
-  const color  = copied ? 'var(--success)' : danger ? 'var(--danger)' : 'var(--text-secondary)';
-  const hovBg  = copied ? 'rgba(35,165,90,0.12)' : danger ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.07)';
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.6rem',
-        width: '100%', padding: '0.45rem 0.75rem',
-        background: hov ? hovBg : 'transparent',
-        border: 'none', color, fontSize: '0.875rem', fontWeight: 500,
-        borderRadius: '4px', cursor: 'pointer', textAlign: 'left',
-        transition: 'background 0.1s, color 0.1s',
-      }}
-    >
-      <span style={{ width: '1.1em', textAlign: 'center', flexShrink: 0 }}>{copied ? <CheckIcon size={14} /> : (() => { const I = icon; return I ? <I size={14} /> : null; })()}</span>
-      {copied ? 'Copied!' : label}
-    </button>
-  );
-}
-
-function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
-  const [hov, setHov] = useState(false);
-  const bg = danger && hov ? 'rgba(242,63,67,0.15)'
-    : active ? 'rgba(255,255,255,0.1)'
-    : hov ? 'rgba(255,255,255,0.07)'
-    : 'transparent';
-  const color = danger ? (hov ? '#f23f43' : '#72767d') : active ? '#f2f3f5' : '#949ba4';
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: bg, border: 'none', color, borderRadius: '6px',
-        padding: '0.25rem 0.5rem', cursor: disabled ? 'default' : 'pointer',
-        fontSize: '1rem', lineHeight: 1, transition: 'all 0.15s',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >{children}</button>
-  );
-}
-
-const MessageBubble = React.memo(function MessageBubble({ msg, prevMsg, resolveUser, currentUserId, onContextMenu, onImageContextMenu, onUserClick, getColor, mentionData, highlighted, guildId, isEditing, onEditSave, onEditCancel }) {
-  const [author, setAuthor] = useState(null);
-  const [editDraft, setEditDraft] = useState('');
-  const editRef = useRef(null);
-
-  // Group consecutive messages from the same author
-  const compact = prevMsg && prevMsg.authorId === msg.authorId &&
-    parseUtcDate(msg.createdAt) - parseUtcDate(prevMsg.createdAt) < 5 * 60 * 1000;
-
-  useEffect(() => {
-    resolveUser(msg.authorId).then(setAuthor);
-  }, [msg.authorId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When entering edit mode, initialise draft from current content and focus + resize
-  useEffect(() => {
-    if (isEditing) {
-      setEditDraft(msg.content);
-      requestAnimationFrame(() => {
-        const el = editRef.current;
-        if (!el) return;
-        el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 320) + 'px';
-        el.focus();
-        el.setSelectionRange(el.value.length, el.value.length);
-      });
-    }
-  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Memoize invite ID extraction — only re-runs when message content changes
-  const inviteIds = useMemo(() => extractInviteIds(msg.content), [msg.content]);
-  const messageLinks = useMemo(() => extractMessageLinks(msg.content), [msg.content]);
-  const fileUrls = useMemo(() => extractFileUrls(msg.content), [msg.content]);
-
-  // Resolve color: role color > user profile color > generated hue
-  const nameColor = getColor(msg.authorId, author?.username, author?.color);
-
-  const ts = msg._pending
-    ? 'Sending…'
-    : parseUtcDate(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-
-  // Full timestamp shown next to the username in non-compact rows (may include date if old)
-  const tsHeader = msg._pending
-    ? 'Sending…'
-    : (() => {
-        const d = parseUtcDate(msg.createdAt);
-        const now = new Date();
-        const isToday = d.toLocaleDateString() === now.toLocaleDateString();
-        return isToday
-          ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-            d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      })();
-
-  // Shared inline edit UI
-  function renderEditArea() {
-    return (
-      <div style={{ marginTop: '0.2rem' }}>
-        <textarea
-          ref={editRef}
-          rows={1}
-          value={editDraft}
-          onChange={e => {
-            setEditDraft(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 320) + 'px';
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEditSave(editDraft); }
-            if (e.key === 'Escape') { e.preventDefault(); onEditCancel(); }
-          }}
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'var(--bg-input)', color: 'var(--text-secondary)',
-            border: '1px solid var(--border)', borderRadius: '6px',
-            padding: '0.45rem 0.75rem', fontSize: '0.9rem',
-            outline: 'none', resize: 'none', lineHeight: 1.5,
-            fontFamily: 'inherit', minHeight: '2.2rem',
-            maxHeight: '20rem', overflowY: 'auto',
-            transition: 'border-color 0.15s',
-          }}
-          onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
-          onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-          maxLength={16384}
-        />
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.3rem', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-          <span>Enter <span style={{ color: 'var(--text-subtle)' }}>to save</span></span>
-          <span style={{ color: 'var(--border)' }}>•</span>
-          <span>Esc <span style={{ color: 'var(--text-subtle)' }}>to cancel</span></span>
-        </div>
-      </div>
-    );
-  }
-
-  // Shared content UI (non-editing)
-  function renderContent() {
-    return (
-      <>
-        <MentionText
-          content={msg.content}
-          mdComponents={mdComponents}
-          mentionData={mentionData}
-          resolveUser={resolveUser}
-          onUserClick={onUserClick}
-          appendNode={msg.editedAt ? (
-            <span
-              title={`Edited ${parseUtcDate(msg.editedAt).toLocaleString()}`}
-              style={{ fontSize: '0.65rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginLeft: '0.25rem' }}
-            >
-              (edited)
-            </span>
-          ) : undefined}
-        />
-        {inviteIds.map(id => (
-          <InviteCard key={id} inviteId={id} />
-        ))}
-        {messageLinks.map(link => (
-          <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
-        ))}
-        {fileUrls.map(url => (
-          <FileEmbed
-            key={url}
-            fileUrl={url}
-            onImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), false, msg.id)}
-            onModalImageContextMenu={(e) => onImageContextMenu(e, url, url.split('/').pop(), true)}
-          />
-        ))}
-      </>
-    );
-  }
-
-  if (compact) {
-    return (
-      <div
-        data-msgid={msg.id}
-        className={`${highlighted ? 'msg-highlighted' : ''} hov-bg`.trim()}
-        onContextMenu={e => onContextMenu(e, msg)}
-        style={{ padding: '0.1rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-      >
-        <span style={{ fontSize: '0.65rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)', width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
-          {ts}
-        </span>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
-          {isEditing ? renderEditArea() : renderContent()}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      data-msgid={msg.id}
-      className={`${highlighted ? 'msg-highlighted' : ''} hov-bg`.trim()}
-      onContextMenu={e => onContextMenu(e, msg)}
-      style={{ padding: '0.5rem 1rem', display: 'flex', gap: '0.75rem', opacity: msg._pending ? 0.55 : 1, cursor: 'default' }}
-    >
-      <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
-        <div style={{ flexShrink: 0 }}>
-          <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} style={{ marginTop: 2 }} />
-        </div>
-      </UserInteraction>
-      <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
-          <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
-            <span style={{ fontWeight: 600, color: nameColor, fontSize: '0.9rem' }}>
-              {author?.username ?? msg.authorId.slice(0, 10)}
-            </span>
-          </UserInteraction>
-          <span style={{ fontSize: '0.68rem', color: msg._pending ? '#f0b232' : 'var(--text-subtle)' }}>{tsHeader}</span>
-        </div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-          {isEditing ? renderEditArea() : renderContent()}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-function BlockedInputBanner({ username, userId, unblockUser }) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleUnblock() {
-    setBusy(true);
-    try { await unblockUser(userId); }
-    catch (e) { console.error(e); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.75rem',
-      padding: '0.75rem 1rem',
-      background: 'rgba(242,63,67,0.08)', border: '1px solid rgba(242,63,67,0.25)',
-      borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.875rem',
-    }}>
-      <BlockIcon size={16} style={{ flexShrink: 0 }} />
-      <span style={{ flex: 1 }}>
-        You have blocked <strong style={{ color: 'var(--text-secondary)' }}>{username}</strong>. You cannot send messages until you unblock them.
-      </span>
-      <button
-        onClick={handleUnblock}
-        disabled={busy}
-        style={{
-          flexShrink: 0, padding: '0.35rem 0.85rem', borderRadius: '6px',
-          background: busy ? 'rgba(255,255,255,0.05)' : 'rgba(242,63,67,0.15)',
-          border: '1px solid rgba(242,63,67,0.35)',
-          color: busy ? 'var(--text-muted)' : '#f23f43',
-          fontSize: '0.8rem', fontWeight: 600,
-          cursor: busy ? 'default' : 'pointer',
-          transition: 'background 0.15s',
-        }}
-        className={!busy ? 'hov-danger-light' : undefined}
-      >
-        {busy ? 'Unblocking…' : 'Unblock'}
-      </button>
-    </div>
-  );
-}
-
-function BlockedGroupBubble({ messages, authorId, resolveUser, currentUserId, onContextMenu, onUserClick, getColor, mentionData, guildId }) {
-  const [expanded, setExpanded] = useState(false);
-  const [author, setAuthor] = useState(null);
-
-  useEffect(() => {
-    resolveUser(authorId).then(setAuthor);
-  }, [authorId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const count = messages.length;
-  const name = author?.username ?? '…';
-
-  if (expanded) {
-    return (
-      <div>
-        {messages.map((msg, i) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            prevMsg={i === 0 ? null : messages[i - 1]}
-            resolveUser={resolveUser}
-            currentUserId={currentUserId}
-            onContextMenu={onContextMenu}
-            onImageContextMenu={onImageContextMenu}
-            onUserClick={onUserClick}
-            getColor={getColor}
-            mentionData={mentionData}
-            highlighted={false}
-            guildId={guildId}
-          />
-        ))}
-        <div
-          onClick={() => setExpanded(false)}
-          style={{
-            padding: '0.25rem 1rem 0.35rem',
-            fontSize: '0.78rem',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            userSelect: 'none',
-          }}
-          className="hov-text-secondary"
-        >
-          <span>▲</span>
-          <span>Hide messages from blocked user</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      onClick={() => setExpanded(true)}
-      style={{
-        margin: '0.25rem 1rem',
-        padding: '0.45rem 0.8rem',
-        borderRadius: '6px',
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.6rem',
-        cursor: 'pointer',
-        userSelect: 'none',
-        transition: 'background 0.1s',
-      }}
-      className="hov-bg"
-    >
-      <BlockIcon size={15} style={{ flexShrink: 0 }} />
-      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flex: 1 }}>
-        {count === 1
-          ? `1 message from blocked user ${name}`
-          : `${count} messages from blocked user ${name}`}
-      </span>
-      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', flexShrink: 0 }}>click to show ▼</span>
-    </div>
-  );
+/** Does this drag carry files (as opposed to e.g. selected text)? */
+function isFileDrag(e) {
+  return Array.from(e.dataTransfer?.types ?? []).includes('Files');
 }
 
 export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, hubRef } = useApp();
-  const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice, toggleMute, voiceMuted, remoteScreenShares } = useVoice();
-  const { blockedMessageMode, sendTypingIndicators } = useClientOptions() ?? { blockedMessageMode: 'masked', sendTypingIndicators: true };
-  const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers } = useApp();
+  const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
+  const { isMobile } = useMobile() ?? { isMobile: false };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
   const [highlightMsgId, setHighlightMsgId] = useState(null);
@@ -523,8 +60,7 @@ export default function ChatView() {
   const [otherUser, setOtherUser]   = useState(null);
   const [guildOwnerId, setGuildOwnerId] = useState(null);
   const [hasChannelIcon, setHasChannelIcon] = useState(false);
-  const [ctxMenu, setCtxMenu]       = useState(null);
-  const [copiedCtx, setCopiedCtx]   = useState(null); // 'text' | 'link' | 'id' | null
+  const [ctxMenu, setCtxMenu]       = useState(null); // { x, y, msg, key }
   const [popout,  setPopout]        = useState(null);
   const [showMembers, setShowMembers] = useState(
     () => sessionStorage.getItem('memberPanelOpen') !== 'false'
@@ -532,22 +68,19 @@ export default function ChatView() {
   const [memberRefreshTick, setMemberRefreshTick] = useState(0);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [leaveBusy, setLeaveBusy]   = useState(false);
-  // Mention autocomplete
-  const [mentionData, setMentionData]   = useState({ members: [], channels: [], roles: [] });
-  const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
-  const [pickerIndex, setPickerIndex]   = useState(0);
-  
+  // Mention autocomplete data for the composer and mention chips
+  const [mentionData, setMentionData] = useState(EMPTY_MENTION_DATA);
+
   // File uploads
   const fileUploads = useFileUploads();
   const [dragOver, setDragOver] = useState(false);
-  
+
   // Message editing
   const [editingMsgId, setEditingMsgId] = useState(null);
-  
+
   // Image context menu
-  const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, isModal, messageId? }
-  const [copiedImageCtx, setCopiedImageCtx] = useState(null); // 'link' | 'image' | null
-  
+  const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, msg, key }
+
   // Older messages loading state
   const [loadingOlder, setLoadingOlder] = useState(false);
   // Pagination state for the current channel's history: { channelId, hasMore, loading, retryAt }.
@@ -556,9 +89,6 @@ export default function ChatView() {
 
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
-  // Debounce timer for typing indicator notifications (max send every 2 seconds)
-  const typingIndicatorTimerRef = useRef(null);
-  const lastTypingNotifyRef = useRef(0);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -568,8 +98,6 @@ export default function ChatView() {
   }
   const scrollRef = useRef(null);
   const inputRef  = useRef(null);
-  const ctxRef    = useRef(null);
-  const imageCtxRef = useRef(null);
 
   const channelMessages = messages[String(channelId)] ?? [];
 
@@ -620,7 +148,6 @@ export default function ChatView() {
     ? groupChats.find(g => String(g.channelId) === String(channelId))
     : null;
   const isOwner = groupChat?.ownerId === currentUser?.id;
-  const existingMemberIds = new Set(); // populated lazily by MemberList, used by AddMembersModal
 
   // Permission checks for guild channels
   // PermissionState: 0 = Allow, 1 = Deny, 2 = Inherit
@@ -635,7 +162,7 @@ export default function ChatView() {
   const guildIdForColor = isGuildChannel ? channel?.guildId : null;
   const getColor = useCallback(
     (userId, username, userColor) => getMemberColor(guildIdForColor, userId, username, userColor),
-    [getMemberColor, guildIdForColor] // eslint-disable-line react-hooks/exhaustive-deps
+    [getMemberColor, guildIdForColor]
   );
 
   // Pre-process messages into render units, grouping consecutive blocked-user messages
@@ -674,7 +201,16 @@ export default function ChatView() {
       }
     }
     return units;
-  }, [channelMessages, isBlocked, blockedMessageMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelMessages, isBlocked, blockedMessageMode]);
+
+  // Typing users for this channel, minus blocked users. Memoized so TypingIndicator
+  // (React.memo) only re-resolves names when the set actually changes.
+  const channelTypingUsers = typingUsers[String(channelId)];
+  const visibleTypingUsers = useMemo(() => {
+    if (!channelTypingUsers?.size) return null;
+    const filtered = new Set(Array.from(channelTypingUsers).filter(uid => !isBlocked(uid)));
+    return filtered.size > 0 ? filtered : null;
+  }, [channelTypingUsers, isBlocked]);
 
   // React to channel-level SignalR events
   useEffect(() => {
@@ -704,24 +240,6 @@ export default function ChatView() {
     loadGuildMemberColors(channel.guildId, channelId);
   }, [userUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Refresh icon when channel is updated
-  useEffect(() => {
-    if (!channelUpdatedEvent || !channel) return;
-    if (String(channelUpdatedEvent.channelId) === String(channel.id)) {
-      if (channel.type === 0) {
-        const img = new Image();
-        img.onload = () => setHasChannelIcon(true);
-        img.onerror = () => setHasChannelIcon(false);
-        img.src = getChannelIconUrl(channel.guildId, channel.id) + '?t=' + channelUpdatedEvent.ts;
-      } else if (channel.type === 2) {
-        const img = new Image();
-        img.onload = () => setHasChannelIcon(true);
-        img.onerror = () => setHasChannelIcon(false);
-        img.src = getGroupChatIconUrl(channel.id) + '?t=' + channelUpdatedEvent.ts;
-      }
-    }
-  }, [channelUpdatedEvent, channel]);
-
   async function handleLeave() {
     if (leaveBusy) return;
     const confirmed = isOwner
@@ -739,52 +257,20 @@ export default function ChatView() {
     }
   }
 
-  // Close context menu on outside click or Escape
-  useEffect(() => {
-    if (!ctxMenu) return;
-    function onDown(e) {
-      if (ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null);
-    }
-    function onKey(e) { if (e.key === 'Escape') setCtxMenu(null); }
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [ctxMenu]);
-
-  // Close image context menu on outside click or Escape
-  useEffect(() => {
-    if (!imageCtxMenu) return;
-    function onDown(e) {
-      if (imageCtxRef.current && !imageCtxRef.current.contains(e.target)) setImageCtxMenu(null);
-    }
-    function onKey(e) { if (e.key === 'Escape') setImageCtxMenu(null); }
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [imageCtxMenu]);
+  // ── Menus / popouts ─────────────────────────────────────────────────────────
+  // Each open gets a fresh `key` so the menu remounts (resetting its "Copied!" state)
+  // when the user right-clicks something else while one is already open.
 
   const handleContextMenu = useCallback((e, msg) => {
     if (msg._pending) return;
     e.preventDefault();
-    // Clamp to viewport — menu is ~200px wide, ~160px tall
-    const x = Math.min(e.clientX, window.innerWidth - 200);
-    const y = Math.min(e.clientY, window.innerHeight - 160);
-    setCtxMenu({ x, y, msg });
-    setCopiedCtx(null);
+    setCtxMenu({ x: e.clientX, y: e.clientY, msg, key: Date.now() });
   }, []);
 
-  const handleImageContextMenu = useCallback((e, imageUrl, filename, isModal = false, messageId = null) => {
+  // `msg` is set when opened from an image in a message, null when opened from the fullscreen viewer
+  const handleImageContextMenu = useCallback((e, imageUrl, filename, isModal = false, msg = null) => {
     e.preventDefault();
-    const x = Math.min(e.clientX, window.innerWidth - 200);
-    const y = Math.min(e.clientY, window.innerHeight - 160);
-    setImageCtxMenu({ x, y, imageUrl, filename, isModal, messageId });
-    setCopiedImageCtx(null);
+    setImageCtxMenu({ x: e.clientX, y: e.clientY, imageUrl, filename, msg: isModal ? null : msg, key: Date.now() });
   }, []);
 
   const handleUserClick = useCallback((e, userId, username) => {
@@ -792,6 +278,11 @@ export default function ChatView() {
     const rect = e.currentTarget.getBoundingClientRect();
     setPopout({ userId, username: username ?? userId, anchorRect: rect });
   }, []);
+
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
+  const closeImageCtxMenu = useCallback(() => setImageCtxMenu(null), []);
+
+  // ── Delete / edit ───────────────────────────────────────────────────────────
 
   async function handleDelete() {
     if (!ctxMenu) return;
@@ -807,7 +298,7 @@ export default function ChatView() {
     } catch (err) {
       console.error('Delete failed:', err);
       // Re-fetch to restore if delete failed — simplest recovery
-      getMessages(msg.channelId, 50, 0)
+      getMessages(msg.channelId, MESSAGE_PAGE_SIZE, 0)
         .then(msgs => setMessages(p => ({ ...p, [String(msg.channelId)]: [...msgs].reverse() })))
         .catch(console.error);
     }
@@ -819,36 +310,40 @@ export default function ChatView() {
     setCtxMenu(null);
   }
 
-  async function handleEditSave(content) {
-    if (!editingMsgId) return;
-    const msgId = editingMsgId;
+  // Stable so the memoized MessageBubbles don't all re-render on every keystroke
+  const handleEditSave = useCallback(async (msg, content) => {
     const newContent = content.trim();
     setEditingMsgId(null);
     if (!newContent) return;
-
-    const msg = channelMessages.find(m => m.id === msgId);
-    if (!msg) return;
 
     // Optimistically update the message
     setMessages(p => ({
       ...p,
       [String(msg.channelId)]: (p[String(msg.channelId)] ?? []).map(m =>
-        m.id === msgId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
+        m.id === msg.id ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
       ),
     }));
 
     try {
-      await editMessage(msg.channelId, msgId, newContent);
+      await editMessage(msg.channelId, msg.id, newContent);
     } catch (err) {
       console.error('Edit failed:', err);
       // The server will send a MessageEdited event with the authoritative state,
       // or the optimistic update will stand if the server later reconnects.
     }
+  }, [setMessages]);
+
+  const handleEditCancel = useCallback(() => setEditingMsgId(null), []);
+
+  /** Up-arrow in an empty composer: edit your most recent message. Returns true if handled. */
+  function editLastOwnMessage() {
+    const ownMessages = channelMessages.filter(m => !m._pending && m.authorId === currentUser?.id);
+    if (ownMessages.length === 0) return false;
+    setEditingMsgId(ownMessages[ownMessages.length - 1].id);
+    return true;
   }
 
-  function handleEditCancel() {
-    setEditingMsgId(null);
-  }
+  // ── Channel load ────────────────────────────────────────────────────────────
 
   useEffect(() => {
     // Mark this channel as actively viewed (clears its unread count)
@@ -869,9 +364,14 @@ export default function ChatView() {
     setGuildOwnerId(null);
     setInput('');
     setSendError(null);
-    setMentionPicker(null);
-    setMentionData({ members: [], channels: [], roles: [] });
+    setMentionData(EMPTY_MENTION_DATA);
     setEditingMsgId(null);
+    setCtxMenu(null);
+    setImageCtxMenu(null);
+    setPopout(null);
+    setDragOver(false);
+    // Attachments belong to the draft, which is discarded on channel switch too
+    fileUploads.clearFiles();
 
     // Fresh pagination state; hasMore stays false until the first page tells us otherwise
     const history = { channelId: String(channelId), hasMore: false, loading: false, retryAt: 0 };
@@ -890,6 +390,7 @@ export default function ChatView() {
       registerChannelMeta(channelId, { type: ch.type, guildId: ch.guildId ?? null });
       // Mark channel as read now that we've loaded messages
       markChannelRead(channelId);
+      const isCurrent = () => historyRef.current === history;
       // Load permissions and member colors for guild channels
       if (ch.type === 0 && ch.guildId) {
         loadGuildPermissions(ch.guildId);
@@ -897,7 +398,7 @@ export default function ChatView() {
         loadGuildMemberColors(ch.guildId, channelId);
         // Fetch guild info to get owner ID
         getGuild(ch.guildId).then(guild => {
-          setGuildOwnerId(guild.ownerId);
+          if (isCurrent()) setGuildOwnerId(guild.ownerId);
         }).catch(console.error);
         // Load mention autocomplete data
         Promise.all([
@@ -905,6 +406,7 @@ export default function ChatView() {
           getGuildRoles(ch.guildId),
           getGuildChannels(ch.guildId),
         ]).then(([members, roles, channels]) => {
+          if (!isCurrent()) return;
           setMentionData({
             members:  (members  ?? []).map(m => ({ id: m.user?.id ?? m.id, username: m.user?.username ?? m.username, color: m.color ?? null })),
             channels: (channels ?? []).map(c => ({ id: String(c.id), name: c.name })),
@@ -914,6 +416,7 @@ export default function ChatView() {
       } else {
         // DM / group: load channel members for user-mention autocomplete
         getChannelMembers(channelId).then(members => {
+          if (!isCurrent()) return;
           setMentionData({
             members:  (members ?? []).map(m => ({ id: m.id, username: m.username, color: null })),
             channels: [],
@@ -938,45 +441,26 @@ export default function ChatView() {
     const dm = dmChannels.find(d => String(d.channelId) === String(channelId));
     if (!dm) return;
     const otherId = dm.user1Id === currentUser.id ? dm.user2Id : dm.user1Id;
-    resolveUser(otherId).then(setOtherUser);
+    let cancelled = false;
+    resolveUser(otherId).then(u => { if (!cancelled) setOtherUser(u); });
+    return () => { cancelled = true; };
   }, [channel, dmChannels, currentUser, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if channel has an icon (guild or group chat)
   useEffect(() => {
     if (!channel) return;
-    if (channel.type === 0) {
-      // Guild channel icon
-      const img = new Image();
-      img.onload = () => setHasChannelIcon(true);
-      img.onerror = () => setHasChannelIcon(false);
-      img.src = getChannelIconUrl(channel.guildId, channel.id);
-    } else if (channel.type === 2) {
-      // Group chat icon
-      const img = new Image();
-      img.onload = () => setHasChannelIcon(true);
-      img.onerror = () => setHasChannelIcon(false);
-      img.src = getGroupChatIconUrl(channel.id);
-    } else {
-      setHasChannelIcon(false);
-    }
+    if (channel.type === 0) return probeImage(getChannelIconUrl(channel.guildId, channel.id), setHasChannelIcon);
+    if (channel.type === 2) return probeImage(getGroupChatIconUrl(channel.id), setHasChannelIcon);
+    setHasChannelIcon(false);
   }, [channel]);
 
-  // Refresh icon when channel is updated via signal
+  // Re-check the icon when this channel is updated via signal (cache-busted)
   useEffect(() => {
     if (!channelUpdatedEvent || !channel) return;
-    if (String(channelUpdatedEvent.channelId) === String(channel.id)) {
-      if (channel.type === 0) {
-        const img = new Image();
-        img.onload = () => setHasChannelIcon(true);
-        img.onerror = () => setHasChannelIcon(false);
-        img.src = getChannelIconUrl(channel.guildId, channel.id) + '?t=' + channelUpdatedEvent.ts;
-      } else if (channel.type === 2) {
-        const img = new Image();
-        img.onload = () => setHasChannelIcon(true);
-        img.onerror = () => setHasChannelIcon(false);
-        img.src = getGroupChatIconUrl(channel.id) + '?t=' + channelUpdatedEvent.ts;
-      }
-    }
+    if (String(channelUpdatedEvent.channelId) !== String(channel.id)) return;
+    const bust = '?t=' + channelUpdatedEvent.ts;
+    if (channel.type === 0) return probeImage(getChannelIconUrl(channel.guildId, channel.id) + bust, setHasChannelIcon);
+    if (channel.type === 2) return probeImage(getGroupChatIconUrl(channel.id) + bust, setHasChannelIcon);
   }, [channelUpdatedEvent, channel]);
 
   // Scrolling isn't the only way the top of the history can end up on screen: the first page, a
@@ -1011,18 +495,15 @@ export default function ChatView() {
     if (!scrollEl || channelMessages.length === 0) return;
 
     const markVisibleMessagesAsRead = () => {
-      // Get all message elements
       const msgElements = scrollEl.querySelectorAll('[data-msgid]');
       if (msgElements.length === 0) return;
 
+      const scrollRect = scrollEl.getBoundingClientRect();
       let highestVisibleId = null;
 
       // Find the highest message ID that's at least partially visible
       for (const el of msgElements) {
         const rect = el.getBoundingClientRect();
-        const scrollRect = scrollEl.getBoundingClientRect();
-        
-        // Check if element is within the visible viewport (with some margin)
         if (rect.bottom > scrollRect.top && rect.top < scrollRect.bottom) {
           const msgId = el.getAttribute('data-msgid');
           if (msgId && !isNaN(msgId)) {
@@ -1047,7 +528,7 @@ export default function ChatView() {
             } catch (err) {
               console.warn('Failed to mark messages as read:', err);
             }
-          }, 500); // 500ms debounce
+          }, 500);
         }
       }
     };
@@ -1062,109 +543,28 @@ export default function ChatView() {
     };
   }, [channelMessages, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-resize textarea as content grows/shrinks
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 320) + 'px'; // 320px ≈ 20rem
-  }, [input]);
-
-  // ── Mention autocomplete ────────────────────────────────────────────────────
-
-  function detectMention(text, cursorPos) {
-    const before = text.slice(0, cursorPos);
-    const atIdx  = before.lastIndexOf('@');
-    if (atIdx === -1) { setMentionPicker(null); return; }
-    const query = before.slice(atIdx + 1);
-    // Cancel if there's a space/newline between @ and cursor
-    if (/[\s\n]/.test(query)) { setMentionPicker(null); return; }
-    setMentionPicker({ query, atIndex: atIdx });
-    setPickerIndex(0);
-  }
-
-  const pickerSuggestions = useMemo(() => {
-    if (!mentionPicker) return [];
-    const q = mentionPicker.query.toLowerCase();
-    const score = (label) => label.toLowerCase().startsWith(q) ? 0 : 1;
-    const users = mentionData.members
-      .filter(m => !q || m.username.toLowerCase().includes(q))
-      .sort((a, b) => score(a.username) - score(b.username))
-      .slice(0, 5)
-      .map(m => ({ type: 'user', id: m.id, label: m.username, color: m.color }));
-    const channels = mentionData.channels
-      .filter(c => !q || c.name.toLowerCase().includes(q))
-      .sort((a, b) => score(a.name) - score(b.name))
-      .slice(0, 3)
-      .map(c => ({ type: 'channel', id: c.id, label: c.name, color: null }));
-    const roles = mentionData.roles
-      .filter(r => !q || r.name.toLowerCase().includes(q))
-      .sort((a, b) => score(a.name) - score(b.name))
-      .slice(0, 3)
-      .map(r => ({ type: 'role', id: r.id, label: r.name, color: r.color }));
-    return [...users, ...channels, ...roles];
-  }, [mentionPicker, mentionData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function insertMention(suggestion) {
-    if (!mentionPicker) return;
-    const { atIndex, query } = mentionPicker;
-    const before  = input.slice(0, atIndex);
-    const after   = input.slice(atIndex + 1 + query.length);
-    const token   = `<@${suggestion.type}:${suggestion.id}> `;
-    const next    = before + token + after;
-    setInput(next);
-    setMentionPicker(null);
-    // Restore focus and place cursor after the inserted token
-    requestAnimationFrame(() => {
-      if (!inputRef.current) return;
-      inputRef.current.focus();
-      const pos = before.length + token.length;
-      inputRef.current.setSelectionRange(pos, pos);
-    });
-  }
-
-  // ── Typing indicator ────────────────────────────────────────────────────────
-
-  function notifyTyping() {
-    // Only send if the setting is enabled
-    if (!sendTypingIndicators || !hubRef || !hubRef.current) return;
-    
-    const now = Date.now();
-    // Throttle to max once every 2 seconds to reduce server load
-    if (now - lastTypingNotifyRef.current < 2000) return;
-    
-    lastTypingNotifyRef.current = now;
-    try {
-      hubRef.current?.invoke('NotifyTyping', Number(channelId)).catch(e => {
-        console.warn('Failed to notify typing:', e);
-      });
-    } catch (e) {
-      console.warn('Failed to notify typing:', e);
-    }
-  }
-
   // ── Message send ─────────────────────────────────────────────────────────────
 
-  async function handleSend(e) {
-    e.preventDefault();
+  async function handleSend() {
     const text = input.trim();
     if ((!text && fileUploads.files.length === 0) || !currentUser) return;
+    // Enter while a previous send is still uploading would upload the same files again
+    if (fileUploads.uploading) return;
 
     setSendError(null);
 
     // Check for invalid expiration times before attempting upload
-    if (fileUploads.files.length > 0 && fileUploads.limits) {
-      for (let i = 0; i < fileUploads.files.length; i++) {
-        const expirationHours = fileUploads.fileExpirations?.[i];
-        if (expirationHours !== null && !isUnlimited(fileUploads.limits.maxExpiryHours) && expirationHours > fileUploads.limits.maxExpiryHours) {
-          setSendError(`File ${i + 1}: expiration time exceeds maximum (${fileUploads.limits.maxExpiryHours} hours)`);
-          return;
-        }
+    const { limits } = fileUploads;
+    if (fileUploads.files.length > 0 && limits && !isUnlimited(limits.maxExpiryHours)) {
+      const badIdx = fileUploads.fileExpirations.findIndex(h => h !== null && h > limits.maxExpiryHours);
+      if (badIdx !== -1) {
+        setSendError(`File ${badIdx + 1}: expiration time exceeds maximum (${limits.maxExpiryHours} hours)`);
+        return;
       }
     }
 
     // Upload files if present
-    let uploadedFileIds = undefined;
+    let uploadedFileIds;
     if (fileUploads.files.length > 0) {
       try {
         uploadedFileIds = await fileUploads.uploadAllFiles();
@@ -1182,7 +582,7 @@ export default function ChatView() {
 
     // Build message content with file links if any
     let messageContent = text;
-    if (uploadedFileIds && Array.isArray(uploadedFileIds) && uploadedFileIds.length > 0) {
+    if (uploadedFileIds?.length > 0) {
       const filesBaseUrl = import.meta.env.VITE_SERBLE_FILES_API_URL ?? 'https://api.files.serble.net';
       const fileLinks = uploadedFileIds.map(id => `${filesBaseUrl}/files/${id}`).join('\n');
       messageContent = messageContent ? `${messageContent}\n\n${fileLinks}` : fileLinks;
@@ -1218,35 +618,9 @@ export default function ChatView() {
         ...p,
         [String(channelId)]: (p[String(channelId)] ?? []).filter(m => m.id !== tempId),
       }));
-      if (err?.status === 403) {
-        setSendError('You cannot send messages here.');
-      } else {
-        setSendError('Failed to send message. Please try again.');
-      }
-    }
-  }
-
-  function handleKeyDown(e) {
-    // Mention picker keyboard navigation takes priority
-    if (mentionPicker && pickerSuggestions.length > 0) {
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setPickerIndex(i => Math.max(0, i - 1)); return; }
-      if (e.key === 'ArrowDown') { e.preventDefault(); setPickerIndex(i => Math.min(pickerSuggestions.length - 1, i + 1)); return; }
-      if (e.key === 'Tab' || (e.key === 'Enter' && pickerSuggestions.length > 0)) {
-        e.preventDefault(); insertMention(pickerSuggestions[pickerIndex]); return;
-      }
-      if (e.key === 'Escape') { e.preventDefault(); setMentionPicker(null); return; }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend(e);
-    }
-    // Up arrow on empty input — edit last own message (Discord-style)
-    if (e.key === 'ArrowUp' && !input.trim() && !mentionPicker) {
-      const ownMessages = channelMessages.filter(m => !m._pending && m.authorId === currentUser?.id);
-      if (ownMessages.length > 0) {
-        e.preventDefault();
-        setEditingMsgId(ownMessages[ownMessages.length - 1].id);
-      }
+      setSendError(err?.status === 403
+        ? 'You cannot send messages here.'
+        : 'Failed to send message. Please try again.');
     }
   }
 
@@ -1254,11 +628,10 @@ export default function ChatView() {
     ? (otherUser?.username ?? '…')
     : (channel?.name ?? `Channel ${channelId}`);
 
-  const channelIcon = channel?.type === 1 ? PersonIcon : channel?.type === 2 ? PeopleIcon : '#';
-
   // ── Drag and drop ───────────────────────────────────────────────────────────
 
   function handleDragOver(e) {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOver(true);
@@ -1267,57 +640,17 @@ export default function ChatView() {
   function handleDragLeave(e) {
     e.preventDefault();
     e.stopPropagation();
-    // Only set dragOver to false if we're leaving the entire input area
-    if (e.target === e.currentTarget) {
-      setDragOver(false);
-    }
+    // dragleave also fires when moving between children; only clear once the
+    // pointer has left the column entirely (relatedTarget outside or null).
+    if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false);
   }
 
   function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
-    
-    // Only accept files
     const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      fileUploads.addFiles(files);
-    }
-  }
-
-  function handleFileInputChange(e) {
-    if (e.target.files && e.target.files.length > 0) {
-      fileUploads.addFiles(e.target.files);
-      // Reset input so the same file can be selected again
-      e.target.value = '';
-    }
-  }
-
-  // ── Paste handling ──────────────────────────────────────────────────────────
-
-  function handlePaste(e) {
-    const clipboardItems = e.clipboardData?.items;
-    if (!clipboardItems) return;
-
-    const filesToAdd = [];
-
-    for (let i = 0; i < clipboardItems.length; i++) {
-      const item = clipboardItems[i];
-      
-      // Handle file-like items (images, files)
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
-          filesToAdd.push(file);
-        }
-      }
-    }
-
-    // If we found files, add them to the upload queue and prevent default paste behavior
-    if (filesToAdd.length > 0) {
-      e.preventDefault();
-      fileUploads.addFiles(filesToAdd);
-    }
+    if (files && files.length > 0) fileUploads.addFiles(files);
   }
 
   if (loading) {
@@ -1331,126 +664,51 @@ export default function ChatView() {
     );
   }
 
+  const memberListProps = {
+    channelId,
+    guildId: isGuildChannel ? channel.guildId : null,
+    ownerId: isGuildChannel ? guildOwnerId : groupChat?.ownerId ?? null,
+    refreshTick: memberRefreshTick,
+  };
+
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Main chat column */}
-      <div 
-        onDragOver={handleDragOver} 
-        onDragLeave={handleDragLeave} 
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-base)', position: 'relative' }}
       >
-        {/* Channel header */}
-        <div style={{
-          height: 48, display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0 0.75rem 0 1.25rem', borderBottom: '1px solid var(--border)',
-          flexShrink: 0, background: 'var(--bg-base)',
-        }}>
-          {/* Hamburger – only shown on mobile */}
-          {isMobile && (
-            <button
-              title="Open sidebar"
-              onClick={openSidebar}
-              style={{
-                background: 'none', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
-                padding: '0.25rem', marginRight: '0.15rem', flexShrink: 0,
-              }}
-            ><MenuIcon size={18} /></button>
-          )}
-          {/* Channel icon display */}
-          {isGroupChannel && hasChannelIcon ? (
-            // Group chat: show icon as avatar
-            <img
-              key={`header-group-icon-${channelId}-${channelUpdatedEvent?.ts || 0}`}
-              src={getGroupChatIconUrl(channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
-              alt="Group icon"
-              onError={() => setHasChannelIcon(false)}
-              style={{
-                width: 32, height: 32, borderRadius: '6px', flexShrink: 0,
-                objectFit: 'cover',
-              }}
-            />
-          ) : (
-            <span style={{ fontSize: '1rem' }}>{typeof channelIcon === 'string' ? channelIcon : (() => { const I = channelIcon; return <I size={16} />; })()}</span>
-          )}
-          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            {/* Guild channel icon (if exists) */}
-            {isGuildChannel && hasChannelIcon && (
-              <img
-                key={`header-channel-icon-${channelId}-${channelUpdatedEvent?.ts || 0}`}
-                src={getChannelIconUrl(channel.guildId, channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
-                alt="Channel icon"
-                onError={() => setHasChannelIcon(false)}
-                style={{
-                  width: 20, height: 20, borderRadius: '4px', flexShrink: 0,
-                  objectFit: 'cover',
-                }}
-              />
-            )}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {channelDisplayName}
-            </span>
-          </span>
-          {isDmChannel && otherUser && !isMobile && (
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Direct Message</span>
-          )}
-
-          {/* Voice button - shown for DM, group, and voice-capable guild channels */}
-          {(isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable)) && (
-            <HeaderBtn
-              title={voiceChannelId === Number(channelId) ? 'Leave Voice' : 'Join Voice'}
-              onClick={voiceChannelId === Number(channelId) ? leaveVoice : () => joinVoice(Number(channelId))}
-              active={voiceChannelId === Number(channelId)}
-              disabled={voiceBusy || voiceStatus === 'connecting'}
-            >
-              {voiceChannelId === Number(channelId) ? <SpeakerIcon size={16} /> : <MicIcon size={16} />}
-            </HeaderBtn>
-          )}
-
-          {isGroupChannel && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.5rem' }}>
-              {isOwner && (
-                <HeaderBtn title="Add Members" onClick={() => setShowAddMembers(true)}><PlusIcon size={16} /></HeaderBtn>
-              )}
-              <HeaderBtn title="Leave Group" danger onClick={handleLeave} disabled={leaveBusy}><DoorIcon size={16} /></HeaderBtn>
-            </div>
-          )}
-
-          <HeaderBtn title="Member List" active={showMembers} onClick={toggleMembers}><PeopleIcon size={16} /></HeaderBtn>
-        </div>
+        <ChatHeader
+          channel={channel}
+          channelId={channelId}
+          displayName={channelDisplayName}
+          otherUser={otherUser}
+          hasChannelIcon={hasChannelIcon}
+          onIconError={() => setHasChannelIcon(false)}
+          iconVersion={channelUpdatedEvent?.ts}
+          isOwner={isOwner}
+          onAddMembers={() => setShowAddMembers(true)}
+          onLeave={handleLeave}
+          leaveBusy={leaveBusy}
+          showMembers={showMembers}
+          onToggleMembers={toggleMembers}
+        />
 
         {/* Drag and drop overlay */}
         {dragOver && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(124, 58, 237, 0.15)',
-              border: '2px dashed var(--accent)',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 100,
-              pointerEvents: 'none',
-              backdropFilter: 'blur(1px)',
-            }}
-          >
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 100,
+            background: 'var(--accent-soft)', border: '2px dashed var(--accent)', borderRadius: '8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none', backdropFilter: 'blur(1px)',
+          }}>
             <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '0.75rem',
-              fontSize: '1.2rem',
-              color: 'var(--accent)',
-              fontWeight: 600,
-              textAlign: 'center',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem',
+              fontSize: '1.2rem', color: 'var(--accent)', fontWeight: 600, textAlign: 'center',
             }}>
-              <div style={{ fontSize: '2.5rem' }}><AttachmentIcon size={40} /></div>
+              <AttachmentIcon size={40} />
               <div>Drop files to upload</div>
             </div>
           </div>
@@ -1472,359 +730,117 @@ export default function ChatView() {
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {/* Loading indicator above the oldest loaded message, where the older ones will appear */}
             {loadingOlder && (
-              <div style={{
-                padding: '1rem',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}>
+              <div style={{ padding: '1rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{
-                  width: '16px',
-                  height: '16px',
-                  border: '2px solid rgba(255,255,255,0.2)',
+                  width: 16, height: 16, borderRadius: '50%',
+                  border: '2px solid color-mix(in srgb, var(--text-secondary) 25%, transparent)',
                   borderTop: '2px solid var(--text-secondary)',
-                  borderRadius: '50%',
                   animation: 'spin 0.6s linear infinite',
-                }}></div>
+                }} />
                 <span style={{ fontSize: '0.85rem' }}>Loading older messages...</span>
               </div>
             )}
-            {channelMessages.length === 0 && !loading && (
+            {channelMessages.length === 0 && (
               <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                  {channel?.type === 1 ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
+                  {isDmChannel ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
                 </div>
                 <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
-                  {channel?.type === 1
+                  {isDmChannel
                     ? `This is the beginning of your conversation with ${channelDisplayName}`
                     : `Welcome to ${channelDisplayName}!`}
                 </div>
                 <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
               </div>
             )}
-            {renderUnits.map(unit => {
-              if (unit.type === 'blocked') {
-                return (
-                  <BlockedGroupBubble
-                    key={unit.key}
-                    messages={unit.messages}
-                    authorId={unit.authorId}
-                    resolveUser={resolveUser}
-                    currentUserId={currentUser?.id}
-                    onContextMenu={handleContextMenu}
-                    onUserClick={handleUserClick}
-                    getColor={getColor}
-                    mentionData={mentionData}
-                    guildId={guildIdForColor}
-                  />
-                );
-              }
-              return (
-                <MessageBubble
-                  key={unit.key}
-                  msg={unit.msg}
-                  prevMsg={unit.prevMsg}
-                  resolveUser={resolveUser}
-                  currentUserId={currentUser?.id}
-                  onContextMenu={handleContextMenu}
-                  onImageContextMenu={handleImageContextMenu}
-                  onUserClick={handleUserClick}
-                  getColor={getColor}
-                  mentionData={mentionData}
-                  highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
-                  guildId={guildIdForColor}
-                  isEditing={editingMsgId !== null && String(unit.msg.id) === String(editingMsgId)}
-                  onEditSave={handleEditSave}
-                  onEditCancel={handleEditCancel}
-                />
-              );
-            })}
+            {renderUnits.map(unit => unit.type === 'blocked' ? (
+              <BlockedGroupBubble
+                key={unit.key}
+                messages={unit.messages}
+                authorId={unit.authorId}
+                resolveUser={resolveUser}
+                onContextMenu={handleContextMenu}
+                onImageContextMenu={handleImageContextMenu}
+                onUserClick={handleUserClick}
+                getColor={getColor}
+                mentionData={mentionData}
+                guildId={guildIdForColor}
+              />
+            ) : (
+              <MessageBubble
+                key={unit.key}
+                msg={unit.msg}
+                prevMsg={unit.prevMsg}
+                resolveUser={resolveUser}
+                onContextMenu={handleContextMenu}
+                onImageContextMenu={handleImageContextMenu}
+                onUserClick={handleUserClick}
+                getColor={getColor}
+                mentionData={mentionData}
+                highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
+                guildId={guildIdForColor}
+                isEditing={editingMsgId !== null && String(unit.msg.id) === String(editingMsgId)}
+                onEditSave={handleEditSave}
+                onEditCancel={handleEditCancel}
+              />
+            ))}
           </div>
         </div>
 
         {/* Typing indicator - between messages and input */}
-        {typingUsers[String(channelId)]?.size > 0 && (() => {
-          const filtered = new Set(
-            Array.from(typingUsers[String(channelId)]).filter(uid => !isBlocked(uid))
-          );
-          return filtered.size > 0 ? (
-            <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)' }}>
-              <TypingIndicator 
-                users={filtered} 
-                resolveUser={resolveUser}
-              />
-            </div>
-          ) : null;
-        })()}
+        {visibleTypingUsers && (
+          <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)' }}>
+            <TypingIndicator users={visibleTypingUsers} resolveUser={resolveUser} />
+          </div>
+        )}
 
         <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
           {/* Blocked-by-me banner — replaces the input entirely */}
           {isDmChannel && otherUser && isBlocked(otherUser.id) ? (
             <BlockedInputBanner username={otherUser.username} userId={otherUser.id} unblockUser={unblockUser} />
           ) : canSend ? (
-          <>
-            {/* File upload panel */}
-            <FileUploadPanel 
-              files={fileUploads.files}
-              fileExpirations={fileUploads.fileExpirations}
-              onFileExpirationChange={fileUploads.setFileExpiration}
-              onRemoveFile={fileUploads.removeFile}
-              uploading={fileUploads.uploading}
-              errors={fileUploads.uploadErrors}
-              maxExpiryHours={fileUploads.limits?.maxExpiryHours}
-              noExpirySingleFileSize={fileUploads.limits?.noExpirySingleFileSize}
+            <Composer
+              channelId={channelId}
+              input={input}
+              setInput={setInput}
+              inputRef={inputRef}
+              placeholder={`Message ${channelDisplayName}`}
+              mentionData={mentionData}
+              fileUploads={fileUploads}
+              sendError={sendError}
+              onDismissError={() => setSendError(null)}
+              onSend={handleSend}
+              onEditLast={editLastOwnMessage}
             />
-            
-            {sendError && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                marginBottom: '0.5rem', padding: '0.55rem 0.85rem',
-                background: 'rgba(242,63,67,0.12)', border: '1px solid rgba(242,63,67,0.35)',
-                borderRadius: '6px', color: '#f23f43', fontSize: '0.83rem',
-              }}>
-                <span style={{ flexShrink: 0 }}><BlockIcon size={16} /></span>
-                <span style={{ flex: 1 }}>{sendError}</span>
-                <button
-                  onClick={() => setSendError(null)}
-                  style={{ background: 'none', border: 'none', color: '#f23f43', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 0.1rem', opacity: 0.7, flexShrink: 0 }}
-                  title="Dismiss"
-                ><CloseIcon size={14} /></button>
-              </div>
-            )}
-            <form onSubmit={handleSend} style={{ position: 'relative' }}>
-              {mentionPicker && (
-                <MentionPicker
-                  suggestions={pickerSuggestions}
-                  selectedIndex={pickerIndex}
-                  onSelect={insertMention}
-                  onHoverIndex={setPickerIndex}
-                />
-              )}
-              
-              {/* Drag overlay */}
-              {dragOver && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'rgba(124, 58, 237, 0.1)',
-                  border: '2px dashed var(--accent)',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 10,
-                  pointerEvents: 'none',
-                }}>
-                  <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.9rem' }}>
-                    Drop files to upload
-                  </div>
-                </div>
-              )}
-              
-              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
-                {/* File upload button */}
-                <button
-                  type="button"
-                  onClick={() => fileUploads.fileInputRef.current?.click()}
-                  disabled={fileUploads.uploading}
-                  title="Attach files"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: fileUploads.uploading ? 'var(--text-muted)' : 'var(--text-secondary)',
-                    cursor: fileUploads.uploading ? 'not-allowed' : 'pointer',
-                    fontSize: '1.1rem',
-                    padding: '0.5rem 0.25rem',
-                    lineHeight: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '1.5rem',
-                    opacity: fileUploads.uploading ? 0.5 : 1,
-                  }}
-                  className={!fileUploads.uploading ? 'hov-color-accent' : undefined}
-                >
-              <AttachmentIcon size={16} />
-                </button>
-                
-                {/* Hidden file input */}
-                <input
-                  ref={fileUploads.fileInputRef}
-                  type="file"
-                  multiple
-                  onChange={handleFileInputChange}
-                  style={{ display: 'none' }}
-                />
-                
-                <textarea
-                  ref={inputRef}
-                  rows={1}
-                  style={{
-                    flex: 1, background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                    fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
-                    resize: 'none', overflow: 'hidden', lineHeight: 1.5,
-                    maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
-                  }}
-                  placeholder={`Message ${channelDisplayName}`}
-                  value={input}
-                  onChange={e => { 
-                    setInput(e.target.value); 
-                    setSendError(null); 
-                    detectMention(e.target.value, e.target.selectionStart);
-                    notifyTyping();
-                  }}
-                  onKeyDown={handleKeyDown}
-                  onKeyUp={e => {
-                    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                      detectMention(input, e.target.selectionStart);
-                    }
-                  }}
-                  onClick={e => detectMention(input, e.target.selectionStart)}
-                  onPaste={handlePaste}
-                  maxLength={16384}
-                />
-                {(input.trim() || fileUploads.files.length > 0) && (
-                  <button type="submit"
-                    disabled={fileUploads.uploading}
-                    style={{ background: fileUploads.uploading ? 'var(--bg-secondary)' : 'var(--accent)', border: 'none', borderRadius: '4px', cursor: fileUploads.uploading ? 'not-allowed' : 'pointer', color: '#fff', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, transition: 'background 0.15s', flexShrink: 0, opacity: fileUploads.uploading ? 0.6 : 1 }}
-                    className={!fileUploads.uploading ? 'hov-accent' : undefined}
-                  >{fileUploads.uploading ? '⏳' : '↵'}</button>
-                )}
-              </div>
-            </form>
-          </>
           ) : (
-            <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center' }}>
-              <LockIcon size={14} /> You don't have permission to send messages here.
-            </div>
+            <NoPermissionNotice />
           )}
         </div>
 
-        {/* Context menu */}
         {ctxMenu && (
-          <div ref={ctxRef} style={{ position: 'fixed', zIndex: 500, top: ctxMenu.y, left: ctxMenu.x, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
-            <CtxBtn icon={ClipboardIcon} label="Copy Text"
-              copied={copiedCtx === 'text'}
-              onClick={() => {
-                copyToClipboard(ctxMenu.msg.content).catch(err => console.error('Failed to copy text:', err));
-                setCopiedCtx('text');
-                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
-              }} />
-            <CtxBtn icon={LinkIcon} label="Copy Message Link"
-              copied={copiedCtx === 'link'}
-              onClick={() => {
-                const url = `${FRONTEND_URL}/app/channel/${ctxMenu.msg.channelId}?message=${ctxMenu.msg.id}`;
-                copyToClipboard(url).catch(err => console.error('Failed to copy message link:', err));
-                setCopiedCtx('link');
-                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
-              }} />
-            <CtxBtn icon={IdCardIcon} label="Copy Message ID"
-              copied={copiedCtx === 'id'}
-              onClick={() => {
-                copyToClipboard(String(ctxMenu.msg.id)).catch(err => console.error('Failed to copy message ID:', err));
-                setCopiedCtx('id');
-                setTimeout(() => { setCopiedCtx(null); setCtxMenu(null); }, 1000);
-              }} />
-            {(ctxMenu.msg.authorId === currentUser?.id || canManageMsgs) && (
-              <>
-                <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
-                {ctxMenu.msg.authorId === currentUser?.id && (
-                  <CtxBtn icon={EditIcon} label="Edit Message" onClick={handleEditFromContext} />
-                )}
-                <CtxBtn icon={TrashIcon} label="Delete Message" danger onClick={handleDelete} />
-              </>
-            )}
-          </div>
+          <MessageContextMenu
+            key={ctxMenu.key}
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            msg={ctxMenu.msg}
+            canEdit={ctxMenu.msg.authorId === currentUser?.id}
+            canDelete={ctxMenu.msg.authorId === currentUser?.id || canManageMsgs}
+            onEdit={handleEditFromContext}
+            onDelete={handleDelete}
+            onClose={closeCtxMenu}
+          />
         )}
 
-        {/* Image context menu */}
-        {imageCtxMenu && createPortal(
-          <div ref={imageCtxRef} style={{ position: 'fixed', zIndex: 99999, top: imageCtxMenu.y, left: imageCtxMenu.x, background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', minWidth: 200 }}>
-            {/* If message context (not modal), show message options first */}
-            {!imageCtxMenu.isModal && imageCtxMenu.messageId && (
-              <>
-                <CtxBtn icon={ClipboardIcon} label="Copy Text"
-                  copied={copiedImageCtx === 'text'}
-                  onClick={() => {
-                    const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
-                    if (msg) {
-                      navigator.clipboard.writeText(msg.content);
-                      setCopiedImageCtx('text');
-                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
-                    }
-                  }} />
-                <CtxBtn icon={LinkIcon} label="Copy Message Link"
-                  copied={copiedImageCtx === 'link'}
-                  onClick={() => {
-                    const msg = messages[String(imageCtxMenu.messageId)]?.find(m => m.id === imageCtxMenu.messageId);
-                    if (msg) {
-                      const url = `${FRONTEND_URL}/app/channel/${msg.channelId}?message=${msg.id}`;
-                      navigator.clipboard.writeText(url);
-                      setCopiedImageCtx('link');
-                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
-                    }
-                  }} />
-                <div style={{ height: 1, background: 'var(--border)', margin: '0.25rem 0' }} />
-              </>
-            )}
-            
-            {/* Image-specific options */}
-            <CtxBtn icon={LinkIcon} label="Copy Image Link"
-              copied={copiedImageCtx === 'image-link'}
-              onClick={() => {
-                copyToClipboard(imageCtxMenu.imageUrl).catch(err => console.error('Failed to copy image link:', err));
-                setCopiedImageCtx('image-link');
-                setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
-              }} />
-            <CtxBtn icon={GlobeIcon} label="Open Image"
-              onClick={() => {
-                window.open(imageCtxMenu.imageUrl, '_blank');
-                setImageCtxMenu(null);
-              }} />
-            <CtxBtn icon={ClipboardIcon} label="Copy Image"
-              copied={copiedImageCtx === 'image'}
-              onClick={() => {
-                fetch(imageCtxMenu.imageUrl)
-                  .then(res => res.blob())
-                  .then(blob => {
-                    // Try Electron clipboard first, then fall back to web API
-                    if (window.electron?.copyToClipboard) {
-                      // For Electron, we need to use a workaround since Electron's clipboard doesn't handle binary data directly
-                      // Convert blob to data URL and use the web API
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        // Try web clipboard API with blob
-                        if (navigator.clipboard?.write) {
-                          navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                          setCopiedImageCtx('image');
-                          setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
-                        } else {
-                          console.error('Clipboard API not available');
-                          setImageCtxMenu(null);
-                        }
-                      };
-                      reader.readAsDataURL(blob);
-                    } else {
-                      // Web environment - use standard clipboard API
-                      navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                      setCopiedImageCtx('image');
-                      setTimeout(() => { setCopiedImageCtx(null); setImageCtxMenu(null); }, 1000);
-                    }
-                  })
-                  .catch(err => {
-                    console.error('Failed to copy image:', err);
-                    setImageCtxMenu(null);
-                  });
-              }} />
-            <CtxBtn icon={SaveIcon} label="Save Image"
-              onClick={() => {
-                triggerDownload(imageCtxMenu.imageUrl, imageCtxMenu.filename || 'image');
-                setImageCtxMenu(null);
-              }} />
-          </div>,
-          document.body
+        {imageCtxMenu && (
+          <ImageContextMenu
+            key={imageCtxMenu.key}
+            x={imageCtxMenu.x}
+            y={imageCtxMenu.y}
+            imageUrl={imageCtxMenu.imageUrl}
+            filename={imageCtxMenu.filename}
+            msg={imageCtxMenu.msg}
+            onClose={closeImageCtxMenu}
+          />
         )}
 
         {popout && (
@@ -1857,32 +873,18 @@ export default function ChatView() {
               transition: 'transform 0.25s ease',
               willChange: 'transform',
             }}>
-              <MemberList
-                channelId={channelId}
-                guildId={isGuildChannel ? channel.guildId : null}
-                ownerId={isGuildChannel ? guildOwnerId : groupChat?.ownerId ?? null}
-                refreshTick={memberRefreshTick}
-                style={{ width: 'min(85vw, 320px)', height: '100%' }}
-              />
+              <MemberList {...memberListProps} style={{ width: 'min(85vw, 320px)', height: '100%' }} />
             </div>
           </>
         ) : (
           /* Desktop: plain flex sibling — only render when open */
-          showMembers && (
-            <MemberList
-              channelId={channelId}
-              guildId={isGuildChannel ? channel.guildId : null}
-              ownerId={isGuildChannel ? guildOwnerId : groupChat?.ownerId ?? null}
-              refreshTick={memberRefreshTick}
-            />
-          )
+          showMembers && <MemberList {...memberListProps} />
         )
       )}
 
       {showAddMembers && (
         <AddMembersModal
           groupId={Number(channelId)}
-          existingMemberIds={existingMemberIds}
           onClose={() => { setShowAddMembers(false); setMemberRefreshTick(t => t + 1); }}
         />
       )}

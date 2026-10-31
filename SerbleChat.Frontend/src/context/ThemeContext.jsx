@@ -110,21 +110,6 @@ function applyTheme(colors) {
   for (const prop of THEME_PROPS) {
     root.style.setProperty(prop.css, colors[prop.key] ?? '');
   }
-  // Also update the msg-highlight animation to use the accent
-  const accent = colors.accent ?? '#7c3aed';
-  const style = document.getElementById('msg-highlight-style');
-  if (style) {
-    style.textContent = `@keyframes msgHighlight {
-      0%   { background: ${accent}59; }
-      60%  { background: ${accent}33; }
-      100% { background: transparent; }
-    }
-    @keyframes spin {
-      0%   { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .msg-highlighted { animation: msgHighlight 2s ease-out forwards; }`;
-  }
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -176,7 +161,11 @@ export function ThemeProvider({ children }) {
       saveCustomThemes(next);
       return next;
     });
-    setActiveId(cur => cur === id ? 'dark' : cur);
+    setActiveId(cur => {
+      if (cur !== id) return cur;
+      localStorage.setItem(LS_ACTIVE_KEY, 'dark');
+      return 'dark';
+    });
   }, []);
 
   /** Load state from an external source (e.g. backend client-options). */

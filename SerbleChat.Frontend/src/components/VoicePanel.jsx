@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
@@ -7,7 +7,8 @@ import { playSound } from '../sound.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
-import { MicIcon, SpeakerMutedIcon, SpeakerIcon, HeadphonesIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, BellOffIcon } from '../icons.jsx';
+import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
+import { MicIcon, SpeakerMutedIcon, HeadphonesIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon } from '../icons.jsx';
 
 // Helper to safely play sounds with consistent error handling
 const playSoundSafe = (soundName) => {
@@ -36,7 +37,9 @@ export default function VoicePanel({
   // Derive isScreenSharing from localScreenShare prop instead of local state
   const isScreenSharing = Boolean(localScreenShare);
   const [showQualityModal, setShowQualityModal] = useState(false);
-  const [isButtonHeld, setIsButtonHeld] = useState(false); // Track if speak button is being held in PTT mode
+  // Whether the speak button is currently held down in push-to-talk mode. A ref, not state,
+  // so the button's mouseup, mouseleave and the window mouseup can't each release it.
+  const pttHeldRef = useRef(false);
   const [qualitySettings, setQualitySettings] = useState(() => {
     // Load saved quality settings from localStorage
     try {
@@ -53,38 +56,33 @@ export default function VoicePanel({
     };
   });
   const canControl = voiceSession && voiceStatus === 'connected';
+  const isPtt = voiceAudioOptions.inputMode === 'push-to-talk';
 
-  // In PTT mode, don't allow toggle via button - it's controlled by key binding
-  const handleToggleMuteButton = () => {
-    if (voiceAudioOptions.inputMode === 'push-to-talk') {
-      return; // PTT mode muting is only controlled by key binding
-    }
-    onToggleMute();
-  };
+  // Latest values for the window mouseup listener, which is registered once
+  const latestRef = useRef({});
+  latestRef.current = { voiceMuted, onToggleMute };
 
-  // Handle mouse down on speak button in PTT mode - unmute
-  const handleSpeakButtonMouseDown = (e) => {
+  // Push-to-talk via the button: unmute while held, mute again on release.
+  // (Outside PTT mode, clicking the button toggles mute normally.)
+  function pressPtt(e) {
     e.preventDefault();
-    if (voiceAudioOptions.inputMode !== 'push-to-talk' || !voiceSession || !canControl) return;
-    
-    setIsButtonHeld(true);
-    if (voiceMuted) {
-      // Call onToggleMute to update parent state and unmute
-      onToggleMute();
-    }
-  };
+    if (!isPtt || !canControl) return;
+    pttHeldRef.current = true;
+    if (voiceMuted) onToggleMute();
+  }
 
-  // Handle mouse up on speak button in PTT mode - mute
-  const handleSpeakButtonMouseUp = (e) => {
-    e.preventDefault();
-    if (voiceAudioOptions.inputMode !== 'push-to-talk' || !voiceSession || !canControl) return;
-    
-    setIsButtonHeld(false);
-    if (!voiceMuted) {
-      // Call onToggleMute to update parent state and mute
-      onToggleMute();
-    }
-  };
+  function releasePtt() {
+    if (!pttHeldRef.current) return;
+    pttHeldRef.current = false;
+    const { voiceMuted: muted, onToggleMute: toggle } = latestRef.current;
+    if (!muted) toggle();
+  }
+
+  // Release even if the mouse button comes up outside the speak button
+  useEffect(() => {
+    window.addEventListener('mouseup', releasePtt);
+    return () => window.removeEventListener('mouseup', releasePtt);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resolve usernames for all participants whenever the list changes
   useEffect(() => {
@@ -96,22 +94,6 @@ export default function VoicePanel({
       }
     });
   }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Handle mouse up globally to ensure PTT button is released
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (isButtonHeld && voiceAudioOptions.inputMode === 'push-to-talk') {
-        // Call the logic without event object
-        setIsButtonHeld(false);
-        if (voiceSession && canControl && !voiceMuted) {
-          onToggleMute();
-        }
-      }
-    };
-
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isButtonHeld, voiceAudioOptions.inputMode, voiceSession, canControl, voiceMuted, onToggleMute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleScreenShare = async () => {
     if (!canControl) return;
@@ -204,31 +186,15 @@ export default function VoicePanel({
             {voiceStatus === 'connecting' ? 'Connecting…' : voiceStatus === 'error' ? 'Voice Error' : 'Voice Connected'}
           </span>
         </div>
-        <button
-          onClick={onLeave}
-          title="Leave Voice"
-          style={{
-            background: 'rgba(242,63,67,0.15)',
-            border: '1px solid rgba(242,63,67,0.35)',
-            color: 'var(--danger)',
-            borderRadius: '4px',
-            padding: '0.2rem 0.45rem',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(242,63,67,0.28)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'rgba(242,63,67,0.15)'}
-        >
+        <VoiceButton tone="danger" size="sm" onClick={onLeave} title="Leave Voice">
           {voiceStatus === 'error' ? 'Dismiss' : 'Disconnect'}
-        </button>
+        </VoiceButton>
       </div>
 
       {voiceError && (
         <div style={{
-          background: 'rgba(242,63,67,0.12)',
-          border: '1px solid rgba(242,63,67,0.35)',
+          background: 'var(--danger-soft)',
+          border: '1px solid var(--danger-border)',
           borderRadius: '6px',
           padding: '0.45rem 0.55rem',
           fontSize: '0.78rem',
@@ -239,37 +205,12 @@ export default function VoicePanel({
         }}>
           <div>{voiceError.message || 'Voice encountered a fatal error.'}</div>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <button
-              onClick={onRetry}
-              disabled={!onRetry || !channelId}
-              style={{
-                background: 'rgba(59,130,246,0.15)',
-                border: '1px solid rgba(59,130,246,0.35)',
-                color: 'var(--text-primary)',
-                borderRadius: '4px',
-                padding: '0.2rem 0.45rem',
-                cursor: onRetry && channelId ? 'pointer' : 'not-allowed',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
-            >
+            <VoiceButton tone="accent" size="sm" onClick={onRetry} disabled={!onRetry || !channelId}>
               Retry
-            </button>
-            <button
-              onClick={onLeave}
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: 'var(--text-primary)',
-                borderRadius: '4px',
-                padding: '0.2rem 0.45rem',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
-            >
+            </VoiceButton>
+            <VoiceButton size="sm" onClick={onLeave}>
               Close
-            </button>
+            </VoiceButton>
           </div>
         </div>
       )}
@@ -294,51 +235,23 @@ export default function VoicePanel({
                 username={name}
               >
                 <div
+                  className="voice-speaking-ring"
+                  data-speaking={!!p.isSpeaking}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.25rem 0.35rem',
-                    borderRadius: '4px',
-                    background: p.isLocal ? 'rgba(124,58,237,0.08)' : 'transparent',
-                    border: p.isSpeaking ? '1px solid rgba(34,197,94,0.5)' : '1px solid transparent',
-                    transition: 'border 0.15s ease-in-out',
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.25rem 0.35rem', borderRadius: '4px',
+                    background: p.isLocal ? 'var(--accent-softer)' : 'transparent',
                   }}
                 >
                   <Avatar userId={user?.id} name={name} size={20} color={user?.color} />
                   <span style={{
-                    fontSize: '0.8rem',
-                    color: 'var(--text-secondary)',
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    fontSize: '0.8rem', color: 'var(--text-secondary)', flex: 1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {name}
                     {p.isLocal && <span style={{ color: 'var(--text-muted)', marginLeft: '0.3rem' }}>(you)</span>}
                   </span>
-                  {p.isSpeaking && !p.isMuted && (
-                    <span 
-                      style={{ 
-                        fontSize: '0.75rem', 
-                        color: 'var(--success)',
-                        animation: 'pulse 1.5s ease-in-out infinite',
-                      }} 
-                      title="Speaking"
-                    >
-                      <MicIcon size={12} />
-                    </span>
-                  )}
-                  {p.isMuted && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }} title="Muted">
-                      <SpeakerMutedIcon size={12} />
-                    </span>
-                  )}
-                  {p.isClientMuted && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--danger)' }} title="You muted this user">
-                      <BellOffIcon size={12} />
-                    </span>
-                  )}
+                  <VoiceStatusIcons isSpeaking={p.isSpeaking} isMuted={p.isMuted} isClientMuted={p.isClientMuted} />
                 </div>
               </UserInteraction>
             );
@@ -347,174 +260,64 @@ export default function VoicePanel({
       )}
 
       {/* Mute and Deafen buttons */}
-      <div style={{
-        display: 'flex',
-        gap: '0.5rem',
-      }}>
-      {/* Mute/Speak button */}
-      <button
-        onClick={(e) => {
-          // In PTT mode, prevent any click action - use mouseDown/mouseUp instead
-          if (voiceAudioOptions.inputMode === 'push-to-talk') {
-            e.preventDefault();
-            return;
-          }
-          handleToggleMuteButton();
-        }}
-        disabled={!canControl}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          background: voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
-          border: 'none',
-          borderRadius: '6px',
-          padding: '0.4rem',
-          cursor: canControl ? 'pointer' : 'not-allowed',
-          color: voiceMuted ? 'var(--danger)' : 'var(--text-primary)',
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          transition: 'background 0.15s',
-          opacity: canControl ? 1 : 0.6,
-          flex: 1,
-        }}
-        onMouseEnter={e => {
-          if (!canControl) return;
-          e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.25)' : 'rgba(255,255,255,0.15)';
-        }}
-        onMouseLeave={(e) => {
-          if (!canControl) return;
-          e.currentTarget.style.background = voiceMuted ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)';
-          // If in PTT mode and button is held but mouse left, release the PTT
-          if (isButtonHeld && voiceAudioOptions.inputMode === 'push-to-talk') {
-            setIsButtonHeld(false);
-            if (!voiceMuted) {
-              onToggleMute();
-            }
-          }
-        }}
-        title={voiceAudioOptions.inputMode === 'push-to-talk' 
-          ? (voiceMuted ? 'Speak (hold key or button)' : 'Release to stop speaking')
-          : (voiceMuted ? 'Unmute microphone (M)' : 'Mute microphone (M)')}
-        onMouseDown={handleSpeakButtonMouseDown}
-        onMouseUp={handleSpeakButtonMouseUp}
-      >
-        <span>
-          {voiceAudioOptions.inputMode === 'push-to-talk'
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        {/* Mute/Speak button — in PTT mode it's hold-to-talk instead of a toggle */}
+        <VoiceButton
+          tone={voiceMuted ? 'danger' : 'neutral'}
+          disabled={!canControl}
+          style={{ flex: 1 }}
+          onClick={() => { if (!isPtt) onToggleMute(); }}
+          onMouseDown={pressPtt}
+          onMouseUp={e => { e.preventDefault(); releasePtt(); }}
+          onMouseLeave={releasePtt}
+          title={isPtt
+            ? (voiceMuted ? 'Speak (hold key or button)' : 'Release to stop speaking')
+            : (voiceMuted ? 'Unmute microphone (M)' : 'Mute microphone (M)')}
+        >
+          {isPtt
             ? (voiceMuted ? <MicIcon size={16} /> : <MegaphoneIcon size={16} />)
             : (voiceMuted ? <SpeakerMutedIcon size={16} /> : <MicIcon size={16} />)}
-        </span>
-        <span>
-          {voiceAudioOptions.inputMode === 'push-to-talk'
-            ? (voiceMuted ? 'Speak' : 'Speaking')
-            : (voiceMuted ? 'Unmute' : 'Mute')}
-        </span>
-      </button>
+          <span>
+            {isPtt
+              ? (voiceMuted ? 'Speak' : 'Speaking')
+              : (voiceMuted ? 'Unmute' : 'Mute')}
+          </span>
+        </VoiceButton>
 
-        {/* Deafen button */}
-        <button
-          onClick={onToggleDeafen}
+        <VoiceButton
+          tone={voiceDeafened ? 'danger' : 'neutral'}
           disabled={!canControl}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            background: voiceDeafened ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '0.4rem',
-            cursor: canControl ? 'pointer' : 'not-allowed',
-            color: voiceDeafened ? 'var(--danger)' : 'var(--text-primary)',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            transition: 'background 0.15s',
-            opacity: canControl ? 1 : 0.6,
-            flex: 1,
-          }}
-          onMouseEnter={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = voiceDeafened ? 'rgba(242,63,67,0.25)' : 'rgba(255,255,255,0.15)';
-          }}
-          onMouseLeave={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = voiceDeafened ? 'rgba(242,63,67,0.15)' : 'rgba(255,255,255,0.1)';
-          }}
+          style={{ flex: 1 }}
+          onClick={onToggleDeafen}
           title={voiceDeafened ? 'Undeafen (D)' : 'Deafen (D)'}
         >
-          <span>{voiceDeafened ? <SpeakerMutedIcon size={16} /> : <HeadphonesIcon size={16} />}</span>
+          {voiceDeafened ? <SpeakerMutedIcon size={16} /> : <HeadphonesIcon size={16} />}
           <span>{voiceDeafened ? 'Undeafen' : 'Deafen'}</span>
-        </button>
+        </VoiceButton>
       </div>
 
       {/* Screen share button */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button
-          onClick={handleToggleScreenShare}
+        <VoiceButton
+          tone={isScreenSharing ? 'success' : 'neutral'}
           disabled={!canControl}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            background: isScreenSharing ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '0.4rem',
-            cursor: canControl ? 'pointer' : 'not-allowed',
-            color: isScreenSharing ? 'var(--success)' : 'var(--text-primary)',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            transition: 'background 0.15s',
-            opacity: canControl ? 1 : 0.6,
-            flex: 1,
-          }}
-          onMouseEnter={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = isScreenSharing ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.15)';
-          }}
-          onMouseLeave={e => {
-            if (!canControl) return;
-            e.currentTarget.style.background = isScreenSharing ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)';
-          }}
+          style={{ flex: 1 }}
+          onClick={handleToggleScreenShare}
           title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
         >
-          <span>{isScreenSharing ? <StopScreenShareIcon size={16} /> : <ScreenShareIcon size={16} />}</span>
+          {isScreenSharing ? <StopScreenShareIcon size={16} /> : <ScreenShareIcon size={16} />}
           <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
-        </button>
+        </VoiceButton>
 
         {isScreenSharing && (
-          <button
-            onClick={() => setShowQualityModal(true)}
+          <VoiceButton
             disabled={!canControl}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0.4rem 0.5rem',
-              cursor: canControl ? 'pointer' : 'not-allowed',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              transition: 'background 0.15s',
-              opacity: canControl ? 1 : 0.6,
-            }}
-            onMouseEnter={e => {
-              if (!canControl) return;
-              e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-            }}
-            onMouseLeave={e => {
-              if (!canControl) return;
-              e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-            }}
+            style={{ padding: '0.4rem 0.5rem' }}
+            onClick={() => setShowQualityModal(true)}
             title="Screen share quality settings"
           >
             <GearIcon size={16} />
-          </button>
+          </VoiceButton>
         )}
       </div>
 

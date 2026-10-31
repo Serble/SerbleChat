@@ -1,0 +1,424 @@
+/*
+ * ui.css — styles for the shared primitives in components/ui.
+ *
+ * Kept in CSS (rather than inline styles) so :hover, :focus and :disabled work
+ * without JS mouse handlers, and so every instance of a control looks the same.
+ */
+
+:root {
+  /* Translucent accent tints that follow the active theme's accent colour. */
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-softer: color-mix(in srgb, var(--accent) 6%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
+  --danger-border: color-mix(in srgb, var(--danger) 40%, transparent);
+  /* Not part of the editable theme palette */
+  --warning: #f0b232;
+}
+
+/* ── Slider ─────────────────────────────────────────────────────────────────
+ * The filled portion is drawn by a gradient on the track. --pct (0–1) is set
+ * by the Slider component; the stop is offset by half the thumb width so the
+ * fill always ends exactly under the thumb's centre.
+ */
+.ui-slider {
+  --pct: 0;
+  --thumb: 16px;
+  --track: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: var(--thumb);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: inherit;
+}
+.ui-slider:disabled { cursor: not-allowed; opacity: 0.5; }
+.ui-slider:focus { outline: none; }
+
+.ui-slider::-webkit-slider-runnable-track {
+  height: var(--track);
+  border-radius: calc(var(--track) / 2);
+  background: linear-gradient(
+    to right,
+    var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--pct)),
+    var(--bg-active) 0
+  );
+}
+.ui-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc((var(--track) - var(--thumb)) / 2);
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+.ui-slider:hover::-webkit-slider-thumb,
+.ui-slider:focus-visible::-webkit-slider-thumb { transform: scale(1.15); }
+
+.ui-slider::-moz-range-track {
+  height: var(--track);
+  border-radius: calc(var(--track) / 2);
+  background: var(--bg-active);
+}
+.ui-slider::-moz-range-progress {
+  height: var(--track);
+  border-radius: calc(var(--track) / 2);
+  background: var(--accent);
+}
+.ui-slider::-moz-range-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+.ui-slider:hover::-moz-range-thumb,
+.ui-slider:focus-visible::-moz-range-thumb { transform: scale(1.15); }
+
+.ui-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Outer labels hug the rail ends; any middle labels are centred on their stop. */
+.ui-slider-scale > span:not(:first-child):not(:last-child) { width: 0; display: flex; justify-content: center; white-space: nowrap; }
+
+/* ── Toggle switch ──────────────────────────────────────────────────────── */
+.ui-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 11px;
+  background: var(--bg-active);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ui-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s;
+}
+.ui-toggle[data-on='true'] { background: var(--accent); }
+.ui-toggle[data-on='true']::after { transform: translateX(18px); }
+button.ui-toggle:disabled { cursor: not-allowed; opacity: 0.5; }
+span.ui-toggle { cursor: inherit; display: inline-block; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1.1rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.ui-btn:disabled { cursor: default; opacity: 0.55; }
+.ui-btn--sm { padding: 0.3rem 0.65rem; font-size: 0.78rem; }
+
+.ui-btn--primary { background: var(--accent); color: #fff; }
+.ui-btn--primary:not(:disabled):hover { background: var(--accent-hover); }
+.ui-btn--primary:disabled { background: var(--bg-active); color: var(--text-muted); opacity: 1; }
+
+.ui-btn--secondary { background: var(--bg-active); color: var(--text-secondary); }
+.ui-btn--secondary:not(:disabled):hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.ui-btn--outline { background: transparent; border-color: var(--border); color: var(--text-muted); font-weight: 500; }
+.ui-btn--outline:not(:disabled):hover { color: var(--text-secondary); border-color: var(--text-muted); }
+
+.ui-btn--ghost { background: transparent; color: var(--text-muted); }
+.ui-btn--ghost:not(:disabled):hover { color: var(--text-secondary); }
+
+.ui-btn--danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+.ui-btn--danger:not(:disabled):hover { background: var(--danger); color: #fff; }
+
+.ui-btn--success { background: var(--success); color: #fff; }
+.ui-btn--success:not(:disabled):hover { filter: brightness(1.1); }
+
+.ui-btn--danger-outline { background: transparent; border-color: var(--border); color: var(--text-muted); font-weight: 500; }
+.ui-btn--danger-outline:not(:disabled):hover { color: var(--danger); border-color: var(--danger-border); }
+
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+.ui-icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* ── Text inputs / selects / textareas ──────────────────────────────────── */
+.ui-input {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ui-input:focus { border-color: var(--accent); }
+.ui-input:disabled { opacity: 0.6; cursor: not-allowed; }
+.ui-input--mono { font-family: ui-monospace, 'Fira Code', monospace; }
+select.ui-input { cursor: pointer; }
+
+/* ── Layout helpers ─────────────────────────────────────────────────────── */
+.ui-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+* + .ui-section-title { margin-top: 2rem; }
+
+.ui-card {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.ui-hint {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Selectable option card (radio / toggle style) */
+.ui-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ui-option:hover { background: var(--bg-hover); }
+.ui-option[data-selected='true'] { border-color: var(--accent); background: var(--accent-softer); }
+
+.ui-radio {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 2px solid var(--text-subtle);
+  border-radius: 50%;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ui-radio[data-on='true'] { border-color: var(--accent); background: var(--accent); }
+.ui-radio[data-on='true']::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #fff; }
+
+.ui-badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--bg-active);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.ui-status { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; }
+.ui-status--pending { color: var(--text-muted); font-style: italic; }
+.ui-status--ok { color: var(--success); font-weight: 600; }
+.ui-status--error { color: var(--danger); font-weight: 600; }
+
+.ui-error-box {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--danger-border);
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.83rem;
+}
+
+/* ── Modal shell ────────────────────────────────────────────────────────── */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+}
+.ui-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-overlay);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.ui-modal-backdrop[data-mobile='true'] { padding: 0; align-items: stretch; }
+.ui-modal-backdrop[data-mobile='true'] > .ui-modal {
+  max-width: none !important;
+  height: 100% !important;
+  border: none;
+  border-radius: 0;
+}
+.ui-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.ui-modal-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ── Vertical tab nav (settings-style modals) ───────────────────────────── */
+.ui-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.ui-tab:hover { background: var(--bg-hover); }
+.ui-tab[data-active='true'] { background: var(--bg-active); color: var(--text-primary); font-weight: 600; }
+.ui-tab-section {
+  padding: 0 0.6rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Popup / context menus ─────────────────────────────────────────────── */
+.ui-popup {
+  position: fixed;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-overlay);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+/* A popup laid out as a list of MenuItems */
+.ui-menu {
+  min-width: 200px;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.ui-menu-item:not(:disabled):hover { background: var(--bg-hover); color: var(--text-primary); }
+.ui-menu-item:disabled { cursor: default; opacity: 0.5; }
+.ui-menu-item[data-variant='danger'] { color: var(--danger); }
+.ui-menu-item[data-variant='danger']:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
+.ui-menu-item[data-copied='true'],
+.ui-menu-item[data-copied='true']:hover {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.ui-menu-icon { width: 1.1em; display: inline-flex; justify-content: center; flex-shrink: 0; }
+.ui-menu-divider { height: 1px; margin: 0.25rem 0; background: var(--border); }
+
+/* ── Shared animations ──────────────────────────────────────────────────── */
+@keyframes msgHighlight {
+  0%   { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  60%  { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  100% { background: transparent; }
+}
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.msg-highlighted { animation: msgHighlight 2s ease-out forwards; }

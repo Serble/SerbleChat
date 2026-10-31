@@ -137,8 +137,9 @@ export function ClientOptionsProvider({ children }) {
         setVoiceParticipantSettingsState(parsed.voiceParticipantSettings);
       }
       if (parsed.voiceAudioOptions && typeof parsed.voiceAudioOptions === 'object') {
-        voiceAudioOptionsRef.current = parsed.voiceAudioOptions;
-        setVoiceAudioOptionsState(parsed.voiceAudioOptions);
+        // Merge over defaults so options added after the user last saved still have values
+        voiceAudioOptionsRef.current = { ...OPTION_DEFAULTS.voiceAudioOptions, ...parsed.voiceAudioOptions };
+        setVoiceAudioOptionsState(voiceAudioOptionsRef.current);
       }
       if (parsed.keybinds && typeof parsed.keybinds === 'object') {
         keybindsRef.current = { ...OPTION_DEFAULTS.keybinds, ...parsed.keybinds };
@@ -194,20 +195,6 @@ export function ClientOptionsProvider({ children }) {
     scheduleSave();
   }, [theme.activeId, theme.customThemes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Watch voice audio options changes and persist ───────────────────────────
-
-  useEffect(() => {
-    if (pendingLoad.current) return;
-    scheduleSave();
-  }, [voiceAudioOptions]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Watch typing indicators setting changes and persist ───────────────────
-
-  useEffect(() => {
-    if (pendingLoad.current) return;
-    scheduleSave();
-  }, [sendTypingIndicators]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Public setters ───────────────────────────────────────────────────────────
 
   function setMessageLinesLimit(val) {
@@ -259,7 +246,8 @@ export function ClientOptionsProvider({ children }) {
     
     // Clamp micVolume to 0-200 range
     if (optionName === 'micVolume') {
-      value = Math.max(0, Math.min(200, Number(value) || 100));
+      const n = Number(value);
+      value = Number.isFinite(n) ? Math.max(0, Math.min(200, n)) : 100;
     }
     
     // Validate inputMode

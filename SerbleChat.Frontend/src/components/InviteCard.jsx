@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { acceptGuildInvite, getGuildInvite, getGuildIconUrl } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
+import { Button } from './ui/index.js';
 import { CastleIcon, CheckIcon } from '../icons.jsx';
 
 /**
@@ -9,29 +10,30 @@ import { CastleIcon, CheckIcon } from '../icons.jsx';
  * Props: inviteId (string | number)
  */
 export default function InviteCard({ inviteId }) {
-  const { refreshGuilds, guilds, reconnectHub, setActiveGuildId } = useApp();
+  const { refreshGuilds, reconnectHub, setActiveGuildId } = useApp();
   const nav = useNavigate();
   const [state, setState]       = useState('idle'); // idle | joining | joined | already | error
   const [guildName, setGuildName] = useState(null);
   const [guildInfo, setGuildInfo] = useState(null); // Store full guild info from invite
   const [errMsg, setErrMsg]     = useState(null);
   const [imageError, setImageError] = useState(false);
-  const imgRef = useRef(null);
+  const navTimerRef = useRef(null);
+
+  // Don't navigate after the card has gone (e.g. the user switched channels during the delay)
+  useEffect(() => () => clearTimeout(navTimerRef.current), []);
 
   // Fetch invite information on mount
   useEffect(() => {
-    async function fetchInviteInfo() {
-      try {
-        const invite = await getGuildInvite(inviteId);
-        if (invite?.guild) {
+    let cancelled = false;
+    getGuildInvite(inviteId)
+      .then(invite => {
+        if (!cancelled && invite?.guild) {
           setGuildInfo(invite.guild);
           setGuildName(invite.guild.name);
         }
-      } catch (err) {
-        console.error('Failed to fetch invite info:', err);
-      }
-    }
-    fetchInviteInfo();
+      })
+      .catch(err => console.error('Failed to fetch invite info:', err));
+    return () => { cancelled = true; };
   }, [inviteId]);
 
   // Check if user is already in this guild — we'll find out after accepting
@@ -45,7 +47,7 @@ export default function InviteCard({ inviteId }) {
       await reconnectHub();
       setActiveGuildId(String(guild.id));
       // Short delay so the user sees "Joined!" before navigation
-      setTimeout(() => nav(`/app/guild/${guild.id}`), 800);
+      navTimerRef.current = setTimeout(() => nav(`/app/guild/${guild.id}`), 800);
     } catch (err) {
       if (err.message?.toLowerCase().includes('already a member')) {
         setState('already');
@@ -58,7 +60,9 @@ export default function InviteCard({ inviteId }) {
 
   // Hue for the guild icon — stable per invite id
   // Convert string ID to a number for consistent color generation
-  const hue = (inviteId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 67) % 360;
+  const hue = (String(inviteId).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) * 67) % 360;
+
+  const actionStyle = { padding: '0.4rem 0.85rem', fontSize: '0.82rem', flexShrink: 0 };
 
   return (
     <div style={{
@@ -80,7 +84,6 @@ export default function InviteCard({ inviteId }) {
       }}>
         {guildInfo && !imageError && (
           <img
-            ref={imgRef}
             src={getGuildIconUrl(guildInfo.id)}
             alt={guildInfo.name}
             onError={() => setImageError(true)}
@@ -107,26 +110,20 @@ export default function InviteCard({ inviteId }) {
 
       {/* Action */}
       {state === 'idle' && (
-        <button onClick={handleJoin}
-          style={{ background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: '#fff', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-hover)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'var(--accent)'}>
+        <Button variant="primary" onClick={handleJoin} style={actionStyle}>
           Join Guild
-        </button>
+        </Button>
       )}
       {state === 'joining' && (
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flexShrink: 0 }}>Joining…</span>
       )}
       {state === 'joined' && (
-        <span style={{ fontSize: '0.82rem', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}><><CheckIcon size={12} /> Joined!</></span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.82rem', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}><CheckIcon size={12} /> Joined!</span>
       )}
       {state === 'already' && (
-        <button onClick={() => nav(`/app/friends`)}
-          style={{ background: 'var(--bg-input)', border: 'none', borderRadius: '6px', padding: '0.4rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', whiteSpace: 'nowrap' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-active)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-input)'}>
+        <Button variant="secondary" onClick={() => nav(`/app/friends`)} style={actionStyle}>
           Already joined
-        </button>
+        </Button>
       )}
       {state === 'error' && (
         <span style={{ fontSize: '0.75rem', color: 'var(--danger)', flexShrink: 0, maxWidth: 80 }} title={errMsg}>Failed</span>

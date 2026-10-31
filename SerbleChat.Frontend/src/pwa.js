@@ -24,29 +24,34 @@ export function isInstalled() {
   );
 }
 
-/**
- * Initialize PWA install prompt handling
- * Call this once when the app starts
- */
-export function initPWAInstallPrompt(onStateChange) {
-  // Capture the beforeinstallprompt event
+const installListeners = new Set();
+
+function notifyInstallListeners(installable) {
+  for (const cb of installListeners) cb(installable);
+}
+
+// Registered at module load so the prompt is captured even if it fires before
+// any UI that cares about it has mounted.
+if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
     // Prevent the default mini-infobar from appearing
     e.preventDefault();
     deferredPrompt = e;
-    
-    // Notify listeners that install is available
-    if (onStateChange) onStateChange(true);
-    
-    console.log('[PWA] Install prompt available');
+    notifyInstallListeners(true);
   });
 
-  // Listen for successful installation
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
-    if (onStateChange) onStateChange(false);
-    console.log('[PWA] App installed successfully');
+    notifyInstallListeners(false);
   });
+}
+
+/**
+ * Subscribe to install-availability changes. Returns an unsubscribe function.
+ */
+export function onInstallAvailabilityChange(callback) {
+  installListeners.add(callback);
+  return () => installListeners.delete(callback);
 }
 
 /**

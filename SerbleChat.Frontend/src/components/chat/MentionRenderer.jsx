@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
+import './chat.css';
 
 /** Matches <@user:id>, <@channel:id>, <@role:id> */
 export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
@@ -11,6 +12,9 @@ export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
 // Module-level constant — avoids creating a new array on every render,
 // which would force react-markdown to rebuild its unified processor each time.
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+
+// Faint background for role chips / picker icons without a colour of their own
+const NEUTRAL_TINT = 'color-mix(in srgb, var(--text-primary) 8%, transparent)';
 
 /**
  * Markdown collapses multiple consecutive blank lines into one paragraph break.
@@ -71,10 +75,11 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
   const [color, setColor] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (type === 'user') {
       const found = mentionData?.members?.find(m => String(m.id) === String(id));
       if (found) { setLabel(found.username); return; }
-      resolveUser?.(id).then(u => setLabel(u?.username ?? id.slice(0, 8)));
+      resolveUser?.(id).then(u => { if (!cancelled) setLabel(u?.username ?? id.slice(0, 8)); });
     } else if (type === 'channel') {
       const found = mentionData?.channels?.find(c => String(c.id) === String(id));
       setLabel(found?.name ?? `channel-${id}`);
@@ -83,41 +88,28 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
       setLabel(found?.name ?? `role-${id}`);
       setColor(found?.color || null);
     }
+    return () => { cancelled = true; };
   }, [type, id, mentionData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const txt = label ?? '…';
 
-  const base = {
-    display: 'inline', borderRadius: '3px',
-    padding: '0.05em 0.3em', fontWeight: 600,
-    transition: 'background 0.1s', lineHeight: 'inherit',
-  };
-
   if (type === 'user') return (
     <span
+      className="chat-mention chat-mention--link"
       onClick={e => { e.stopPropagation(); onUserClick?.(e, id, label); }}
-      style={{ ...base, background: 'rgba(88,101,242,0.2)', color: '#7c9ef8', cursor: 'pointer' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(88,101,242,0.35)'}
-      onMouseLeave={e =>  e.currentTarget.style.background = 'rgba(88,101,242,0.2)'}
     >@{txt}</span>
   );
 
   if (type === 'channel') return (
-    <span
-      onClick={() => nav(`/app/channel/${id}`)}
-      style={{ ...base, background: 'rgba(88,101,242,0.2)', color: '#7c9ef8', cursor: 'pointer' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(88,101,242,0.35)'}
-      onMouseLeave={e =>  e.currentTarget.style.background = 'rgba(88,101,242,0.2)'}
-    >#{txt}</span>
+    <span className="chat-mention chat-mention--link" onClick={() => nav(`/app/channel/${id}`)}>#{txt}</span>
   );
 
-  if (type === 'role') {
-    const bg = color ? `${color}33` : 'rgba(255,255,255,0.08)';
-    const fg = color || '#b5bac1';
-    return (
-      <span style={{ ...base, background: bg, color: fg, cursor: 'default' }}>@{txt}</span>
-    );
-  }
+  if (type === 'role') return (
+    <span
+      className="chat-mention"
+      style={{ background: color ? `${color}33` : NEUTRAL_TINT, color: color || 'var(--text-secondary)' }}
+    >@{txt}</span>
+  );
 
   return null;
 }
@@ -128,7 +120,7 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
  * Renders a message string, replacing <@type:id> tokens with MentionChips and
  * passing remaining text through SafeMarkdown.
  *
- * Long messages (raw content > COLLAPSE_THRESHOLD chars) are shown collapsed
+ * Long messages (more lines than the messageLinesLimit option) are shown collapsed
  * with a "Show more" button — the full markdown is always rendered, only
  * clipped via CSS so nothing is ever truncated or lost.
  *
@@ -256,55 +248,48 @@ export function MentionPicker({ suggestions, selectedIndex, onSelect, onHoverInd
   if (!suggestions.length) return null;
 
   return (
-    <div style={{
-      position: 'absolute', bottom: '100%', left: 0, right: 0,
-      marginBottom: 6, background: '#2b2d31',
-      border: '1px solid #3b3d43', borderRadius: '8px',
-      boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
-      overflow: 'hidden', zIndex: 200,
-    }}>
+    <div className="chat-mention-picker">
       <div style={{
         padding: '0.3rem 0.75rem 0.2rem',
-        fontSize: '0.68rem', fontWeight: 700, color: '#72767d',
+        fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
         textTransform: 'uppercase', letterSpacing: '0.07em',
-        borderBottom: '1px solid #3b3d43',
+        borderBottom: '1px solid var(--border)',
       }}>
         Mentions
       </div>
 
-      {suggestions.map((s, i) => (
-        <div
-          key={`${s.type}-${s.id}`}
-          onMouseDown={e => { e.preventDefault(); onSelect(s); }}
-          onMouseEnter={() => onHoverIndex(i)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.55rem',
-            padding: '0.4rem 0.75rem',
-            background: i === selectedIndex ? '#404249' : 'transparent',
-            cursor: 'pointer', transition: 'background 0.08s',
-          }}
-        >
-          <span style={{
-            width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, fontSize: '0.82rem',
-            background: s.type === 'role' && s.color ? `${s.color}33` : 'rgba(255,255,255,0.08)',
-            color:      s.type === 'role' && s.color ? s.color : '#b5bac1',
-          }}>
-            {TYPE_ICON[s.type]}
-          </span>
-          <span style={{
-            fontWeight: 600, fontSize: '0.875rem', flex: 1,
-            color: s.type === 'role' && s.color ? s.color : '#f2f3f5',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {s.label}
-          </span>
-          <span style={{ fontSize: '0.7rem', color: '#4f5660', flexShrink: 0 }}>
-            {TYPE_LABEL[s.type]}
-          </span>
-        </div>
-      ))}
+      {suggestions.map((s, i) => {
+        const roleColor = s.type === 'role' && s.color ? s.color : null;
+        return (
+          <div
+            key={`${s.type}-${s.id}`}
+            className="chat-mention-option"
+            data-selected={i === selectedIndex}
+            onMouseDown={e => { e.preventDefault(); onSelect(s); }}
+            onMouseEnter={() => onHoverIndex(i)}
+          >
+            <span style={{
+              width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, fontSize: '0.82rem',
+              background: roleColor ? `${roleColor}33` : NEUTRAL_TINT,
+              color:      roleColor ?? 'var(--text-secondary)',
+            }}>
+              {TYPE_ICON[s.type]}
+            </span>
+            <span style={{
+              fontWeight: 600, fontSize: '0.875rem', flex: 1,
+              color: roleColor ?? 'var(--text-primary)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {s.label}
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', flexShrink: 0 }}>
+              {TYPE_LABEL[s.type]}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

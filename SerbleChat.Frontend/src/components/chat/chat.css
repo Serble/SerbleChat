@@ -1,0 +1,114 @@
+/*
+ * chat.css — styles for the chat view and the user/message menus.
+ *
+ * Hover/selected states live here (not in onMouseEnter style mutations) so they
+ * can't get stuck when an element re-renders under the cursor.
+ */
+
+/* ── Channel header buttons ─────────────────────────────────────────────── */
+.chat-header-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.chat-header-btn:disabled { cursor: default; opacity: 0.5; }
+.chat-header-btn:not(:disabled):hover { background: var(--bg-hover); color: var(--text-secondary); }
+.chat-header-btn[data-active='true'] { background: var(--bg-active); color: var(--text-primary); }
+.chat-header-btn[data-danger='true']:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
+
+/* ── Mentions ───────────────────────────────────────────────────────────── */
+.chat-mention {
+  display: inline;
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: inherit;
+  transition: background 0.1s;
+}
+.chat-mention--link {
+  background: color-mix(in srgb, var(--text-link) 20%, transparent);
+  color: var(--text-link);
+  cursor: pointer;
+}
+.chat-mention--link:hover { background: color-mix(in srgb, var(--text-link) 35%, transparent); }
+
+.chat-mention-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  margin-bottom: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+}
+.chat-mention-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.chat-mention-option[data-selected='true'] { background: var(--bg-active); }
+
+/* ── Embeds ─────────────────────────────────────────────────────────────── */
+.chat-image-embed {
+  position: relative;
+  display: inline-block;
+  max-width: 400px;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.chat-image-embed:hover { transform: scale(1.02); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+
+/* Translucent buttons drawn on top of images (always dark, regardless of theme) */
+.chat-overlay-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s;
+}
+.chat-overlay-btn:hover { background: rgba(0, 0, 0, 0.8); }
+/* Light variant for use on the black image-viewer backdrop */
+.chat-overlay-btn--light { background: rgba(255, 255, 255, 0.2); backdrop-filter: none; }
+.chat-overlay-btn--light:hover { background: rgba(255, 255, 255, 0.3); }
+
+.chat-message-card { transition: background 0.15s; }
+.chat-message-card:hover { background: var(--bg-active) !important; }
+
+@keyframes chatFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── User interaction wrapper ───────────────────────────────────────────── */
+.user-interact { cursor: pointer; transition: opacity 0.1s; }
+.user-interact:hover { opacity: 0.9; }
+
+/* Success-tinted Button (UserPopout "Add Friend" / "Accept") */
+.ui-btn.chat-btn-success {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+}
+.ui-btn.chat-btn-success:not(:disabled):hover { background: color-mix(in srgb, var(--success) 22%, transparent); }

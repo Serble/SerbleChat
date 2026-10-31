@@ -13,10 +13,12 @@ function TypingIndicator({ users, resolveUser }) {
       return;
     }
 
-    // Resolve usernames for each typing user
+    // Resolve usernames for each typing user; ignore results for a stale set
+    let cancelled = false;
     Promise.all(Array.from(users).map(userId => resolveUser(userId)))
-      .then(resolved => setUserDetails(resolved))
+      .then(resolved => { if (!cancelled) setUserDetails(resolved); })
       .catch(e => console.error('Failed to resolve typing users:', e));
+    return () => { cancelled = true; };
   }, [users, resolveUser]);
 
   if (!users || users.size === 0) return null;

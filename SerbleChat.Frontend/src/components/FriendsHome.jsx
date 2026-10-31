@@ -5,44 +5,73 @@ import { addFriend, removeFriend, getAccountByUsername, getOrCreateDmChannel } f
 import UserInteraction from './UserInteraction.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import Avatar from './Avatar.jsx';
+import { friendIdOf } from './FriendPicker.jsx';
+import { Button, IconButton, TextInput, ErrorBox } from './ui/index.js';
 import { MenuIcon, PeopleIcon, HandshakeIcon, MailboxIcon, BlockIcon, CheckIcon, CrossIcon } from '../icons.jsx';
 
 const TABS = ['All', 'Pending', 'Blocked', 'Add Friend'];
 
-function Pill({ label, color = '#5865f2' }) {
+// Not a theme colour — there's no "warning" theme var.
+const PENDING_COLOR = 'var(--warning)';
+
+/** Translucent tint of a colour (works with CSS vars, unlike hex-alpha suffixes). */
+function tint(color, pct) {
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
+
+function Pill({ label, color = 'var(--accent)' }) {
   return (
     <span style={{
       padding: '0.2rem 0.65rem', borderRadius: '9999px',
-      background: `${color}22`, color, fontSize: '0.75rem', fontWeight: 600,
-      border: `1px solid ${color}44`,
+      background: tint(color, 13), color, fontSize: '0.75rem', fontWeight: 600,
+      border: `1px solid ${tint(color, 27)}`,
     }}>
       {label}
     </span>
   );
 }
 
-function ActionBtn({ label, color, onClick, disabled }) {
+/** tone: 'danger' (uses the shared danger button) | 'success' */
+function ActionBtn({ label, tone, onClick, disabled }) {
   const [hovered, setHovered] = useState(false);
+  if (tone === 'danger') {
+    return <Button variant="danger" size="sm" onClick={onClick} disabled={disabled}>{label}</Button>;
+  }
+  // No success variant in the shared Button, so hover is handled here.
+  const hot = hovered && !disabled;
   return (
-    <button
+    <Button
+      size="sm"
       onClick={onClick}
       disabled={disabled}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        padding: '0.35rem 0.9rem', borderRadius: '6px',
-        background: hovered && !disabled ? color : `${color}22`,
-        color: hovered && !disabled ? '#fff' : color,
-        border: `1px solid ${color}55`,
-        fontSize: '0.8rem', fontWeight: 600, cursor: disabled ? 'default' : 'pointer',
-        transition: 'background 0.15s, color 0.15s',
-        opacity: disabled ? 0.5 : 1,
+        background: hot ? 'var(--success)' : tint('var(--success)', 13),
+        color: hot ? '#fff' : 'var(--success)',
+        borderColor: tint('var(--success)', 33),
       }}
     >
       {label}
-    </button>
+    </Button>
   );
 }
+
+/** Uppercase "Heading — count" label above a list. */
+function ListHeader({ children, style }) {
+  return (
+    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem', ...style }}>
+      {children}
+    </div>
+  );
+}
+
+const rowStyle = {
+  display: 'flex', alignItems: 'center', gap: '0.875rem',
+  padding: '0.65rem 1rem', borderRadius: '8px',
+  borderBottom: '1px solid var(--border)',
+  transition: 'background 0.1s',
+};
 
 function FriendRow({ friendship, currentUserId, onRefresh }) {
   const { resolveUser } = useApp();
@@ -50,7 +79,7 @@ function FriendRow({ friendship, currentUserId, onRefresh }) {
   const [user, setUser] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const otherId = friendship.user1Id === currentUserId ? friendship.user2Id : friendship.user1Id;
+  const otherId = friendIdOf(friendship, currentUserId);
   const isIncoming = friendship.pending && friendship.user2Id === currentUserId;
   const isOutgoing = friendship.pending && friendship.user1Id === currentUserId;
 
@@ -90,15 +119,7 @@ function FriendRow({ friendship, currentUserId, onRefresh }) {
   }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.875rem',
-      padding: '0.65rem 1rem', borderRadius: '8px',
-      borderBottom: '1px solid var(--border)',
-      transition: 'background 0.1s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-    >
+    <div className="hov-bg" style={rowStyle}>
       <UserInteraction userId={otherId} username={user?.username}>
         <div style={{ flexShrink: 0 }}>
           <Avatar userId={otherId} name={user?.username} color={user?.color} />
@@ -119,20 +140,20 @@ function FriendRow({ friendship, currentUserId, onRefresh }) {
       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
         {!friendship.pending && (
           <>
-            <ActionBtn label="Message" color="#23a55a" onClick={handleMessage} disabled={busy} />
-            <ActionBtn label="Remove"  color="#ed4245" onClick={handleRemove}  disabled={busy} />
+            <ActionBtn label="Message" tone="success" onClick={handleMessage} disabled={busy} />
+            <ActionBtn label="Remove"  tone="danger"  onClick={handleRemove}  disabled={busy} />
           </>
         )}
         {isIncoming && (
           <>
-            <ActionBtn label="Accept" color="#23a55a" onClick={handleAccept} disabled={busy} />
-            <ActionBtn label="Ignore" color="#ed4245" onClick={handleRemove} disabled={busy} />
+            <ActionBtn label="Accept" tone="success" onClick={handleAccept} disabled={busy} />
+            <ActionBtn label="Ignore" tone="danger"  onClick={handleRemove} disabled={busy} />
           </>
         )}
         {isOutgoing && (
           <>
-            <Pill label="Pending" color="#f0b232" />
-            <ActionBtn label="Cancel" color="#ed4245" onClick={handleRemove} disabled={busy} />
+            <Pill label="Pending" color={PENDING_COLOR} />
+            <ActionBtn label="Cancel" tone="danger" onClick={handleRemove} disabled={busy} />
           </>
         )}
       </div>
@@ -164,29 +185,21 @@ function BlockedRow({ user, onUnblock }) {
   }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.875rem',
-      padding: '0.65rem 1rem', borderRadius: '8px',
-      borderBottom: '1px solid var(--border)',
-      transition: 'background 0.1s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-    >
-      <Avatar userId={block.blockedUserId} name={user?.username} color={user?.color} />
+    <div className="hov-bg" style={rowStyle}>
+      <Avatar userId={user.id} name={user?.username} color={user?.color} />
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {user?.username ?? '…'}
         </div>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Blocked</div>
       </div>
-      <ActionBtn label="Unblock" color="#ed4245" onClick={handleUnblock} disabled={busy} />
+      <ActionBtn label="Unblock" tone="danger" onClick={handleUnblock} disabled={busy} />
     </div>
   );
 }
 
 export default function FriendsHome() {
-  const { friends, currentUser, refreshFriends, blockedUsers, unblockUser, refreshBlockedUsers } = useApp();
+  const { friends, currentUser, refreshFriends, blockedUsers, unblockUser } = useApp();
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
   const [tab, setTab]           = useState('All');
   const [addInput, setAddInput] = useState('');
@@ -232,18 +245,15 @@ export default function FriendsHome() {
         background: 'var(--bg-base)',
       }}>
         {isMobile && (
-          <button
+          <IconButton
             title="Open sidebar"
+            aria-label="Open sidebar"
             onClick={openSidebar}
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1,
-              padding: '0.25rem', marginRight: '0.25rem', flexShrink: 0,
-            }}
-          ><MenuIcon size={18} /></button>
+            style={{ color: 'var(--text-secondary)', padding: '0.25rem', marginRight: '0.25rem', flexShrink: 0 }}
+          ><MenuIcon size={18} /></IconButton>
         )}
-        <span style={{ fontWeight: 700, color: 'var(--text-primary)', marginRight: '0.75rem', fontSize: '0.95rem' }}>
-          <><PeopleIcon size={16} /> Friends</>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, color: 'var(--text-primary)', marginRight: '0.75rem', fontSize: '0.95rem', flexShrink: 0 }}>
+          <PeopleIcon size={16} /> Friends
         </span>
         <div style={{ width: 1, height: 20, background: 'var(--border)', marginRight: '0.5rem', flexShrink: 0 }} />
         <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', flex: 1, scrollbarWidth: 'none' }}>
@@ -254,16 +264,15 @@ export default function FriendsHome() {
             <button
               key={t}
               onClick={() => setTab(t)}
+              className={isActive ? undefined : 'hov-bg hov-text-secondary'}
               style={{
                 padding: '0.25rem 0.75rem', borderRadius: '4px', border: 'none',
                 background: isActive ? 'var(--bg-active)' : 'transparent',
                 color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                 fontWeight: isActive ? 600 : 400, fontSize: '0.875rem',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem',
-                transition: 'background 0.1s, color 0.1s',
+                transition: 'background 0.1s, color 0.1s', whiteSpace: 'nowrap', flexShrink: 0,
               }}
-              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-secondary)'; } }}
-              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; } }}
             >
               {t}
               {count > 0 && (
@@ -285,9 +294,7 @@ export default function FriendsHome() {
         {/* ── All Friends ── */}
         {tab === 'All' && (
           <div style={{ padding: '1rem 1.25rem 0' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem' }}>
-              All Friends — {accepted.length}
-            </div>
+            <ListHeader>All Friends — {accepted.length}</ListHeader>
             {accepted.length === 0 ? (
               <EmptyState icon={HandshakeIcon} title="No friends yet" text="Add friends to start chatting." />
             ) : (
@@ -307,9 +314,7 @@ export default function FriendsHome() {
               <>
                 {incoming.length > 0 && (
                   <>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem' }}>
-                      Incoming — {incoming.length}
-                    </div>
+                    <ListHeader>Incoming — {incoming.length}</ListHeader>
                     {incoming.map(f => (
                       <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
                     ))}
@@ -317,9 +322,7 @@ export default function FriendsHome() {
                 )}
                 {outgoing.length > 0 && (
                   <>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '1rem 0 0.25rem' }}>
-                      Outgoing — {outgoing.length}
-                    </div>
+                    <ListHeader style={{ marginTop: incoming.length > 0 ? '1rem' : 0 }}>Outgoing — {outgoing.length}</ListHeader>
                     {outgoing.map(f => (
                       <FriendRow key={f.id} friendship={f} currentUserId={myId} onRefresh={refreshFriends} />
                     ))}
@@ -333,9 +336,7 @@ export default function FriendsHome() {
         {/* ── Blocked ── */}
         {tab === 'Blocked' && (
           <div style={{ padding: '1rem 1.25rem 0' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.25rem' }}>
-              Blocked — {blockedUsers.length}
-            </div>
+            <ListHeader>Blocked — {blockedUsers.length}</ListHeader>
             {blockedUsers.length === 0 ? (
               <EmptyState icon={BlockIcon} title="No blocked users" text="Users you block will appear here." />
             ) : (
@@ -343,7 +344,7 @@ export default function FriendsHome() {
                 <BlockedRow
                   key={u.id}
                   user={u}
-                  onUnblock={async (id) => { await unblockUser(id); refreshBlockedUsers(); }}
+                  onUnblock={unblockUser}
                 />
               ))
             )}
@@ -360,44 +361,35 @@ export default function FriendsHome() {
               You can add a friend by their SerbleChat username.
             </div>
             <form onSubmit={handleAddFriend} style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                style={{
-                  flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                  borderRadius: '8px', padding: '0.7rem 1rem', color: 'var(--text-primary)',
-                  fontSize: '0.9rem', outline: 'none',
-                  transition: 'border-color 0.15s',
-                }}
+              <TextInput
+                style={{ flex: 1, width: 'auto', minWidth: 0, background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '0.7rem 1rem' }}
                 placeholder="Enter a username…"
                 value={addInput}
                 onChange={e => setAddInput(e.target.value)}
                 disabled={addBusy}
-                onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
-              <button
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={!addInput.trim() || addBusy}
-                style={{
-                  padding: '0.7rem 1.5rem', borderRadius: '8px',
-                  background: addInput.trim() && !addBusy ? 'var(--accent)' : 'var(--bg-active)',
-                  color: '#fff', border: 'none', fontWeight: 700,
-                  fontSize: '0.875rem', cursor: addInput.trim() && !addBusy ? 'pointer' : 'default',
-                  transition: 'background 0.15s', whiteSpace: 'nowrap',
-                }}
+                style={{ padding: '0.7rem 1.5rem', borderRadius: '8px', fontWeight: 700 }}
               >
                 {addBusy ? 'Sending…' : 'Send Request'}
-              </button>
+              </Button>
             </form>
-            {addStatus && (
+            {addStatus && (addStatus.ok ? (
               <div style={{
                 marginTop: '0.75rem', padding: '0.65rem 1rem', borderRadius: '6px',
-                background: addStatus.ok ? 'rgba(35,165,90,0.15)' : 'rgba(237,66,69,0.15)',
-                color: addStatus.ok ? 'var(--success)' : 'var(--danger)',
-                fontSize: '0.85rem', border: `1px solid ${addStatus.ok ? 'rgba(35,165,90,0.3)' : 'rgba(237,66,69,0.3)'}`,
+                background: tint('var(--success)', 15), color: 'var(--success)',
+                fontSize: '0.85rem', border: `1px solid ${tint('var(--success)', 30)}`,
               }}>
-                {addStatus.ok ? <><CheckIcon size={14} /> </> : <><CrossIcon size={14} /> </>}{addStatus.msg}
+                <CheckIcon size={14} /> {addStatus.msg}
               </div>
-            )}
+            ) : (
+              <ErrorBox style={{ marginTop: '0.75rem' }}>
+                <CrossIcon size={14} /> {addStatus.msg}
+              </ErrorBox>
+            ))}
           </div>
         )}
       </div>

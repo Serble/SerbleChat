@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import CreateGuildModal from './CreateGuildModal.jsx';
-import SettingsModal from './SettingsModal.jsx';
+import SettingsModal from './settings/SettingsModal.jsx';
 import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { getGuildIconUrl } from '../api.js';
@@ -23,14 +23,37 @@ function SelectionPill({ active, hovered, unread }) {
   );
 }
 
-function StripButton({ title, active, onClick, showPill, unread, children }) {
+// Unread count bubble on the bottom-right of a strip icon (parent must be position: relative).
+function UnreadBadge({ count }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: -2, right: -2,
+      minWidth: 18, height: 18,
+      background: 'var(--danger, #ed4245)',
+      borderRadius: 9,
+      border: '2px solid var(--bg-tertiary)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: '0.65rem', fontWeight: 700, color: '#fff',
+      padding: '0 4px',
+      pointerEvents: 'none',
+      lineHeight: 1,
+    }}>
+      {count > 99 ? '99+' : count}
+    </div>
+  );
+}
+
+// Round strip button that squares off and fills on hover / when active.
+// Hover lives in state (not CSS) because the selection pill reacts to it too.
+function StripButton({ title, active, onClick, showPill, unread, color = '#fff', fillBg = 'var(--accent)', children }) {
   const [hov, setHov] = useState(false);
+  const lit = active || hov;
   const base = {
-    width: 48, height: 48, borderRadius: active || hov ? '30%' : '50%',
-    background: active || hov ? 'var(--accent)' : 'var(--bg-active)',
+    width: 48, height: 48, borderRadius: lit ? '30%' : '50%',
+    background: lit ? fillBg : 'var(--bg-active)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.25rem',
-    transition: 'border-radius 0.2s, background 0.2s',
+    cursor: 'pointer', color: lit ? '#fff' : color, fontWeight: 700, fontSize: '1.25rem',
+    transition: 'border-radius 0.2s, background 0.2s, color 0.2s',
     userSelect: 'none', border: 'none', flexShrink: 0, padding: 0,
   };
   return (
@@ -52,7 +75,6 @@ function StripButton({ title, active, onClick, showPill, unread, children }) {
 function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRefreshKey }) {
   const [hov, setHov] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const imgRef = useRef(null);
   const hue = guild.name
     ? (guild.name.charCodeAt(0) * 37 + guild.name.charCodeAt(guild.name.length - 1) * 17) % 360
     : 200;
@@ -92,7 +114,6 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
       >
         {hasIcon && (
           <img
-            ref={imgRef}
             key={imageRefreshKey}
             src={getGuildIconUrl(guild.id) + '?t=' + imageRefreshKey}
             alt={guild.name}
@@ -108,22 +129,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
         )}
         {!hasIcon && initial}
       </button>
-      {unreadCount > 0 && !active && (
-        <div style={{
-          position: 'absolute', bottom: -2, right: -2,
-          minWidth: 18, height: 18,
-          background: 'var(--danger, #ed4245)',
-          borderRadius: 9,
-          border: '2px solid var(--bg-tertiary)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.65rem', fontWeight: 700, color: '#fff',
-          padding: '0 4px',
-          pointerEvents: 'none',
-          lineHeight: 1,
-        }}>
-          {unreadCount > 99 ? '99+' : unreadCount}
-        </div>
-      )}
+      {unreadCount > 0 && !active && <UnreadBadge count={unreadCount} />}
     </div>
   );
 }
@@ -180,22 +186,7 @@ export default function ServerStrip() {
         <StripButton title="Home" active={onHome} onClick={handleHomeClick} showPill unread={homeUnreads > 0}>
           <HomeIcon size={22} />
         </StripButton>
-        {homeUnreads > 0 && !onHome && (
-          <div style={{
-            position: 'absolute', bottom: -2, right: -2,
-            minWidth: 18, height: 18,
-            background: 'var(--danger, #ed4245)',
-            borderRadius: 9,
-            border: '2px solid var(--bg-tertiary)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.65rem', fontWeight: 700, color: '#fff',
-            padding: '0 4px',
-            pointerEvents: 'none',
-            lineHeight: 1,
-          }}>
-            {homeUnreads > 99 ? '99+' : homeUnreads}
-          </div>
-        )}
+        {homeUnreads > 0 && !onHome && <UnreadBadge count={homeUnreads} />}
       </div>
 
       {/* Divider */}
@@ -215,28 +206,14 @@ export default function ServerStrip() {
       ))}
 
       {/* Add guild button */}
-      <button
+      <StripButton
         title="Create a Guild"
         onClick={() => setShowCreate(true)}
-        style={{
-          width: 48, height: 48, borderRadius: '50%',
-          background: 'var(--bg-active)', border: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--success)', padding: 0,
-          transition: 'border-radius 0.2s, background 0.2s, color 0.2s',
-          userSelect: 'none', flexShrink: 0,
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.borderRadius = '30%';
-          e.currentTarget.style.background = 'var(--success)';
-          e.currentTarget.style.color = '#fff';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.borderRadius = '50%';
-          e.currentTarget.style.background = 'var(--bg-active)';
-          e.currentTarget.style.color = 'var(--success)';
-        }}
-      ><PlusIcon size={22} /></button>
+        color="var(--success)"
+        fillBg="var(--success)"
+      >
+        <PlusIcon size={22} />
+      </StripButton>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

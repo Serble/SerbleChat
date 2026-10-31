@@ -14,12 +14,16 @@ import { useApp } from '../context/AppContext.jsx';
 import { copyToClipboard } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import BanModal from './BanModal.jsx';
+import { Button } from './ui/index.js';
+import './chat/chat.css';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
-/** Renders blurb markdown inside the popout with compact, themed styles. */
-function BlurbMarkdown({ content }) {
-  const components = {
+// Faint neutral tint that works on light and dark themes
+const NEUTRAL_TINT = 'color-mix(in srgb, var(--text-primary) 8%, transparent)';
+
+// Module-level so react-markdown doesn't rebuild its components on every render
+const BLURB_COMPONENTS = {
     p:      ({ children }) => <p style={{ margin: '0 0 0.4em', lineHeight: 1.55 }}>{children}</p>,
     a:      ({ href, children }) => (
       <a href={href} target="_blank" rel="noopener noreferrer"
@@ -32,7 +36,7 @@ function BlurbMarkdown({ content }) {
     em:     ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
     code:   ({ children }) => (
       <code style={{
-        background: 'rgba(255,255,255,0.08)', borderRadius: '3px',
+        background: NEUTRAL_TINT, borderRadius: '3px',
         padding: '0.1em 0.35em', fontSize: '0.82em', fontFamily: 'monospace',
         color: 'var(--text-primary)',
       }}>{children}</code>
@@ -62,16 +66,19 @@ function BlurbMarkdown({ content }) {
     img: ({ src, alt }) => (
       <img src={src} alt={alt ?? ''} style={{ maxWidth: '100%', borderRadius: '4px', display: 'block', margin: '0.3em 0' }} />
     ),
-  };
+};
+
+/** Renders blurb markdown inside the popout with compact, themed styles. */
+function BlurbMarkdown({ content }) {
   return (
-    <ReactMarkdown remarkPlugins={BLURB_REMARK_PLUGINS} components={components}>
+    <ReactMarkdown remarkPlugins={BLURB_REMARK_PLUGINS} components={BLURB_COMPONENTS}>
       {content}
     </ReactMarkdown>
   );
 }
 
-const ONLINE  = { label: 'Online',  color: '#23a55a' };
-const OFFLINE = { label: 'Offline', color: '#747f8d' };
+const ONLINE  = { label: 'Online',  color: 'var(--success)' };
+const OFFLINE = { label: 'Offline', color: 'var(--text-muted)' };
 
 const sectionLabel = {
   fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
@@ -79,36 +86,27 @@ const sectionLabel = {
   marginBottom: '0.4rem',
 };
 
-function ActionButton({ label, icon, onClick, disabled, variant = 'default' }) {
-  const [hov, setHov] = useState(false);
-  const colors = {
-    default: { bg: 'rgba(255,255,255,0.06)', bgHov: 'rgba(255,255,255,0.12)', border: 'var(--border)', color: 'var(--text-secondary)' },
-    green:   { bg: 'rgba(35,165,90,0.12)',   bgHov: 'rgba(35,165,90,0.22)',   border: 'rgba(35,165,90,0.35)',   color: '#23a55a' },
-    red:     { bg: 'rgba(242,63,67,0.10)',   bgHov: 'rgba(242,63,67,0.20)',   border: 'rgba(242,63,67,0.35)',   color: '#f23f43' },
-    accent:  { bg: 'var(--accent)',          bgHov: 'var(--accent-hover)',     border: 'transparent',            color: '#fff'    },
-  };
-  const c = colors[variant] ?? colors.default;
+// ActionButton variant → shared Button variant (+ extra class for the green one)
+const ACTION_VARIANTS = {
+  default: { variant: 'secondary' },
+  green:   { variant: 'secondary', className: 'chat-btn-success' },
+  red:     { variant: 'danger' },
+  accent:  { variant: 'primary' },
+};
+
+function ActionButton({ label, icon: Icon, onClick, disabled, variant = 'default' }) {
+  const v = ACTION_VARIANTS[variant] ?? ACTION_VARIANTS.default;
   return (
-    <button
+    <Button
+      variant={v.variant}
+      className={v.className}
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
-        padding: '0.45rem 0.5rem', borderRadius: '6px',
-        background: hov && !disabled ? c.bgHov : c.bg,
-        border: `1px solid ${c.border}`,
-        color: c.color, fontSize: '0.8rem', fontWeight: 600,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-        transition: 'background 0.15s, color 0.15s',
-        whiteSpace: 'nowrap',
-      }}
+      style={{ flex: 1, gap: '0.35rem', padding: '0.45rem 0.5rem', fontSize: '0.8rem' }}
     >
-      {icon && (() => { const I = icon; return <I size={14} />; })()}
+      {Icon && <Icon size={14} />}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -151,28 +149,39 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const isOutgoing      = !!friendship && friendship.pending && friendship.user1Id === currentUser?.id;
   const isIncoming      = !!friendship && friendship.pending && friendship.user2Id === currentUser?.id;
 
-  // Fetch user profile
+  // Fetch user profile (reset first so a re-targeted popout never shows the previous user)
   useEffect(() => {
-    getAccountById(userId).then(setUser).catch(() => setUser(null));
+    let cancelled = false;
+    setUser(null);
+    getAccountById(userId)
+      .then(u => { if (!cancelled) setUser(u); })
+      .catch(() => { if (!cancelled) setUser(null); });
+    return () => { cancelled = true; };
   }, [userId]);
 
   // Fetch guild roles + user's assigned roles
   useEffect(() => {
     if (!guildId) return;
+    let cancelled = false;
     setRolesLoaded(false);
     setUserRoleIds(new Set());
     setGuildRoles([]);
     Promise.all([getGuildRoles(guildId), getUserGuildRoles(guildId, userId)])
       .then(([all, assigned]) => {
+        if (cancelled) return;
         const allSafe      = Array.isArray(all)      ? all      : [];
         const assignedSafe = Array.isArray(assigned) ? assigned : [];
         setGuildRoles(allSafe);
         setUserRoleIds(new Set(assignedSafe.map(r => Number(r.id ?? r.Id))));
-      }).catch(console.error).finally(() => setRolesLoaded(true));
+      }).catch(console.error).finally(() => { if (!cancelled) setRolesLoaded(true); });
+    return () => { cancelled = true; };
   }, [guildId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close on Escape / outside click
+  // Close on Escape / outside click. Suspended while the ban modal is open: it is
+  // portalled to <body>, so clicks inside it would otherwise count as "outside"
+  // and close the popout (unmounting the modal) — and it handles Escape itself.
   useEffect(() => {
+    if (banModalOpen) return;
     function onKey(e) { if (e.key === 'Escape') { if (dropOpen) setDropOpen(false); else onClose(); } }
     function onDown(e) {
       if (dropRef.current?.contains(e.target)) return;
@@ -181,7 +190,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
-  }, [onClose, dropOpen]);
+  }, [onClose, dropOpen, banModalOpen]);
 
   async function toggleRole(role) {
     const roleId = Number(role.id ?? role.Id);
@@ -347,9 +356,8 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           <div style={sectionLabel}>User ID</div>
           <div
             title="Click to copy" onClick={() => copyToClipboard(userId).catch(err => console.error('Failed to copy user ID:', err))}
+            className="hov-bg"
             style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0.25rem 0.4rem', background: 'var(--bg-tertiary)', borderRadius: '4px', transition: 'background 0.1s' }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
           >{userId}</div>
         </div>
 
@@ -365,7 +373,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                 {assignedRoles.map(role => (
                   <span key={role.id ?? role.Id} style={{
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                    background: 'rgba(255,255,255,0.07)', borderRadius: '4px',
+                    background: NEUTRAL_TINT, borderRadius: '4px',
                     padding: '0.2rem 0.5rem', fontSize: '0.78rem', fontWeight: 600,
                     color: role.color || 'var(--text-secondary)',
                     border: `1px solid ${role.color ? role.color + '55' : 'var(--border)'}`,
@@ -381,14 +389,13 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
               <div style={{ position: 'relative', marginTop: '0.35rem' }} ref={dropRef}>
                 <button
                   onClick={() => setDropOpen(v => !v)}
+                  className="hov-border-accent"
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px',
+                    background: 'var(--bg-secondary)', border: `1px solid ${dropOpen ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '6px',
                     padding: '0.4rem 0.6rem', color: 'var(--text-secondary)', fontSize: '0.8rem',
                     cursor: 'pointer', transition: 'border-color 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = dropOpen ? 'var(--accent)' : 'var(--border)'}
                 >
                   <span>Manage roles…</span>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{dropOpen ? '▲' : '▼'}</span>
@@ -405,14 +412,13 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
                       const busy   = !!rolesBusy[roleId];
                       return (
                         <div key={roleId} onClick={() => !busy && toggleRole(role)}
+                          className="hov-bg"
                           style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', padding: '0.45rem 0.65rem', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1, transition: 'background 0.1s', background: 'transparent' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           <div style={{ width: 16, height: 16, borderRadius: '3px', flexShrink: 0, background: has ? 'var(--accent)' : 'transparent', border: `2px solid ${has ? 'var(--accent)' : 'var(--text-subtle)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
                             {has && <CheckIcon size={10} style={{ color: '#fff' }} />}
                           </div>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: role.color || 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: role.color || 'var(--text-muted)', border: '1px solid var(--border)' }} />
                           <span style={{ flex: 1, fontSize: '0.83rem', fontWeight: 500, color: has ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role.name}</span>
                           {busy && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>…</span>}
                         </div>
@@ -459,26 +465,15 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
       {!isSelf && (
         <div style={{ padding: '0 1rem 0.85rem', flexShrink: 0 }}>
           <div style={{ height: 1, background: 'var(--border)', marginBottom: '0.65rem' }} />
-          <button
+          <Button
+            variant={blocked ? 'danger' : 'danger-outline'}
             onClick={handleToggleBlock}
             disabled={blockBusy}
-            style={{
-              width: '100%', padding: '0.45rem 0.75rem', borderRadius: '6px',
-              background: blocked ? 'rgba(242,63,67,0.12)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${blocked ? 'rgba(242,63,67,0.35)' : 'var(--border)'}`,
-              color: blocked ? '#f23f43' : 'var(--text-muted)',
-              fontSize: '0.82rem', fontWeight: 600,
-              cursor: blockBusy ? 'default' : 'pointer',
-              opacity: blockBusy ? 0.6 : 1,
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              transition: 'background 0.15s, border-color 0.15s, color 0.15s',
-            }}
-            onMouseEnter={e => { if (!blockBusy) { e.currentTarget.style.background = blocked ? 'rgba(242,63,67,0.22)' : 'rgba(242,63,67,0.1)'; e.currentTarget.style.color = '#f23f43'; e.currentTarget.style.borderColor = 'rgba(242,63,67,0.4)'; } }}
-            onMouseLeave={e => { if (!blockBusy) { e.currentTarget.style.background = blocked ? 'rgba(242,63,67,0.12)' : 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = blocked ? '#f23f43' : 'var(--text-muted)'; e.currentTarget.style.borderColor = blocked ? 'rgba(242,63,67,0.35)' : 'var(--border)'; } }}
+            style={{ width: '100%', justifyContent: 'flex-start', gap: '0.5rem', padding: '0.45rem 0.75rem', fontSize: '0.82rem', fontWeight: 600 }}
           >
             <BlockIcon size={16} />
             {blockBusy ? '…' : blocked ? 'Unblock User' : 'Block User'}
-          </button>
+          </Button>
         </div>
       )}
 

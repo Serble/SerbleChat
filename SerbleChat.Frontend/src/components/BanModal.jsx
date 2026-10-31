@@ -1,14 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { HammerIcon, LockIcon, ClockIcon, CloseIcon } from '../icons.jsx';
+import { HammerIcon, LockIcon, ClockIcon } from '../icons.jsx';
+import { Modal, Button, TextInput, ErrorBox, Hint } from './ui/index.js';
+import { FieldLabel } from './ui/index.js';
+
+const BAN_TYPES = [
+  { value: 'permanent', label: 'Permanent', icon: LockIcon },
+  { value: 'duration',  label: 'Temporary', icon: ClockIcon },
+];
 
 /**
  * BanModal
  * Modal for entering ban information (duration)
- * 
+ *
  * Props:
  * - username: string - The user being banned
- * - onBan: function(until: Date) - Called when user confirms ban
+ * - onBan: function(until: Date) - Called when user confirms ban (may return a promise)
  * - onCancel: function - Called when user cancels
  * - busy: boolean - Whether a ban is in progress
  */
@@ -16,26 +22,28 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
   const [banType, setBanType] = useState('permanent'); // 'permanent' or 'duration'
   const [days, setDays] = useState('7');
   const [error, setError] = useState(null);
-  const backdropRef = useRef(null);
-  const inputRef = useRef(null);
+  // Tracks an in-flight onBan promise so the ban can't be submitted twice even
+  // when the caller doesn't pass `busy`.
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const isBusy = busy || submitting;
 
+  // Enter confirms from anywhere in the modal — except on a focused button,
+  // where Enter already activates that button (Cancel, a ban type, or Ban itself).
+  const handleBanRef = useRef(null);
+  handleBanRef.current = handleBan;
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape' && !busy) onCancel();
-      if (e.key === 'Enter' && !busy) handleBan();
+      if (e.key !== 'Enter' || e.target instanceof HTMLButtonElement) return;
+      e.preventDefault();
+      handleBanRef.current();
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [banType, days, busy, onCancel]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (banType === 'duration') {
-      inputRef.current?.focus();
-    }
-  }, [banType]);
+  }, []);
 
   function handleBan() {
-    if (busy) return;
+    if (isBusy || submittingRef.current) return;
     setError(null);
 
     let until = new Date('9999-12-31T23:59:59Z'); // Permanent ban by default
@@ -54,133 +62,86 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
       until.setDate(until.getDate() + daysNum);
     }
 
-    onBan(until);
+    const result = onBan(until);
+    if (result && typeof result.then === 'function') {
+      submittingRef.current = true;
+      setSubmitting(true);
+      const done = () => { submittingRef.current = false; setSubmitting(false); };
+      result.then(done, done);
+    }
   }
 
-  return createPortal(
-    <div
-      ref={backdropRef}
-      onClick={e => {
-        if (e.target === backdropRef.current && !busy) onCancel();
-      }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(0,0,0,0.75)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1rem',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'var(--bg-base)',
-          borderRadius: '12px',
-          width: '100%',
-          maxWidth: 400,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: '1.25rem 1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-            <><HammerIcon size={16} /> Ban User</>
-          </div>
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-muted)',
-              fontSize: '1.25rem',
-              cursor: busy ? 'default' : 'pointer',
-              lineHeight: 1,
-              padding: '0.2rem',
-              borderRadius: '4px',
-              transition: 'color 0.15s',
-              opacity: busy ? 0.5 : 1,
-            }}
-          >
-            <CloseIcon size={14} />
-          </button>
-        </div>
+  const daysNum = parseInt(days);
 
+  return (
+    <Modal onClose={() => { if (!isBusy) onCancel(); }} title="Ban User" icon={HammerIcon} width={400}>
+      {/* Stop mousedown here so a parent's document-level click-outside handler
+          (e.g. UserPopout, which renders this modal) doesn't close the parent —
+          and with it this modal — when the user clicks inside the dialog. */}
+      <div onMouseDown={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto' }}>
         {/* Body */}
         <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Username */}
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
-              User
-            </div>
-            <div
-              style={{
-                padding: '0.65rem 0.75rem',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-              }}
-            >
+            <FieldLabel>User</FieldLabel>
+            <div style={{
+              padding: '0.65rem 0.75rem',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+            }}>
               {username}
             </div>
           </div>
 
           {/* Ban Type Selection */}
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem' }}>
-              Ban Duration
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {['permanent', 'duration'].map(type => (
-                <button
-                  key={type}
-                  onClick={() => setBanType(type)}
-                  disabled={busy}
-                  style={{
-                    flex: 1,
-                    padding: '0.65rem 0.75rem',
-                    border: `1px solid ${banType === type ? 'var(--accent)' : 'var(--border)'}`,
-                    background: banType === type ? 'rgba(124,58,237,0.15)' : 'var(--bg-secondary)',
-                    borderRadius: '6px',
-                    color: banType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    fontSize: '0.875rem',
-                    fontWeight: banType === type ? 600 : 500,
-                    cursor: busy ? 'default' : 'pointer',
-                    opacity: busy ? 0.5 : 1,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {type === 'permanent' ? <><LockIcon size={14} /> Permanent</> : <><ClockIcon size={14} /> Temporary</>}
-                </button>
-              ))}
+            <FieldLabel>Ban Duration</FieldLabel>
+            <div role="radiogroup" style={{ display: 'flex', gap: '0.5rem' }}>
+              {BAN_TYPES.map(({ value, label, icon: Icon }) => {
+                const isSel = banType === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSel}
+                    onClick={() => { setBanType(value); setError(null); }}
+                    disabled={isBusy}
+                    className={isSel || isBusy ? undefined : 'hov-bg'}
+                    style={{
+                      flex: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+                      padding: '0.65rem 0.75rem',
+                      border: `1px solid ${isSel ? 'var(--accent)' : 'var(--border)'}`,
+                      background: isSel ? 'var(--accent-soft)' : 'var(--bg-secondary)',
+                      borderRadius: '6px',
+                      color: isSel ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      font: 'inherit',
+                      fontSize: '0.875rem',
+                      fontWeight: isSel ? 600 : 500,
+                      cursor: isBusy ? 'default' : 'pointer',
+                      opacity: isBusy ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <Icon size={14} /> {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Duration Input */}
           {banType === 'duration' && (
             <div>
-              <label
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.07em',
-                  marginBottom: '0.4rem',
-                  display: 'block',
-                }}
-              >
-                Number of Days
-              </label>
-              <input
-                ref={inputRef}
+              <FieldLabel htmlFor="ban-days">Number of Days</FieldLabel>
+              <TextInput
+                id="ban-days"
+                autoFocus
                 type="number"
                 min="1"
                 max="36500"
@@ -189,58 +150,26 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
                   setDays(e.target.value);
                   setError(null);
                 }}
-                disabled={busy}
+                disabled={isBusy}
                 placeholder="e.g. 7"
-                style={{
-                  width: '100%',
-                  padding: '0.65rem 0.75rem',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.9rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.15s',
-                  opacity: busy ? 0.5 : 1,
-                  cursor: busy ? 'default' : 'text',
-                }}
-                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
-                onBlur={e => (e.target.style.borderColor = 'var(--border)')}
               />
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              <Hint style={{ fontSize: '0.72rem', marginTop: '0.25rem' }}>
                 Maximum: 36,500 days (100 years)
-              </div>
+              </Hint>
             </div>
           )}
 
-          {/* Error Message */}
-          {error && (
-            <div
-              style={{
-                background: 'rgba(242,63,67,0.1)',
-                border: '1px solid rgba(242,63,67,0.3)',
-                borderRadius: '6px',
-                padding: '0.5rem 0.75rem',
-                color: 'var(--danger)',
-                fontSize: '0.83rem',
-              }}
-            >
-              {error}
-            </div>
-          )}
+          <ErrorBox>{error}</ErrorBox>
 
           {/* Summary */}
-          <div
-            style={{
-              background: 'var(--bg-secondary)',
-              borderRadius: '6px',
-              padding: '0.75rem 0.75rem',
-              fontSize: '0.82rem',
-              color: 'var(--text-secondary)',
-              lineHeight: 1.5,
-            }}
-          >
+          <div style={{
+            background: 'var(--bg-secondary)',
+            borderRadius: '6px',
+            padding: '0.75rem',
+            fontSize: '0.82rem',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.5,
+          }}>
             {banType === 'permanent' ? (
               <>
                 <strong>Permanent ban</strong>
@@ -251,8 +180,8 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
               <>
                 <strong>Temporary ban until:</strong>
                 <br />
-                {days && !isNaN(days) && parseInt(days) > 0
-                  ? new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toLocaleDateString()
+                {daysNum > 0
+                  ? new Date(Date.now() + daysNum * 24 * 60 * 60 * 1000).toLocaleDateString()
                   : 'Invalid duration'}
               </>
             )}
@@ -261,45 +190,17 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
 
         {/* Footer */}
         <div style={{ padding: '0 1.5rem 1.25rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--border)',
-              borderRadius: '6px',
-              padding: '0.55rem 1rem',
-              color: 'var(--text-secondary)',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              cursor: busy ? 'default' : 'pointer',
-              opacity: busy ? 0.5 : 1,
-              transition: 'all 0.15s',
-            }}
-          >
-            Cancel
-          </button>
-          <button
+          <Button variant="outline" onClick={onCancel} disabled={isBusy}>Cancel</Button>
+          <Button
+            variant="primary"
             onClick={handleBan}
-            disabled={busy}
-            style={{
-              background: 'var(--danger)',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0.55rem 1.1rem',
-              color: '#fff',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              cursor: busy ? 'default' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-              transition: 'all 0.15s',
-            }}
+            disabled={isBusy}
+            style={{ background: 'var(--danger)', color: '#fff', opacity: isBusy ? 0.6 : 1 }}
           >
-            {busy ? 'Banning…' : 'Ban User'}
-          </button>
+            {isBusy ? 'Banning…' : 'Ban User'}
+          </Button>
         </div>
       </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }

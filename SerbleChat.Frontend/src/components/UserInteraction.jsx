@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
@@ -8,6 +7,7 @@ import { setParticipantMuted, setParticipantVolume } from '../voice.js';
 import { getOrCreateDmChannel, kickGuildMember, banGuildMember } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import BanModal from './BanModal.jsx';
+import { ContextMenu, MenuItem, MenuDivider, Slider } from './ui/index.js';
 import { SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
 
 /**
@@ -17,29 +17,12 @@ import { SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
 function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
   const nav = useNavigate();
   const { blockUser, unblockUser, isBlocked, currentUser } = useApp();
-  const menuRef = useRef(null);
   const blocked = isBlocked ? isBlocked(userId) : false;
-  const [showVolumeControl, setShowVolumeControl] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const isSelf = currentUser?.id === userId;
   const canKick = guildId && myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.kickMembers === 0);
   const canBan = guildId && myPerms && !isSelf && (myPerms.administrator === 0 || myPerms.banMembers === 0);
-
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape') onClose();
-    }
-    function onDown(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) onClose();
-    }
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDown);
-    };
-  }, [onClose]);
 
   async function handleMessage() {
     try {
@@ -54,40 +37,17 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
 
   async function handleBlock() {
     try {
-      if (blocked) {
-        await unblockUser(userId);
-      } else {
-        await blockUser(userId);
-      }
-      onClose();
+      if (blocked) await unblockUser(userId);
+      else await blockUser(userId);
     } catch (e) {
       console.error(e);
-      onClose();
     }
+    onClose();
   }
 
   function handleViewProfile() {
     onViewProfile();
     onClose();
-  }
-
-  function handleToggleMute() {
-    if (onVoiceSettingsChange) {
-      onVoiceSettingsChange({ muted: !voiceSettings.muted });
-    }
-  }
-
-  function handleVolumeChange(e) {
-    if (onVoiceSettingsChange) {
-      const newVolume = parseFloat(e.target.value);
-      onVoiceSettingsChange({ volume: newVolume });
-    }
-  }
-
-  function handleResetVoiceSettings() {
-    if (onVoiceSettingsChange) {
-      onVoiceSettingsChange({ muted: false, volume: 1 });
-    }
   }
 
   async function handleKick() {
@@ -105,122 +65,48 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
     }
   }
 
-  // Clamp menu position
-  const menuW = 180;
-  let menuH = voiceSettings ? 240 : 120;
-  if (canKick || canBan) menuH += 60; // Add space for moderation options
-  let left = x;
-  let top = y;
-  if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 8;
-  if (top + menuH > window.innerHeight) top = window.innerHeight - menuH - 8;
-  if (left < 8) left = 8;
-  if (top < 8) top = 8;
-
   return (
-    <>
-      {createPortal(
-        <div
-          ref={menuRef}
-          style={{
-            position: 'fixed',
-            zIndex: 700,
-            left,
-            top,
-            minWidth: menuW,
-            background: 'var(--bg-overlay)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-            padding: '0.4rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.15rem',
-          }}
-        >
-          <MenuItem label="View Profile" onClick={handleViewProfile} />
-          <MenuItem label="Message" onClick={handleMessage} />
-          {voiceSettings && (
-            <>
-              <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
-              <MenuItem label={voiceSettings.muted ? <><SpeakerMutedIcon size={14} /> Unmute</> : <><SpeakerIcon size={14} /> Mute</>} onClick={handleToggleMute} />
-              <div style={{ padding: '0.4rem 0.65rem' }}>
-                <label style={{
-                  fontSize: '0.7rem',
-                  color: 'var(--text-secondary)',
-                  fontWeight: 500,
-                  display: 'block',
-                  marginBottom: '0.3rem',
-                }}>
-                  Volume: {Math.round(voiceSettings.volume * 100)}%
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={500}
-                  step={5}
-                  value={Math.round(voiceSettings.volume * 100)}
-                  onChange={(e) => {
-                    if (onVoiceSettingsChange) {
-                      const newVolume = parseInt(e.target.value) / 100;
-                      onVoiceSettingsChange({ volume: newVolume });
-                    }
-                  }}
-                  style={{
-                    cursor: 'pointer',
-                    height: '4px',
-                    width: '100%',
-                  }}
-                />
-              </div>
-              {(voiceSettings.muted || voiceSettings.volume !== 1) && (
-                <MenuItem label="Reset" onClick={handleResetVoiceSettings} />
-              )}
-            </>
+    <ContextMenu x={x} y={y} onClose={onClose} minWidth={180}>
+      <MenuItem label="View Profile" onClick={handleViewProfile} />
+      <MenuItem label="Message" onClick={handleMessage} />
+      {voiceSettings && (
+        <>
+          <MenuDivider />
+          <MenuItem
+            icon={voiceSettings.muted ? SpeakerMutedIcon : SpeakerIcon}
+            label={voiceSettings.muted ? 'Unmute' : 'Mute'}
+            onClick={() => onVoiceSettingsChange?.({ muted: !voiceSettings.muted })}
+          />
+          <div style={{ padding: '0.4rem 0.75rem' }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '0.4rem',
+            }}>
+              <span>Volume</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.round(voiceSettings.volume * 100)}%</span>
+            </div>
+            <Slider
+              min={0}
+              max={500}
+              step={5}
+              value={Math.round(voiceSettings.volume * 100)}
+              onChange={v => onVoiceSettingsChange?.({ volume: v / 100 })}
+            />
+          </div>
+          {(voiceSettings.muted || voiceSettings.volume !== 1) && (
+            <MenuItem label="Reset" onClick={() => onVoiceSettingsChange?.({ muted: false, volume: 1 })} />
           )}
-          {(canKick || canBan) && (
-            <>
-              <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 0' }} />
-              {canKick && <MenuItem label="Kick from Guild" onClick={handleKick} variant="danger" disabled={busy} />}
-              {canBan && onOpenBanModal && <MenuItem label="Ban from Guild" onClick={() => onOpenBanModal(userId, username, guildId)} variant="danger" disabled={busy} />}
-            </>
-          )}
-          <MenuItem label={blocked ? 'Unblock' : 'Block'} onClick={handleBlock} variant="danger" />
-        </div>,
-        document.body
+        </>
       )}
-    </>
-  );
-}
-
-function MenuItem({ label, onClick, variant = 'default', disabled = false }) {
-  const [hovered, setHovered] = useState(false);
-  const isDanger = variant === 'danger';
-
-  return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      onMouseEnter={() => !disabled && setHovered(true)}
-      onMouseLeave={() => !disabled && setHovered(false)}
-      disabled={disabled}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0.5rem 0.65rem',
-        borderRadius: '4px',
-        background: hovered ? (isDanger ? 'rgba(242,63,67,0.15)' : 'var(--bg-hover)') : 'transparent',
-        border: 'none',
-        color: isDanger && hovered ? 'var(--danger)' : hovered ? 'var(--text-primary)' : 'var(--text-secondary)',
-        fontSize: '0.875rem',
-        fontWeight: 500,
-        cursor: disabled ? 'default' : 'pointer',
-        textAlign: 'left',
-        transition: 'background 0.1s, color 0.1s',
-        width: '100%',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {label}
-    </button>
+      {(canKick || canBan) && (
+        <>
+          <MenuDivider />
+          {canKick && <MenuItem label="Kick from Guild" onClick={handleKick} variant="danger" disabled={busy} />}
+          {canBan && onOpenBanModal && <MenuItem label="Ban from Guild" onClick={() => onOpenBanModal(userId, username, guildId)} variant="danger" disabled={busy} />}
+        </>
+      )}
+      <MenuItem label={blocked ? 'Unblock' : 'Block'} onClick={handleBlock} variant="danger" />
+    </ContextMenu>
   );
 }
 
@@ -251,7 +137,7 @@ export default function UserInteraction({ userId, username, guildId = null, voic
   const [popout, setPopout] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [banModal, setBanModal] = useState(null); // { userId, username, guildId }
-  const [hovered, setHovered] = useState(false);
+  const [banBusy, setBanBusy] = useState(false);
 
   // Disable interaction if userId is not available
   const isDisabled = disabled || !userId;
@@ -311,13 +197,8 @@ export default function UserInteraction({ userId, username, guildId = null, voic
       <div
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{ 
-          cursor: isDisabled ? 'default' : 'pointer',
-          transition: 'opacity 0.1s',
-          opacity: hovered && !isDisabled ? 0.9 : 1,
-        }}
+        className={isDisabled ? undefined : 'user-interact'}
+        style={isDisabled ? { cursor: 'default' } : undefined}
       >
         {children}
       </div>
@@ -355,16 +236,19 @@ export default function UserInteraction({ userId, username, guildId = null, voic
         <BanModal
           username={banModal.username}
           onBan={async (until) => {
+            setBanBusy(true);
             try {
               await banGuildMember(banModal.guildId, banModal.userId, until.toISOString());
               setBanModal(null);
             } catch (e) {
               console.error(e);
               alert('Failed to ban user: ' + e.message);
+            } finally {
+              setBanBusy(false);
             }
           }}
           onCancel={() => setBanModal(null)}
-          busy={false}
+          busy={banBusy}
         />
       )}
     </>

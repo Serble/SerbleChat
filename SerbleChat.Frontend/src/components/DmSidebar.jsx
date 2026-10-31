@@ -8,41 +8,51 @@ import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import GroupChatSettingsModal from './GroupChatSettingsModal.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
-import UserPopout from './UserPopout.jsx';
 import UserInteraction from './UserInteraction.jsx';
-import { getGroupChatIconUrl } from '../api.js';
-import { GearIcon, PeopleIcon } from '../icons.jsx';
+import useGroupChatIcon from './useGroupChatIcon.js';
+import { IconButton } from './ui/index.js';
+import { GearIcon, PeopleIcon, PlusIcon } from '../icons.jsx';
+
+const HOVER_CLASS = 'hov-bg hov-text-secondary';
+
+/** Shared look for sidebar rows (Friends, DMs, group chats). */
+function rowStyle(active, bold) {
+  return {
+    display: 'flex', alignItems: 'center', gap: '0.6rem',
+    padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
+    background: active ? 'var(--bg-active)' : 'transparent',
+    border: 'none', cursor: 'pointer', textAlign: 'left',
+    color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+    fontSize: '0.875rem', fontWeight: active || bold ? 600 : 400,
+    transition: 'background 0.1s, color 0.1s',
+  };
+}
+
+const labelStyle = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 };
+
+function UnreadBadge({ count }) {
+  if (!(count > 0)) return null;
+  return (
+    <span style={{
+      background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
+      padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
+      minWidth: 18, textAlign: 'center', flexShrink: 0,
+    }}>
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
 
 function SidebarItem({ icon, label, active, badge, onClick }) {
-  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.6rem',
-        padding: '0.45rem 0.6rem', borderRadius: '6px', width: '100%',
-        background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-        border: 'none', cursor: 'pointer', textAlign: 'left',
-        color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-        fontSize: '0.9rem', fontWeight: active ? 600 : 400,
-        transition: 'background 0.1s, color 0.1s', flexShrink: 0,
-      }}
+      className={active ? undefined : HOVER_CLASS}
+      style={{ ...rowStyle(active), padding: '0.45rem 0.6rem', fontSize: '0.9rem', flexShrink: 0 }}
     >
       {icon && <span style={{ fontSize: '1.05rem', flexShrink: 0 }}>{icon}</span>}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-        {label}
-      </span>
-      {badge > 0 && (
-        <span style={{
-          background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
-          padding: '0.1rem 0.4rem', fontSize: '0.68rem', fontWeight: 700,
-          minWidth: 18, textAlign: 'center', flexShrink: 0,
-        }}>
-          {badge}
-        </span>
-      )}
+      <span style={labelStyle}>{label}</span>
+      <UnreadBadge count={badge} />
     </button>
   );
 }
@@ -95,7 +105,7 @@ function VoiceParticipantsBelow({ channelId }) {
                 gap: '0.25rem',
                 padding: '0.2rem 0.35rem',
                 borderRadius: '3px',
-                background: 'rgba(124,58,237,0.08)',
+                background: 'var(--accent-softer)',
                 fontSize: '0.75rem',
                 color: 'var(--text-secondary)',
               }}
@@ -127,7 +137,6 @@ function DmItem({ dm, currentChannelId }) {
   const active = String(currentChannelId) === String(dm.channelId);
   const name = otherUser?.username ?? '…';
   const otherId = dm.user1Id === currentUser?.id ? dm.user2Id : dm.user1Id;
-  const [hovered, setHovered] = useState(false);
   const unread = unreads[String(dm.channelId)] ?? 0;
   const isOnline = userStatuses[String(otherId)] === 'online';
 
@@ -141,17 +150,8 @@ function DmItem({ dm, currentChannelId }) {
       <button
         onClick={() => nav(`/app/channel/${dm.channelId}`)}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '0.6rem',
-          padding: '0.35rem 0.6rem', borderRadius: '6px', width: '100%',
-          background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-          border: 'none', cursor: 'pointer', textAlign: 'left',
-          color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-          fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
-          transition: 'background 0.1s, color 0.1s',
-        }}
+        className={active ? undefined : HOVER_CLASS}
+        style={rowStyle(active, unread > 0)}
       >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
@@ -162,16 +162,8 @@ function DmItem({ dm, currentChannelId }) {
             border: '2px solid var(--bg-secondary)',
           }} />
         </div>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
-        {unread > 0 && !active && (
-          <span style={{
-            background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
-            padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
-            minWidth: 18, textAlign: 'center', flexShrink: 0,
-          }}>
-            {unread > 99 ? '99+' : unread}
-          </span>
-        )}
+        <span style={labelStyle}>{name}</span>
+        {!active && <UnreadBadge count={unread} />}
       </button>
       {ctxMenu && (
         <ChannelNotifContextMenu
@@ -191,31 +183,13 @@ function GroupItem({ chat, currentChannelId }) {
   const nav = useNavigate();
   const active = String(currentChannelId) === String(chat.channelId);
   const name = chat.channel?.name ?? `Group ${chat.channelId}`;
+  // Row hover is tracked in state (not CSS) because it also reveals the owner's gear button
   const [hovered, setHovered] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);
-  const [hasIcon, setHasIcon] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const icon = useGroupChatIcon(chat.channelId, channelUpdatedEvent);
   const unread = unreads[String(chat.channelId)] ?? 0;
   const isOwner = chat.ownerId === currentUser?.id;
-
-  // Check if group chat icon exists
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => setHasIcon(true);
-    img.onerror = () => setHasIcon(false);
-    img.src = getGroupChatIconUrl(chat.channelId);
-  }, [chat.channelId]);
-
-  // Refresh icon when channel is updated
-  useEffect(() => {
-    if (!channelUpdatedEvent) return;
-    if (String(channelUpdatedEvent.channelId) === String(chat.channelId)) {
-      const img = new Image();
-      img.onload = () => setHasIcon(true);
-      img.onerror = () => setHasIcon(false);
-      img.src = getGroupChatIconUrl(chat.channelId) + '?t=' + channelUpdatedEvent.ts;
-    }
-  }, [channelUpdatedEvent, chat.channelId]);
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -237,23 +211,17 @@ function GroupItem({ chat, currentChannelId }) {
           onClick={() => nav(`/app/channel/${chat.channelId}`)}
           onContextMenu={handleContextMenu}
           style={{
-            display: 'flex', alignItems: 'center', gap: '0.6rem',
-            padding: '0.35rem 0.6rem', borderRadius: '6px', flex: 1,
-            background: active ? 'var(--bg-active)' : hovered ? 'var(--bg-hover)' : 'transparent',
-            border: 'none', cursor: 'pointer', textAlign: 'left',
-            color: active ? 'var(--text-primary)' : hovered ? 'var(--text-secondary)' : 'var(--text-muted)',
-            fontSize: '0.875rem', fontWeight: active || unread > 0 ? 600 : 400,
-            transition: 'background 0.1s, color 0.1s',
-            minWidth: 0,
+            ...rowStyle(active, unread > 0),
+            width: undefined, flex: 1, minWidth: 0,
+            ...(!active && hovered && { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }),
           }}
         >
           {/* Group chat icon or avatar */}
-          {hasIcon ? (
+          {icon.hasIcon ? (
             <img
-              key={`group-icon-${chat.channelId}-${channelUpdatedEvent?.ts || 0}`}
-              src={getGroupChatIconUrl(chat.channelId) + (channelUpdatedEvent?.ts ? '?t=' + channelUpdatedEvent.ts : '')}
+              src={icon.src}
               alt="Group icon"
-              onError={() => setHasIcon(false)}
+              onError={icon.onError}
               style={{
                 width: 28, height: 28, borderRadius: '4px', flexShrink: 0,
                 objectFit: 'cover',
@@ -262,30 +230,18 @@ function GroupItem({ chat, currentChannelId }) {
           ) : (
             <Avatar name={name} size={28} />
           )}
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{name}</span>
-          {unread > 0 && !active && (
-            <span style={{
-              background: 'var(--danger)', color: '#fff', borderRadius: '9999px',
-              padding: '0.1rem 0.38rem', fontSize: '0.68rem', fontWeight: 700,
-              minWidth: 18, textAlign: 'center', flexShrink: 0,
-            }}>
-              {unread > 99 ? '99+' : unread}
-            </span>
-          )}
+          <span style={labelStyle}>{name}</span>
+          {!active && <UnreadBadge count={unread} />}
         </button>
 
         {/* Settings icon — only visible to owners on hover */}
         {isOwner && hovered && (
-          <span
+          <IconButton
             title="Group Settings"
+            aria-label="Group Settings"
             onClick={e => { e.stopPropagation(); setShowSettings(true); }}
-            style={{ 
-              cursor: 'pointer', color: '#72767d', fontSize: '0.9rem', 
-              padding: '0.15rem 0.25rem', borderRadius: '3px', lineHeight: 1, 
-              flexShrink: 0, transition: 'color 0.1s' 
-            }}
-            className="hov-text-primary"
-          ><GearIcon size={14} /></span>
+            style={{ padding: '0.15rem 0.25rem', flexShrink: 0 }}
+          ><GearIcon size={14} /></IconButton>
         )}
       </div>
       {ctxMenu && (
@@ -308,15 +264,17 @@ function GroupItem({ chat, currentChannelId }) {
   );
 }
 
-function SectionHeader({ label }) {
+function SectionHeader({ label, action }) {
   return (
     <div style={{
+      display: 'flex', alignItems: 'center',
       padding: '1rem 0.5rem 0.3rem',
       fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
       textTransform: 'uppercase', letterSpacing: '0.07em',
       userSelect: 'none',
     }}>
-      {label}
+      <span style={{ flex: 1 }}>{label}</span>
+      {action}
     </div>
   );
 }
@@ -327,7 +285,6 @@ export default function DmSidebar() {
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [userPopout, setUserPopout] = useState(null); // { userId, username, anchorRect }
 
   const currentChannelId = loc.pathname.match(/\/channel\/(\d+)/)?.[1];
   const onFriends = loc.pathname === '/app/friends';
@@ -387,28 +344,24 @@ export default function DmSidebar() {
         )}
 
         {/* Group Chats */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '1rem 0.5rem 0.3rem' }}>
-          <span style={{
-            flex: 1, fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
-            textTransform: 'uppercase', letterSpacing: '0.07em', userSelect: 'none',
-          }}>
-            Group Chats
-          </span>
-          <button
-            title="Create Group Chat"
-            onClick={() => setShowCreateGroup(true)}
-            style={{
-              background: 'transparent', border: 'none', color: 'var(--text-muted)',
-              cursor: 'pointer', fontSize: '1rem', lineHeight: 1,
-              padding: '0 0.1rem', borderRadius: '4px',
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-          >
-            ＋
-          </button>
-        </div>
+        <SectionHeader
+          label="Group Chats"
+          action={
+            <button
+              title="Create Group Chat"
+              aria-label="Create Group Chat"
+              onClick={() => setShowCreateGroup(true)}
+              className="hov-text-secondary"
+              style={{
+                display: 'flex', background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                cursor: 'pointer', padding: '0 0.1rem', borderRadius: '4px',
+                transition: 'color 0.15s',
+              }}
+            >
+              <PlusIcon size={14} />
+            </button>
+          }
+        />
         {sortedGroups.map(gc => (
           <GroupItem key={gc.channelId} chat={gc} currentChannelId={currentChannelId} />
         ))}
@@ -466,23 +419,18 @@ export default function DmSidebar() {
               {isConnected ? '● Online' : '○ Offline'}
             </div>
           </div>
-          <button
+          <IconButton
             title="Log out"
-            onClick={() => { 
-              localStorage.removeItem('jwt'); 
+            aria-label="Log out"
+            onClick={() => {
+              localStorage.removeItem('jwt');
               navigateToRoot();
             }}
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'var(--text-muted)', padding: '0.3rem', borderRadius: '4px',
-              fontSize: '1rem', flexShrink: 0, lineHeight: 1,
-              transition: 'color 0.15s, background 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(242,63,67,0.1)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+            className="hov-color-danger"
+            style={{ fontSize: '1rem', flexShrink: 0 }}
           >
             ⏻
-          </button>
+          </IconButton>
         </div>
       )}
 

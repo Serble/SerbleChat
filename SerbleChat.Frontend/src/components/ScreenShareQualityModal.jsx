@@ -1,207 +1,109 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Modal, Button, TextInput, Hint } from './ui/index.js';
+import { FieldLabel } from './ui/index.js';
 
-export default function ScreenShareQualityModal({ isOpen, onClose, currentSettings, onApply }) {
-  const [bitrate, setBitrate] = useState(currentSettings.bitrate);
-  const [fps, setFps] = useState(currentSettings.fps);
+const BITRATE_MIN = 500_000;
+const BITRATE_MAX = 20_000_000;
+const FPS_MIN = 1;
+const FPS_MAX = 60;
 
-  useEffect(() => {
-    setBitrate(currentSettings.bitrate);
-    setFps(currentSettings.fps);
-  }, [currentSettings]);
+const PRESETS = [
+  // High FPS preset: 60fps, lower bitrate
+  { label: 'High FPS (60fps)', fps: 60, bitrate: 5_000_000 },
+  // Picture quality preset: lower fps, high bitrate
+  { label: 'Picture Quality (15fps)', fps: 15, bitrate: 12_000_000 },
+];
 
+function clampInt(value, min, max) {
+  const n = parseInt(value);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min;
+}
+
+export default function ScreenShareQualityModal({ isOpen, ...props }) {
+  // Mounting the form only while open means it starts from the current
+  // settings every time, so cancelled edits don't linger into the next open.
   if (!isOpen) return null;
+  return <QualityForm {...props} />;
+}
+
+function QualityForm({ onClose, currentSettings, onApply }) {
+  // Kept as the raw input text so typing isn't fought by clamping on every
+  // keystroke; values are clamped on blur and when applied.
+  const [bitrate, setBitrate] = useState(String(currentSettings.bitrate));
+  const [fps, setFps] = useState(String(currentSettings.fps));
+
+  const bitrateValue = clampInt(bitrate, BITRATE_MIN, BITRATE_MAX);
+  const fpsValue = clampInt(fps, FPS_MIN, FPS_MAX);
 
   const handleApply = () => {
-    onApply({ bitrate, fps });
+    onApply({ bitrate: bitrateValue, fps: fpsValue });
     onClose();
   };
 
-  const applyPreset = (preset) => {
-    if (preset === 'highFps') {
-      // High FPS preset: 60fps, lower bitrate
-      setFps(60);
-      setBitrate(5_000_000);
-    } else if (preset === 'pictureQuality') {
-      // Picture quality preset: lower fps, high bitrate
-      setFps(15);
-      setBitrate(12_000_000);
-    }
-  };
-
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'var(--bg-secondary)',
-          borderRadius: '8px',
-          padding: '1.5rem',
-          maxWidth: '450px',
-          width: '90%',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem', color: 'var(--text-primary)' }}>
-          Screen Share Quality Settings
-        </h2>
-
+    <Modal onClose={onClose} title="Screen Share Quality Settings" width={450} style={{ maxHeight: '80vh' }}>
+      <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {/* Presets */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-            Presets
-          </label>
+          <FieldLabel>Presets</FieldLabel>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => applyPreset('highFps')}
-              style={{
-                flex: 1,
-                padding: '0.5rem',
-                background: 'rgba(59,130,246,0.15)',
-                border: '1px solid rgba(59,130,246,0.35)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.25)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.15)'}
-            >
-              High FPS (60fps)
-            </button>
-            <button
-              onClick={() => applyPreset('pictureQuality')}
-              style={{
-                flex: 1,
-                padding: '0.5rem',
-                background: 'rgba(168,85,247,0.15)',
-                border: '1px solid rgba(168,85,247,0.35)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(168,85,247,0.25)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(168,85,247,0.15)'}
-            >
-              Picture Quality (15fps)
-            </button>
+            {PRESETS.map(p => (
+              <Button
+                key={p.label}
+                variant="secondary"
+                style={{ flex: 1, whiteSpace: 'normal' }}
+                onClick={() => { setFps(String(p.fps)); setBitrate(String(p.bitrate)); }}
+              >
+                {p.label}
+              </Button>
+            ))}
           </div>
         </div>
 
         {/* Bitrate */}
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-            Bitrate: {(bitrate / 1_000_000).toFixed(1)} Mbps
-          </label>
-          <input
+          <FieldLabel htmlFor="ss-bitrate">
+            Bitrate: {(bitrateValue / 1_000_000).toFixed(1)} Mbps
+          </FieldLabel>
+          <TextInput
+            id="ss-bitrate"
             type="number"
             value={bitrate}
-            onChange={(e) => setBitrate(Math.max(500_000, Math.min(20_000_000, parseInt(e.target.value) || 0)))}
-            min={500_000}
-            max={20_000_000}
+            onChange={e => setBitrate(e.target.value)}
+            onBlur={() => setBitrate(String(bitrateValue))}
+            min={BITRATE_MIN}
+            max={BITRATE_MAX}
             step={500_000}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: '4px',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-            }}
           />
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          <Hint style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
             Range: 0.5 - 20 Mbps (500,000 - 20,000,000 bps)
-          </div>
+          </Hint>
         </div>
 
         {/* FPS */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-            Frame Rate: {fps} fps
-          </label>
-          <input
+          <FieldLabel htmlFor="ss-fps">Frame Rate: {fpsValue} fps</FieldLabel>
+          <TextInput
+            id="ss-fps"
             type="number"
             value={fps}
-            onChange={(e) => setFps(Math.max(1, Math.min(60, parseInt(e.target.value) || 0)))}
-            min={1}
-            max={60}
+            onChange={e => setFps(e.target.value)}
+            onBlur={() => setFps(String(fpsValue))}
+            min={FPS_MIN}
+            max={FPS_MAX}
             step={1}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: '4px',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-            }}
           />
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          <Hint style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
             Range: 1 - 60 fps. Resolution automatically matches your shared content.
-          </div>
+          </Hint>
         </div>
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '0.5rem 1rem',
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleApply}
-            style={{
-              padding: '0.5rem 1rem',
-              background: 'rgba(34,197,94,0.15)',
-              border: '1px solid rgba(34,197,94,0.35)',
-              borderRadius: '6px',
-              color: 'var(--success)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,197,94,0.25)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(34,197,94,0.15)'}
-          >
-            Apply
-          </button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleApply}>Apply</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

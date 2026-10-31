@@ -36,14 +36,18 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
 
   useEffect(() => {
     if (!channelId) return;
+    // Ignore responses from a previous channel / refresh that resolve late, so a
+    // slow request can't overwrite the list for the channel now being shown.
+    let cancelled = false;
     setLoading(true);
     const req = isGuild
       ? getGuildChannelMembersDetails(guildId, channelId)
       : getChannelMembers(channelId);
     req
-      .then(setMembers)
+      .then(m => { if (!cancelled) setMembers(m); })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [channelId, guildId, refreshTick, localTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Normalise to { id, username, isOnline, color?, userColor? } regardless of source
@@ -85,18 +89,14 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
 
         {!loading && online.length > 0 && (
           <>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.25rem 0.5rem 0.4rem' }}>
-              Online — {online.length}
-            </div>
+            <GroupHeader>Online — {online.length}</GroupHeader>
             {online.map(m => <MemberRow key={m.id} member={m} ownerId={ownerId} guildId={isGuild ? guildId : null} />)}
           </>
         )}
 
         {!loading && offline.length > 0 && (
           <>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '0.75rem 0.5rem 0.4rem' }}>
-              Offline — {offline.length}
-            </div>
+            <GroupHeader top={online.length > 0 ? '0.75rem' : '0.25rem'}>Offline — {offline.length}</GroupHeader>
             {offline.map(m => <MemberRow key={m.id} member={m} ownerId={ownerId} guildId={isGuild ? guildId : null} />)}
           </>
         )}
@@ -105,27 +105,32 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
   );
 }
 
+function GroupHeader({ children, top = '0.25rem' }) {
+  return (
+    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: `${top} 0.5rem 0.4rem` }}>
+      {children}
+    </div>
+  );
+}
+
 function MemberRow({ member, ownerId, guildId }) {
-  const [hovered, setHovered] = useState(false);
   const isOwner = ownerId && member.id === ownerId;
-  // Priority: role colour > user profile colour > default
+  // Priority: role colour > user profile colour > default (inherits the row's
+  // colour, which brightens on hover)
   const nameColor =
-    (member.color && member.color !== '#ffffff' && member.color !== '')
+    (member.color && member.color !== '#ffffff')
       ? member.color
-      : (member.userColor && member.userColor !== '')
-        ? member.userColor
-        : (hovered ? 'var(--text-primary)' : 'var(--text-secondary)');
+      : member.userColor || 'inherit';
 
   return (
     <UserInteraction userId={member.id} username={member.username} guildId={guildId}>
       <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        className="hov-bg hov-text-primary"
         style={{
           display: 'flex', alignItems: 'center', gap: '0.6rem',
           padding: '0.35rem 0.5rem', borderRadius: '6px', width: '100%',
-          background: hovered ? 'var(--bg-hover)' : 'transparent',
-          transition: 'background 0.1s',
+          color: 'var(--text-secondary)',
+          transition: 'background 0.1s, color 0.1s',
           opacity: member.isOnline ? 1 : 0.45,
         }}
       >
@@ -142,7 +147,6 @@ function MemberRow({ member, ownerId, guildId }) {
           flex: 1, color: nameColor,
           fontSize: '0.875rem', fontWeight: 500,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          transition: 'color 0.1s',
         }}>
           {member.username}
         </span>

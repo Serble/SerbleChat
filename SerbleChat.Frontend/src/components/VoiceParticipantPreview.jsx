@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
-import { MicIcon, MicOffIcon, SpeakerMutedIcon, BellOffIcon, ScreenShareIcon } from '../icons.jsx';
+import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
+import { MicIcon, ScreenShareIcon } from '../icons.jsx';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -77,26 +78,36 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFullscreenButton, setShowFullscreenButton] = useState(false);
   const fullscreenHideTimeoutRef = useRef(null);
+  // Removes the document listeners of an in-progress resize drag (if any)
+  const stopResizeRef = useRef(null);
   const panelRef = useRef(null);
   const contentRef = useRef(null);
   const userIds = voiceUsersByChannel[String(channelId)] ?? [];
-  
+
   // Create a map of participant identity to participant data for easy lookup
-  const participantMap = {};
-  voiceParticipants.forEach(p => {
-    participantMap[p.identity] = p;
-  });
+  const participantMap = useMemo(() => {
+    const map = {};
+    voiceParticipants.forEach(p => { map[p.identity] = p; });
+    return map;
+  }, [voiceParticipants]);
+
+  // Don't leave timers or drag listeners behind when the panel unmounts
+  useEffect(() => () => {
+    clearTimeout(fullscreenHideTimeoutRef.current);
+    stopResizeRef.current?.();
+  }, []);
 
   const getMaxPanelHeight = () => Math.max(200, window.innerHeight - 320);
 
   // Check if we're in this voice channel
   const isInVoiceChannel = voiceChannelId === Number(channelId);
   
-  // Collect all screen shares (local + remote) if we're in this channel
-  const allScreenShares = isInVoiceChannel ? [
+  // Collect all screen shares (local + remote) if we're in this channel.
+  // Memoized so effects keyed on it only run when the shares actually change.
+  const allScreenShares = useMemo(() => isInVoiceChannel ? [
     ...(localScreenShare ? [{ ...localScreenShare, isLocal: true }] : []),
     ...remoteScreenShares.map(share => ({ ...share, isLocal: false }))
-  ] : [];
+  ] : [], [isInVoiceChannel, localScreenShare, remoteScreenShares]);
 
   const getMinPanelHeight = () => (allScreenShares.length > 0 ? 200 : 100);
 
@@ -241,9 +252,12 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
     const handleUp = () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleUp);
+      stopResizeRef.current = null;
       if (panel) panel.style.cursor = 'default';
     };
 
+    stopResizeRef.current?.();
+    stopResizeRef.current = handleUp;
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
   };
@@ -351,8 +365,8 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
           gap: '0.25rem',
           padding: '0.15rem 0.4rem',
           borderRadius: '9999px',
-          background: userIds.length > 0 ? 'rgba(35,165,90,0.15)' : 'rgba(100,100,100,0.1)',
-          border: userIds.length > 0 ? '1px solid rgba(35,165,90,0.3)' : '1px solid rgba(100,100,100,0.2)',
+          background: userIds.length > 0 ? 'color-mix(in srgb, var(--success) 15%, transparent)' : 'color-mix(in srgb, var(--text-muted) 10%, transparent)',
+          border: `1px solid ${userIds.length > 0 ? 'color-mix(in srgb, var(--success) 30%, transparent)' : 'color-mix(in srgb, var(--text-muted) 20%, transparent)'}`,
           fontSize: '0.7rem',
           fontWeight: 600,
           color: userIds.length > 0 ? 'var(--success)' : 'var(--text-muted)',
@@ -409,27 +423,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                     }}>
                       <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
                       <span style={{ flex: 1 }}>{name}</span>
-                      {isSpeaking && !isMuted && (
-                        <span 
-                          style={{ 
-                            color: 'var(--success)',
-                            animation: 'pulse 1.5s ease-in-out infinite',
-                          }} 
-                          title="Speaking"
-                        >
-                          <MicIcon size={12} />
-                        </span>
-                      )}
-                      {isMuted && (
-                        <span style={{ color: 'var(--text-muted)' }} title="Muted">
-                          <SpeakerMutedIcon size={12} />
-                        </span>
-                      )}
-                      {isClientMuted && (
-                        <span style={{ color: 'var(--danger)' }} title="You muted this user">
-                          <BellOffIcon size={12} />
-                        </span>
-                      )}
+                      <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isClientMuted={isClientMuted} />
                     </div>
                   </UserInteraction>
                 );
@@ -504,22 +498,14 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
           }}>
             <MicIcon size={15} />
             <span style={{ flex: 1 }}>In Voice ({userIds.length})</span>
-            <button
+            <VoiceButton
+              size="sm"
               onClick={handleToggleFullscreen}
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              style={{
-                border: '1px solid var(--border)',
-                background: 'rgba(255,255,255,0.06)',
-                color: 'var(--text-secondary)',
-                borderRadius: '6px',
-                padding: '0.2rem 0.5rem',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
+              style={{ color: 'var(--text-secondary)', borderRadius: '6px', padding: '0.2rem 0.5rem' }}
             >
-              {isFullscreen ? '⤢' : '⤢'}
-            </button>
+              ⤢
+            </VoiceButton>
           </div>
         )}
 
@@ -566,44 +552,20 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
               return (
                 <UserInteraction key={id} userId={user?.id} username={name}>
                   <div
+                    className="voice-speaking-ring"
+                    data-speaking={isSpeaking && !isMuted}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      padding: '0.3rem 0.5rem',
-                      borderRadius: '4px',
-                      background: 'rgba(124,58,237,0.08)',
-                      fontSize: '0.8rem',
-                      color: 'var(--text-secondary)',
-                      border: isSpeaking && !isMuted ? '1px solid rgba(34,197,94,0.6)' : '1px solid transparent',
-                      transition: 'border 0.15s ease-in-out',
+                      display: 'flex', alignItems: 'center', gap: '0.35rem',
+                      padding: '0.3rem 0.5rem', borderRadius: '4px',
+                      background: 'var(--accent-softer)',
+                      fontSize: '0.8rem', color: 'var(--text-secondary)',
                     }}
                   >
                     <Avatar userId={user?.id} name={name} size={20} color={user?.color} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
-                    {isSpeaking && !isMuted && (
-                      <span 
-                        style={{ 
-                          color: 'var(--success)',
-                          animation: 'pulse 1.5s ease-in-out infinite',
-                        }} 
-                        title="Speaking"
-                      >
-                        <MicIcon size={12} />
-                      </span>
-                    )}
-                    {isMuted && (
-                      <span style={{ color: 'var(--text-muted)' }} title="Muted">
-                        <SpeakerMutedIcon size={12} />
-                      </span>
-                    )}
-                    {isClientMuted && (
-                      <span style={{ color: 'var(--danger)' }} title="You muted this user">
-                        <BellOffIcon size={12} />
-                      </span>
-                    )}
+                    <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isClientMuted={isClientMuted} />
                   </div>
                 </UserInteraction>
               );
@@ -631,7 +593,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
             zIndex: 2,
           }}
         >
-          {isFullscreen ? '⤢' : '⤢'}
+          ⤢
         </button>
       )}
 
@@ -659,10 +621,11 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
   const containerRef = useRef(null);
 
   useEffect(() => {
-    if (!share.isLocal && share.participantIdentity) {
-      resolveUser(share.participantIdentity).then(setUser);
-    }
-  }, [share, resolveUser]);
+    if (share.isLocal || !share.participantIdentity) return;
+    let cancelled = false;
+    resolveUser(share.participantIdentity).then(u => { if (!cancelled) setUser(u); });
+    return () => { cancelled = true; };
+  }, [share.isLocal, share.participantIdentity, resolveUser]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -706,7 +669,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
         gap: '0.5rem',
         cursor: 'pointer',
         transition: 'border 0.2s, box-shadow 0.2s',
-        border: isExpanded ? 'none' : (isExpanded ? '2px solid var(--accent)' : '2px solid transparent'),
+        border: isExpanded ? 'none' : '2px solid transparent',
         minHeight: '0',
         flex: isExpanded ? 1 : 'initial',
         overflow: 'hidden',
@@ -734,7 +697,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
             <span style={{
               fontSize: '0.65rem',
               color: 'var(--success)',
-              background: 'rgba(34,197,94,0.15)',
+              background: 'color-mix(in srgb, var(--success) 15%, transparent)',
               padding: '0.15rem 0.4rem',
               borderRadius: '3px',
               fontWeight: 600,

@@ -4,19 +4,25 @@ import { InfoIcon, CheckCircleIcon, WarningIcon, ErrorDotIcon, CloseIcon } from 
 
 const TYPE_STYLES = {
   info:    { bg: 'var(--bg-secondary)', border: 'var(--accent)', icon: InfoIcon },
-  success: { bg: 'rgba(35, 165, 90, 0.15)', border: 'rgba(35, 165, 90, 0.4)', icon: CheckCircleIcon },
+  success: { bg: 'color-mix(in srgb, var(--success) 15%, transparent)', border: 'color-mix(in srgb, var(--success) 40%, transparent)', icon: CheckCircleIcon },
+  // No theme variable for warnings, so this one stays a fixed amber
   warning: { bg: 'rgba(240, 178, 50, 0.15)', border: 'rgba(240, 178, 50, 0.4)', icon: WarningIcon },
-  danger:  { bg: 'rgba(242, 63, 67, 0.15)', border: 'rgba(242, 63, 67, 0.4)', icon: ErrorDotIcon },
+  danger:  { bg: 'var(--danger-soft)', border: 'var(--danger-border)', icon: ErrorDotIcon },
 };
 
 function Toast({ toast, onRemove }) {
   const style = TYPE_STYLES[toast.type] ?? TYPE_STYLES.info;
-  const timerRef = useRef(null);
+
+  // removeToast isn't a stable reference (AppContext recreates it every render),
+  // so read it through a ref — otherwise every app re-render restarted the timer
+  // and a busy app could keep a toast on screen indefinitely.
+  const onRemoveRef = useRef(onRemove);
+  useEffect(() => { onRemoveRef.current = onRemove; });
 
   useEffect(() => {
-    timerRef.current = setTimeout(() => onRemove(toast.id), toast.duration ?? 5000);
-    return () => clearTimeout(timerRef.current);
-  }, [toast.id, toast.duration, onRemove]);
+    const timer = setTimeout(() => onRemoveRef.current(toast.id), toast.duration ?? 5000);
+    return () => clearTimeout(timer);
+  }, [toast.id, toast.duration]);
 
   return (
     <div

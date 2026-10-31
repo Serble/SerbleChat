@@ -1,0 +1,49 @@
+/*
+ * voice.css — shared styles for the voice panel and the in-chat voice preview.
+ *
+ * Neutral tints are mixed from --text-primary so they read as "a bit lighter"
+ * on dark themes and "a bit darker" on light ones.
+ */
+
+.voice-btn {
+  --tone: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.4rem;
+  border: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  color: var(--tone);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.voice-btn:not(:disabled):hover { background: color-mix(in srgb, var(--tone) 15%, transparent); }
+.voice-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* Coloured tones use a slightly stronger tint than the neutral one */
+.voice-btn[data-tone='danger']  { --tone: var(--danger); }
+.voice-btn[data-tone='success'] { --tone: var(--success); }
+.voice-btn[data-tone='accent']  { --tone: var(--accent); }
+.voice-btn[data-tone]:not([data-tone='neutral']) { background: color-mix(in srgb, var(--tone) 15%, transparent); }
+.voice-btn[data-tone]:not([data-tone='neutral']):not(:disabled):hover { background: color-mix(in srgb, var(--tone) 25%, transparent); }
+
+/* Small bordered variant (Disconnect / Retry / Close / Fullscreen) */
+.voice-btn--sm {
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+.voice-btn--sm[data-tone='neutral'] { border-color: var(--border); background: color-mix(in srgb, var(--tone) 6%, transparent); }
+/* Accent tone keeps primary-coloured text (accent text is often low-contrast) */
+.voice-btn[data-tone='accent'] { color: var(--text-primary); }
+
+/* Participant chip outline while speaking */
+.voice-speaking-ring { border: 1px solid transparent; transition: border-color 0.15s ease-in-out; }
+.voice-speaking-ring[data-speaking='true'] { border-color: color-mix(in srgb, var(--success) 55%, transparent); }
