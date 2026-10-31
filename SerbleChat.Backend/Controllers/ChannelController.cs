@@ -510,7 +510,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             .WithIdentity(userId)
             .WithGrants(new VideoGrants {
                 RoomJoin = true,
-                Room = $"channel:{channelId}"
+                Room = voiceManager.GetRoomName(channelId)
             });
         
         return Ok(new LiveKitTokenResponse { Token = token.ToJwt() });

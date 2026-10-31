@@ -123,6 +123,12 @@ builder.Services.AddPushServiceClient(options => {
 
 WebApplication app = builder.Build();
 
+// apply any pending db migrations
+using (IServiceScope scope = app.Services.CreateScope()) {
+    ChatDatabaseContext db = scope.ServiceProvider.GetRequiredService<ChatDatabaseContext>();
+    db.Database.Migrate();
+}
+
 if (app.Environment.IsDevelopment()) {
     app.UseSwagger();
     app.UseSwaggerUI();

@@ -35,6 +35,13 @@ webhook:
     - 'http://localhost:5210/livekit/webhook'
 ```
 
+**Sharing a LiveKit server with other apps**  
+Every room is prefixed with `LiveKit:RoomPrefix` (default `serblechat:`) and
+webhook events for rooms without that prefix are ignored, so other apps can use the
+same server as long as they don't use the same prefix. LiveKit signs all webhooks with
+the single `webhook.api_key`; if that isn't Serble Chat's key, set `LiveKit:WebhookKey`
+and `LiveKit:WebhookSecret` to that key pair.
+
 **Configuring Push Notifications**  
 You need to generate a public private key pair to use for signing notifications,
 if you have `npx` you can run `npx web-push generate-vapid-keys` and it'll give you
