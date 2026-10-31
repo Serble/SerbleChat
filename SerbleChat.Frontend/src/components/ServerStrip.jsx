@@ -6,37 +6,46 @@ import SettingsModal from './SettingsModal.jsx';
 import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { getGuildIconUrl } from '../api.js';
-import { HomeIcon, GearIcon } from '../icons.jsx';
+import { HomeIcon, GearIcon, PlusIcon } from '../icons.jsx';
 
-function StripButton({ title, active, onClick, children }) {
+// Discord-style indicator on the strip's left edge: dot when unread, short on hover, tall when selected.
+// Rendered as a sibling of the 48px button, so its parent must be position: relative.
+function SelectionPill({ active, hovered, unread }) {
+  const height = active ? 40 : hovered ? 20 : unread ? 8 : 0;
+  return (
+    <div style={{
+      position: 'absolute', left: -12, top: '50%', transform: 'translateY(-50%)',
+      width: 4, height, borderRadius: '0 4px 4px 0',
+      background: 'var(--text-primary)',
+      transition: 'height 0.2s',
+      pointerEvents: 'none',
+    }} />
+  );
+}
+
+function StripButton({ title, active, onClick, showPill, unread, children }) {
+  const [hov, setHov] = useState(false);
   const base = {
-    width: 48, height: 48, borderRadius: active ? '30%' : '50%',
-    background: active ? 'var(--accent)' : 'var(--bg-active)',
+    width: 48, height: 48, borderRadius: active || hov ? '30%' : '50%',
+    background: active || hov ? 'var(--accent)' : 'var(--bg-active)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.25rem',
     transition: 'border-radius 0.2s, background 0.2s',
-    userSelect: 'none', border: 'none', flexShrink: 0,
+    userSelect: 'none', border: 'none', flexShrink: 0, padding: 0,
   };
   return (
-    <button
-      title={title}
-      onClick={onClick}
-      style={base}
-      onMouseEnter={e => {
-        if (!active) {
-          e.currentTarget.style.borderRadius = '30%';
-          e.currentTarget.style.background = 'var(--accent)';
-        }
-      }}
-      onMouseLeave={e => {
-        if (!active) {
-          e.currentTarget.style.borderRadius = '50%';
-          e.currentTarget.style.background = 'var(--bg-active)';
-        }
-      }}
-    >
-      {children}
-    </button>
+    <>
+      {showPill && <SelectionPill active={active} hovered={hov} unread={unread} />}
+      <button
+        title={title}
+        onClick={onClick}
+        style={base}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+      >
+        {children}
+      </button>
+    </>
   );
 }
 
@@ -57,6 +66,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
+      <SelectionPill active={active} hovered={hov} unread={unreadCount > 0} />
       <button
         title={guild.name}
         onClick={onClick}
@@ -75,7 +85,6 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
           cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '1.2rem',
           transition: 'border-radius 0.2s, background 0.2s',
           userSelect: 'none', border: 'none', flexShrink: 0,
-          boxShadow: active ? `0 0 0 3px ${hasIcon ? 'rgba(124,58,237,0.4)' : `hsl(${hue},50%,55%)`}` : 'none',
           overflow: 'hidden',
           position: 'relative',
           padding: 0,
@@ -168,7 +177,7 @@ export default function ServerStrip() {
     }}>
       {/* Home */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <StripButton title="Home" active={onHome} onClick={handleHomeClick}>
+        <StripButton title="Home" active={onHome} onClick={handleHomeClick} showPill unread={homeUnreads > 0}>
           <HomeIcon size={22} />
         </StripButton>
         {homeUnreads > 0 && !onHome && (
@@ -213,9 +222,9 @@ export default function ServerStrip() {
           width: 48, height: 48, borderRadius: '50%',
           background: 'var(--bg-active)', border: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: 'var(--success)', fontSize: '1.6rem', fontWeight: 400,
+          cursor: 'pointer', color: 'var(--success)', padding: 0,
           transition: 'border-radius 0.2s, background 0.2s, color 0.2s',
-          userSelect: 'none', flexShrink: 0, lineHeight: 1,
+          userSelect: 'none', flexShrink: 0,
         }}
         onMouseEnter={e => {
           e.currentTarget.style.borderRadius = '30%';
@@ -227,26 +236,15 @@ export default function ServerStrip() {
           e.currentTarget.style.background = 'var(--bg-active)';
           e.currentTarget.style.color = 'var(--success)';
         }}
-      >+</button>
+      ><PlusIcon size={22} /></button>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
       {/* Settings button */}
-      <button
-        title="Settings"
-        onClick={() => setShowSettings(true)}
-        style={{
-          width: 48, height: 48, borderRadius: '50%',
-          background: 'var(--bg-active)', border: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', fontSize: '1.3rem',
-          transition: 'border-radius 0.2s, background 0.2s',
-          userSelect: 'none', flexShrink: 0,
-        }}
-        onMouseEnter={e => { e.currentTarget.style.borderRadius = '30%'; e.currentTarget.style.background = 'var(--accent)'; }}
-        onMouseLeave={e => { e.currentTarget.style.borderRadius = '50%'; e.currentTarget.style.background = 'var(--bg-active)'; }}
-      ><GearIcon size={18} /></button>
+      <StripButton title="Settings" onClick={() => setShowSettings(true)}>
+        <GearIcon size={22} />
+      </StripButton>
 
       {showCreate && (
         <CreateGuildModal
