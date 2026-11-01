@@ -5,6 +5,9 @@
 #   Secrets:   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 #   Variables: VITE_API_BASE_URL, VITE_CLIENT_ID, VITE_FRONTEND_URL, VITE_LIVEKIT_URL, VITE_S3_ENDPOINT,
 #              VITE_SERBLE_FILES_API_URL, VITE_FILES_CLIENT_ID (the desktop app's build settings)
+#
+# Put [gh skip] in a commit message to push without building or releasing anything. Only the newest
+# commit of a push counts. (GitHub's own [skip ci] also works, but skips every workflow.)
 name: Release apps
 
 on:
@@ -31,6 +34,7 @@ env:
 jobs:
   android:
     name: Android
+    if: ${{ !contains(github.event.head_commit.message, '[gh skip]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -94,26 +98,29 @@ jobs:
 
   desktop:
     name: Desktop (${{ matrix.name }})
+    if: ${{ !contains(github.event.head_commit.message, '[gh skip]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
+        # files: only our own (serble-chat-*). The Windows build can leave a stray
+        # __uninstaller-nsis-*.exe in its output folder, which would otherwise be published.
         include:
           - name: Linux
             os: ubuntu-latest
             target: --linux
-            files: SerbleChat.Frontend/dist-electron/*.tar.xz
+            files: SerbleChat.Frontend/dist-electron/serble-chat-*.tar.xz
           - name: Windows
             os: windows-latest
             target: --win
-            files: SerbleChat.Frontend/dist-electron/*.exe
+            files: SerbleChat.Frontend/dist-electron/serble-chat-*.exe
           - name: macOS
             os: macos-latest
             target: --mac --x64 --arm64
             files: |
-              SerbleChat.Frontend/dist-electron/*.dmg
-              SerbleChat.Frontend/dist-electron/*.zip
+              SerbleChat.Frontend/dist-electron/serble-chat-*.dmg
+              SerbleChat.Frontend/dist-electron/serble-chat-*.zip
     defaults:
       run:
         working-directory: SerbleChat.Frontend
@@ -158,6 +165,7 @@ jobs:
           path: ${{ matrix.files }}
           if-no-files-found: error
 
+  # Skipped along with the builds when they're skipped ([gh skip])
   release:
     name: Publish release
     needs: [android, desktop]
