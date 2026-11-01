@@ -44,10 +44,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Install SDK platform, NDK and CMake
+        # Platforms carry a minor version from API 36.1 on: compileSdk 37 is "android-37.0"
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          yes 2> /dev/null | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-37" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+            "platforms;android-37.0" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
 
       # Never publish an APK signed with a throwaway key: Android would refuse it as an update
       # to installs signed with the real one.
