@@ -24,6 +24,8 @@ export function VoiceProvider({ children }) {
   const activeJoinIdRef = useRef(0);
   const previousParticipantIdsRef = useRef(new Set());
   const isPushToTalkActiveRef = useRef(false); // Track if PTT key is being held
+  // Out of a call, whether you were unmuted when you deafened (restored on undeafen)
+  const unmutedBeforeDeafenRef = useRef(null);
   
   // Refs to access latest state in keybind handlers
   const voiceSessionRef = useRef(voiceSession);
@@ -73,8 +75,10 @@ export function VoiceProvider({ children }) {
       console.error('leaveChannel failed:', err);
     } finally {
       setVoiceSession(null);
-      setVoiceMuted(false);
-      setVoiceDeafened(false);
+      // Mute/deafen carry over to the next call. In push-to-talk mode the mute
+      // state is just "key not held", so it doesn't carry over (unless deafened).
+      if (voiceSession) unmutedBeforeDeafenRef.current = voiceSession.wasUnmutedBeforeDeafen;
+      if (voiceAudioOptions.inputMode === 'push-to-talk') setVoiceMuted(voiceDeafenedRef.current);
       setVoiceParticipants([]);
       setRemoteScreenShares([]);
       setLocalScreenShare(null);
@@ -138,6 +142,10 @@ export function VoiceProvider({ children }) {
         ...voiceAudioOptions,
         deviceId: localDeviceSettings.inputDeviceId,
         outputDeviceId: localDeviceSettings.outputDeviceId,
+        // Join with whatever mute/deafen state was set outside the call
+        startMuted: voiceMutedRef.current,
+        startDeafened: voiceDeafenedRef.current,
+        wasUnmutedBeforeDeafen: unmutedBeforeDeafenRef.current,
       });
 
       if (!isCurrentJoin()) {
@@ -174,8 +182,15 @@ export function VoiceProvider({ children }) {
   }
 
   async function handleToggleMute() {
-    if (!voiceSession) return;
-    
+    if (!voiceSession) {
+      // Not in a call: just remember it for the next join
+      if (voiceStatus === 'connecting') return;
+      const nextMuted = !voiceMuted;
+      setVoiceMuted(nextMuted);
+      playSoundSafe(nextMuted ? 'mute' : 'unmute');
+      return;
+    }
+
     const nextMuted = !voiceMuted;
     try {
       await applyVoiceMuted(voiceSession, nextMuted);
@@ -188,8 +203,23 @@ export function VoiceProvider({ children }) {
   }
 
   async function handleToggleDeafen() {
-    if (!voiceSession) return;
-    
+    if (!voiceSession) {
+      // Not in a call: mirror the in-call behaviour (deafening also mutes,
+      // undeafening restores the mic if it was on) and remember it for the next join
+      if (voiceStatus === 'connecting') return;
+      const nextDeafened = !voiceDeafened;
+      if (nextDeafened) {
+        unmutedBeforeDeafenRef.current = !voiceMuted;
+        setVoiceMuted(true);
+      } else {
+        if (unmutedBeforeDeafenRef.current === true) setVoiceMuted(false);
+        unmutedBeforeDeafenRef.current = null;
+      }
+      setVoiceDeafened(nextDeafened);
+      playSoundSafe(nextDeafened ? 'deafen' : 'undeafen');
+      return;
+    }
+
     const nextDeafened = !voiceDeafened;
     try {
       // Save the value BEFORE calling applyVoiceDeafened, since it gets reset to null

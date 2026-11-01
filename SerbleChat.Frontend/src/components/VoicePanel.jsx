@@ -8,7 +8,7 @@ import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, SpeakerMutedIcon, HeadphonesIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon } from '../icons.jsx';
+import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon } from '../icons.jsx';
 
 // Helper to safely play sounds with consistent error handling
 const playSoundSafe = (soundName) => {
@@ -20,9 +20,7 @@ export default function VoicePanel({
   voiceSession,
   participants = [],
   voiceMuted, 
-  voiceDeafened,
   onToggleMute, 
-  onToggleDeafen,
   onLeave,
   remoteScreenShares = [],
   localScreenShare = null,
@@ -259,42 +257,21 @@ export default function VoicePanel({
         </div>
       )}
 
-      {/* Mute and Deafen buttons */}
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        {/* Mute/Speak button — in PTT mode it's hold-to-talk instead of a toggle */}
+      {/* Hold-to-talk button in push-to-talk mode. (Mute and deafen live in the
+          user panel below, which shows them in and out of calls.) */}
+      {isPtt && (
         <VoiceButton
-          tone={voiceMuted ? 'danger' : 'neutral'}
+          tone={voiceMuted ? 'neutral' : 'success'}
           disabled={!canControl}
-          style={{ flex: 1 }}
-          onClick={() => { if (!isPtt) onToggleMute(); }}
           onMouseDown={pressPtt}
           onMouseUp={e => { e.preventDefault(); releasePtt(); }}
           onMouseLeave={releasePtt}
-          title={isPtt
-            ? (voiceMuted ? 'Speak (hold key or button)' : 'Release to stop speaking')
-            : (voiceMuted ? 'Unmute microphone (M)' : 'Mute microphone (M)')}
+          title={voiceMuted ? 'Speak (hold key or button)' : 'Release to stop speaking'}
         >
-          {isPtt
-            ? (voiceMuted ? <MicIcon size={16} /> : <MegaphoneIcon size={16} />)
-            : (voiceMuted ? <SpeakerMutedIcon size={16} /> : <MicIcon size={16} />)}
-          <span>
-            {isPtt
-              ? (voiceMuted ? 'Speak' : 'Speaking')
-              : (voiceMuted ? 'Unmute' : 'Mute')}
-          </span>
+          {voiceMuted ? <MicIcon size={16} /> : <MegaphoneIcon size={16} />}
+          <span>{voiceMuted ? 'Speak' : 'Speaking'}</span>
         </VoiceButton>
-
-        <VoiceButton
-          tone={voiceDeafened ? 'danger' : 'neutral'}
-          disabled={!canControl}
-          style={{ flex: 1 }}
-          onClick={onToggleDeafen}
-          title={voiceDeafened ? 'Undeafen (D)' : 'Deafen (D)'}
-        >
-          {voiceDeafened ? <SpeakerMutedIcon size={16} /> : <HeadphonesIcon size={16} />}
-          <span>{voiceDeafened ? 'Undeafen' : 'Deafen'}</span>
-        </VoiceButton>
-      </div>
+      )}
 
       {/* Screen share button */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>

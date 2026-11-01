@@ -289,6 +289,11 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     let room = new Room();
     let session = new VoiceSession(room, onParticipantsChange, onRemoteScreenShare);
     session.rnnoiseEnabled = audioOptions.rnnoise ?? true;
+    // Deafened before joining: start deafened so no remote audio plays at all
+    if (audioOptions.startDeafened) {
+        session.isDeafened = true;
+        session.wasUnmutedBeforeDeafen = audioOptions.wasUnmutedBeforeDeafen ?? false;
+    }
 
     const reportFatal = (err, context) => {
         if (onFatalError) onFatalError(err, context);
@@ -326,6 +331,12 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         try {
             console.log(`Subscribed to track type: ${track.kind}`);
             if (track.kind === "audio") {
+                // While deafened, don't play anyone — this also covers people who
+                // join after you deafened. Undeafening re-subscribes every track.
+                if (session.isDeafened) {
+                    publication.setSubscribed(false);
+                    return;
+                }
                 if (session.audioGraph.get(participant.identity)) return; // Use .get() for Map
 
                 console.log(`Processing audio track for ${participant.identity}`);
@@ -585,6 +596,8 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     
     // Store and publish the processed track
     session.micTrack = processedMicTrack;
+    // Muted before joining: mute before publishing so the mic is never live
+    if (audioOptions.startMuted) await session.micTrack.mute();
     await room.localParticipant.publishTrack(session.micTrack);
 
     console.log("Connected to room:", room.name);

@@ -3,10 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { getGuildChannels, reorderGuildChannel } from '../api.js';
-import { navigateToRoot } from '../electron-utils.js';
 import { IconButton } from './ui/index.js';
 import VoicePanel from './VoicePanel.jsx';
-import Avatar from './Avatar.jsx';
+import UserPanel from './UserPanel.jsx';
 import ChannelRow from './guild/ChannelRow.jsx';
 import GuildContextMenu from './guild/GuildContextMenu.jsx';
 import GuildSettingsModal from './guild/GuildSettingsModal.jsx';
@@ -20,8 +19,8 @@ import { LinkIcon, GearIcon, PlusIcon } from '../icons.jsx';
 const CHANNEL_DRAG_TYPE = 'application/x-serblechat-channel';
 
 export default function GuildSidebar({ guildId }) {
-  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, isConnected, guildUpdatedEvent, rolesUpdatedEvent, channelUpdatedEvent } = useApp();
-  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
+  const { guilds, currentUser, refreshGuilds, guildChannelEvent, loadGuildPermissions, getMyPerms, guildUpdatedEvent, rolesUpdatedEvent, channelUpdatedEvent } = useApp();
+  const { voiceSession, voiceMuted, toggleMute, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
   const [channels, setChannels]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [showSettings, setShowSettings]   = useState(false);
@@ -217,11 +216,9 @@ export default function GuildSidebar({ guildId }) {
           voiceSession={voiceSession}
           participants={voiceParticipants}
           voiceMuted={voiceMuted}
-          voiceDeafened={voiceDeafened}
           voiceStatus={voiceStatus}
           voiceError={voiceError}
           onToggleMute={toggleMute}
-          onToggleDeafen={toggleDeafen}
           onLeave={leaveVoice}
           onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
@@ -229,46 +226,7 @@ export default function GuildSidebar({ guildId }) {
         />
       )}
 
-      {/* User panel */}
-      {currentUser && (
-        <div style={{
-          padding: '0.6rem 0.75rem', background: 'var(--bg-user-panel)',
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          flexShrink: 0,
-        }}>
-          <div style={{ position: 'relative' }}>
-            <Avatar userId={currentUser.id} name={currentUser.username} size={32} color={currentUser.color} />
-            <div style={{
-              position: 'absolute', bottom: 0, right: 0,
-              width: 10, height: 10, borderRadius: '50%',
-              background: isConnected ? 'var(--success)' : 'var(--text-subtle)',
-              border: '2px solid var(--bg-user-panel)',
-            }} />
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <div style={{
-              fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {currentUser.username}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {isConnected ? '● Online' : '○ Offline'}
-            </div>
-          </div>
-          <IconButton
-            title="Log out"
-            className="hov-color-danger"
-            onClick={() => {
-              localStorage.removeItem('jwt');
-              navigateToRoot();
-            }}
-            style={{ fontSize: '1rem' }}
-          >
-            ⏻
-          </IconButton>
-        </div>
-      )}
+      <UserPanel />
 
       {showSettings && guild && (
         <GuildSettingsModal

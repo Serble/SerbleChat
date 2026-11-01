@@ -95,6 +95,9 @@ export function SpeakerMutedIcon(p) {
 export function HeadphonesIcon(p) {
   return <Svg {...p}><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></Svg>;
 }
+export function HeadphonesOffIcon(p) {
+  return <Svg {...p}><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/><line x1="2" y1="2" x2="22" y2="22"/></Svg>;
+}
 export function MegaphoneIcon(p) {
   return <Svg {...p}><path d="M3 11l19-9-9 19-2-8-8-2z"/></Svg>;
 }
@@ -181,6 +184,9 @@ export function HammerIcon(p) {
 }
 export function DoorIcon(p) {
   return <Svg {...p}><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.273.97L6 20V5.562a2 2 0 0 1 1.455-1.924l4-1.077A1 1 0 0 1 13 3.562z"/></Svg>;
+}
+export function LogoutIcon(p) {
+  return <Svg {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></Svg>;
 }
 export function RefreshIcon(p) {
   return <Svg {...p}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></Svg>;

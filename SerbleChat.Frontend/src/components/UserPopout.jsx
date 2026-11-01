@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChatIcon, PlusIcon, CloseIcon, CheckIcon, WaveIcon, BootIcon, HammerIcon, BlockIcon } from '../icons.jsx';
+import { ChatIcon, PlusIcon, CloseIcon, CheckIcon, WaveIcon, BootIcon, HammerIcon, BlockIcon, EditIcon, LogoutIcon } from '../icons.jsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -11,9 +11,10 @@ import {
   addFriend, removeFriend, getOrCreateDmChannel, kickGuildMember, banGuildMember,
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
-import { copyToClipboard } from '../electron-utils.js';
+import { copyToClipboard, navigateToRoot } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import BanModal from './BanModal.jsx';
+import SettingsModal from './settings/SettingsModal.jsx';
 import { Button } from './ui/index.js';
 import './chat/chat.css';
 
@@ -112,9 +113,9 @@ function ActionButton({ label, icon: Icon, onClick, disabled, variant = 'default
 
 /**
  * UserPopout
- * Props: userId, username, anchorRect, onClose, guildId?
+ * Props: userId, username, anchorRect, onClose, guildId?, placement? ('side' | 'above')
  */
-export default function UserPopout({ userId, username, anchorRect, onClose, guildId }) {
+export default function UserPopout({ userId, username, anchorRect, onClose, guildId, placement = 'side' }) {
   const nav = useNavigate();
 
   const [user, setUser]               = useState(null);
@@ -129,10 +130,11 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const [kickBusy, setKickBusy]       = useState(false);
   const [banBusy, setBanBusy]         = useState(false);
   const [banModalOpen, setBanModalOpen] = useState(false);
+  const [editOpen, setEditOpen]       = useState(false); // own card → settings modal
   const dropRef   = useRef(null);
   const popoutRef = useRef(null);
 
-  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends, userStatuses } = useApp();
+  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends, userStatuses, isConnected } = useApp();
   const isSelf         = currentUser?.id === userId;
   const myPerms        = guildId ? getMyPerms(guildId) : null;
   const canManageRoles = !!myPerms && (myPerms.administrator === 0 || myPerms.manageRoles === 0);
@@ -181,7 +183,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   // portalled to <body>, so clicks inside it would otherwise count as "outside"
   // and close the popout (unmounting the modal) — and it handles Escape itself.
   useEffect(() => {
-    if (banModalOpen) return;
+    if (banModalOpen || editOpen) return;
     function onKey(e) { if (e.key === 'Escape') { if (dropOpen) setDropOpen(false); else onClose(); } }
     function onDown(e) {
       if (dropRef.current?.contains(e.target)) return;
@@ -190,7 +192,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
-  }, [onClose, dropOpen, banModalOpen]);
+  }, [onClose, dropOpen, banModalOpen, editOpen]);
 
   async function toggleRole(role) {
     const roleId = Number(role.id ?? role.Id);
@@ -268,22 +270,34 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const estimatedH = 480;
   if (top + estimatedH > window.innerHeight - 8) top = window.innerHeight - estimatedH - 8;
   if (top < 8) top = 8;
+  // 'above' pins the card's bottom just over the anchor (e.g. the user panel at
+  // the foot of the sidebar), so its real height never needs estimating.
+  let bottom;
+  if (placement === 'above') {
+    left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - POPOUT_W - 8));
+    bottom = window.innerHeight - anchorRect.top + GAP;
+    top = undefined;
+  }
 
   const liveStatus = userStatuses[String(userId)];
-  const isOnlineResolved = liveStatus !== undefined ? liveStatus === 'online' : (user?.isOnline ?? false);
+  // Your own status is your connection to the hub, matching the user panel
+  const isOnlineResolved = isSelf ? !!isConnected
+    : liveStatus !== undefined ? liveStatus === 'online' : (user?.isOnline ?? false);
   const sm          = user ? (isOnlineResolved ? ONLINE : OFFLINE) : null;
   const displayName = user?.username ?? username;
   const sortedRoles   = guildRoles.slice().sort((a, b) => b.priority - a.priority);
   const assignedRoles = sortedRoles.filter(r =>  userRoleIds.has(Number(r.id ?? r.Id)));
 
+  if (editOpen) return <SettingsModal initialTab="profile" onClose={onClose} />;
+
   return (
     <div
       ref={popoutRef}
       style={{
-        position: 'fixed', zIndex: 600, top, left, width: POPOUT_W,
+        position: 'fixed', zIndex: 600, top, bottom, left, width: POPOUT_W,
         background: 'var(--bg-overlay)', border: '1px solid var(--border)', borderRadius: '10px',
         boxShadow: '0 12px 40px rgba(0,0,0,0.6)', overflow: 'hidden',
-        userSelect: 'none', maxHeight: 'calc(100vh - 16px)',
+        userSelect: 'none', maxHeight: bottom !== undefined ? `calc(100vh - ${bottom + 8}px)` : 'calc(100vh - 16px)',
         display: 'flex', flexDirection: 'column',
       }}
     >
@@ -307,6 +321,13 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
             <div style={{ width: 9, height: 9, borderRadius: '50%', background: sm?.color ?? 'var(--text-subtle)', flexShrink: 0 }} />
             <span style={{ fontSize: '0.78rem', color: sm?.color ?? 'var(--text-subtle)', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
           </div>
+
+          {/* ── Your own card: edit profile ── */}
+          {isSelf && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem' }}>
+              <ActionButton label="Edit Profile" icon={EditIcon} onClick={() => setEditOpen(true)} variant="default" />
+            </div>
+          )}
 
           {/* ── Action buttons (Message + Friend) ── */}
           {!isSelf && (
@@ -473,6 +494,21 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           >
             <BlockIcon size={16} />
             {blockBusy ? '…' : blocked ? 'Unblock User' : 'Block User'}
+          </Button>
+        </div>
+      )}
+
+      {/* ── Log out footer (own card) ── */}
+      {isSelf && (
+        <div style={{ padding: '0 1rem 0.85rem', flexShrink: 0 }}>
+          <div style={{ height: 1, background: 'var(--border)', marginBottom: '0.65rem' }} />
+          <Button
+            variant="danger-outline"
+            onClick={() => { localStorage.removeItem('jwt'); navigateToRoot(); }}
+            style={{ width: '100%', justifyContent: 'flex-start', gap: '0.5rem', padding: '0.45rem 0.75rem', fontSize: '0.82rem', fontWeight: 600 }}
+          >
+            <LogoutIcon size={16} />
+            Log Out
           </Button>
         </div>
       )}

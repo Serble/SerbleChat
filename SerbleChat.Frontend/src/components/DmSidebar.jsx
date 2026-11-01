@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
-import { navigateToRoot } from '../electron-utils.js';
 import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import GroupChatSettingsModal from './GroupChatSettingsModal.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import Avatar from './Avatar.jsx';
+import UserPanel from './UserPanel.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import useGroupChatIcon from './useGroupChatIcon.js';
 import { IconButton } from './ui/index.js';
@@ -280,8 +280,8 @@ function SectionHeader({ label, action }) {
 }
 
 export default function DmSidebar() {
-  const { currentUser, dmChannels, groupChats, isConnected, friends, channelLastActive } = useApp();
-  const { voiceSession, voiceMuted, voiceDeafened, toggleMute, toggleDeafen, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
+  const { currentUser, dmChannels, groupChats, friends, channelLastActive } = useApp();
+  const { voiceSession, voiceMuted, toggleMute, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -380,11 +380,9 @@ export default function DmSidebar() {
           voiceSession={voiceSession}
           participants={voiceParticipants}
           voiceMuted={voiceMuted}
-          voiceDeafened={voiceDeafened}
           voiceStatus={voiceStatus}
           voiceError={voiceError}
           onToggleMute={toggleMute}
-          onToggleDeafen={toggleDeafen}
           onLeave={leaveVoice}
           onRetry={() => voiceChannelId && joinVoice(voiceChannelId)}
           remoteScreenShares={remoteScreenShares}
@@ -392,47 +390,7 @@ export default function DmSidebar() {
         />
       )}
 
-      {/* User panel */}
-      {currentUser && (
-        <div style={{
-          padding: '0.6rem 0.75rem', background: 'var(--bg-user-panel)',
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          flexShrink: 0,
-        }}>
-          <div style={{ position: 'relative' }}>
-            <Avatar userId={currentUser.id} name={currentUser.username} size={32} color={currentUser.color} />
-            <div style={{
-              position: 'absolute', bottom: 0, right: 0,
-              width: 10, height: 10, borderRadius: '50%',
-              background: isConnected ? 'var(--success)' : 'var(--text-subtle)',
-              border: '2px solid var(--bg-user-panel)',
-            }} />
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <div style={{
-              fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {currentUser.username}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {isConnected ? '● Online' : '○ Offline'}
-            </div>
-          </div>
-          <IconButton
-            title="Log out"
-            aria-label="Log out"
-            onClick={() => {
-              localStorage.removeItem('jwt');
-              navigateToRoot();
-            }}
-            className="hov-color-danger"
-            style={{ fontSize: '1rem', flexShrink: 0 }}
-          >
-            ⏻
-          </IconButton>
-        </div>
-      )}
+      <UserPanel />
 
       {showCreateGroup && (
         <CreateGroupModal onClose={() => setShowCreateGroup(false)} />
