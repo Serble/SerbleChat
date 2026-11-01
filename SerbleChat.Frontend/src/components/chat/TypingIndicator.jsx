@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './chat.css';
 
 /**
  * Animated typing indicator component.
@@ -32,28 +33,10 @@ function TypingIndicator({ users, resolveUser }) {
   const isPlural = users.size > 1;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        padding: '0.5rem 1rem',
-        fontSize: '0.85rem',
-        color: 'var(--text-muted)',
-        minHeight: '2rem',
-        userSelect: 'none',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-        <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>●</span>
-        <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>●</span>
-        <span style={{ fontSize: '0.7rem', opacity: 0.3 }}>●</span>
-      </div>
-      <span>
-        <strong style={{ color: 'var(--text-secondary)' }}>
-          {names}{suffix}
-        </strong>{' '}
-        {isPlural ? 'are' : 'is'} typing
+    <div className="typing-indicator" aria-live="polite">
+      <span className="typing-dots" aria-hidden="true"><span /><span /><span /></span>
+      <span className="typing-text">
+        <strong>{names}{suffix}</strong> {isPlural ? 'are' : 'is'} typing…
       </span>
     </div>
   );

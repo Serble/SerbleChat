@@ -412,13 +412,7 @@ select.ui-input { cursor: pointer; }
 .ui-menu-divider { height: 1px; margin: 0.25rem 0; background: var(--border); }
 
 /* ── Shared animations ──────────────────────────────────────────────────── */
-@keyframes msgHighlight {
-  0%   { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-  60%  { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-  100% { background: transparent; }
-}
 @keyframes spin {
   0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-.msg-highlighted { animation: msgHighlight 2s ease-out forwards; }

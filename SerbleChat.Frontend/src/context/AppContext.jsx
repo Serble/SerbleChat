@@ -487,6 +487,9 @@ export function AppProvider({ children }) {
     }
   }, []); // deps: empty — only uses a ref and a module-level import
 
+  /** Synchronous cache lookup — lets components render a known user on first paint. */
+  const peekUser = useCallback((id) => userCacheRef.current[id] ?? null, []);
+
   async function reconnectHub() {
     try { await hubRef.current?.stop(); } catch { /* ignore */ }
     hubRef.current = null;
@@ -518,7 +521,8 @@ export function AppProvider({ children }) {
         );
         if (pendingIdx !== -1) {
           const updated = [...existing];
-          updated[pendingIdx] = msg;
+          // Keep the pending message's render key so the bubble isn't remounted when confirmed
+          updated[pendingIdx] = { ...msg, _key: existing[pendingIdx]._key ?? existing[pendingIdx].id };
           return { ...p, [key]: updated };
         }
         return { ...p, [key]: [...existing, msg] };
@@ -583,7 +587,7 @@ export function AppProvider({ children }) {
         const idx = existing.findIndex(m => String(m.id) === String(id));
         if (idx === -1) return p;
         const updated = [...existing];
-        updated[idx] = message;
+        updated[idx] = existing[idx]._key ? { ...message, _key: existing[idx]._key } : message;
         return { ...p, [key]: updated };
       });
     });
@@ -816,6 +820,7 @@ export function AppProvider({ children }) {
       channelEvent,
       guildChannelEvent,
       resolveUser,
+      peekUser,
       refreshFriends: () => getFriends().then(setFriends).catch(console.error),
       refreshDms: () => {
         getDmChannels().then(setDmChannels).catch(console.error);

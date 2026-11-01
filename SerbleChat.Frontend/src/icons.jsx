@@ -37,6 +37,15 @@ export function CrossIcon(p) {
 export function MenuIcon(p) {
   return <Svg {...p}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></Svg>;
 }
+export function MoreIcon(p) {
+  return <Svg {...p} fill="currentColor" stroke="none"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></Svg>;
+}
+export function SendIcon(p) {
+  return <Svg {...p}><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></Svg>;
+}
+export function ArrowDownIcon(p) {
+  return <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></Svg>;
+}
 export function PlusIcon(p) {
   return <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
 }

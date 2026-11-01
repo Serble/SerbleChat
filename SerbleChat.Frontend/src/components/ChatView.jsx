@@ -5,23 +5,21 @@ import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { getMessages, sendMessage, getChannel, deleteMessage, editMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers,
-         getChannelIconUrl, getGroupChatIconUrl, markMessagesAsRead, getGuild } from '../api.js';
+         getChannelIconUrl, getGroupChatIconUrl, getGuild } from '../api.js';
 import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
 import ChatHeader from './chat/ChatHeader.jsx';
 import Composer, { BlockedInputBanner, NoPermissionNotice } from './chat/Composer.jsx';
-import { MessageBubble, BlockedGroupBubble } from './chat/MessageBubble.jsx';
+import MessageList, { MessageListSkeleton } from './chat/MessageList.jsx';
 import { MessageContextMenu, ImageContextMenu } from './chat/MessageMenus.jsx';
 import TypingIndicator from './chat/TypingIndicator.jsx';
 import { useFileUploads } from './chat/FileUploadPanel.jsx';
 import { isUnlimited } from './chat/utils.js';
-import { ChatIcon, AttachmentIcon, WaveIcon, CheckCircleIcon } from '../icons.jsx';
+import { AttachmentIcon } from '../icons.jsx';
 
 const MESSAGE_PAGE_SIZE = 50;
-// Start fetching older messages when the user is within this distance of the top of the history
-const LOAD_OLDER_THRESHOLD_PX = 600;
 // After a failed fetch, wait this long before scrolling can trigger another attempt
 const LOAD_OLDER_RETRY_MS = 3000;
 
@@ -49,12 +47,11 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [input, setInput]           = useState('');
   const [sendError, setSendError]   = useState(null); // string | null
-  const [highlightMsgId, setHighlightMsgId] = useState(null);
   const [channel, setChannel]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [otherUser, setOtherUser]   = useState(null);
@@ -81,14 +78,14 @@ export default function ChatView() {
   // Image context menu
   const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, msg, key }
 
-  // Older messages loading state
+  // Older messages loading state; hasMore mirrors historyRef.current.hasMore for rendering
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  // True while a failed history fetch is cooling down; clearing it lets the list retry
+  const [olderError, setOlderError] = useState(false);
   // Pagination state for the current channel's history: { channelId, hasMore, loading, retryAt }.
   // The object is replaced on every channel change, so in-flight requests detect staleness by identity.
   const historyRef = useRef(null);
-
-  const lastMarkedReadIdRef = useRef(null);
-  const markReadTimeoutRef = useRef(null);
 
   function toggleMembers() {
     setShowMembers(v => {
@@ -101,20 +98,20 @@ export default function ChatView() {
 
   const channelMessages = messages[String(channelId)] ?? [];
 
-  // The message list is a column-reverse scroller: the browser keeps the view anchored to the
-  // bottom when the list or viewport resizes, and prepending history doesn't move what's on screen.
-  // In that layout scrollTop is 0 at the bottom and goes negative as the user scrolls up.
-  function loadOlderIfNearTop() {
-    const el = scrollRef.current;
+  /**
+   * Fetch the next page of older history. Returns false (without fetching) when there's
+   * nothing more to load, a fetch is already running, or a failed fetch is cooling down.
+   */
+  function loadOlderMessages() {
     const history = historyRef.current;
     // The channelId check covers the render between a channel switch and its reset effect
-    if (!el || history?.channelId !== String(channelId)) return;
-    if (!history.hasMore || history.loading || Date.now() < history.retryAt) return;
-    const distanceFromTop = el.scrollHeight - el.clientHeight + el.scrollTop;
-    if (distanceFromTop < LOAD_OLDER_THRESHOLD_PX) loadOlderMessages(history);
+    if (history?.channelId !== String(channelId)) return false;
+    if (!history.hasMore || history.loading || Date.now() < history.retryAt) return false;
+    fetchOlderPage(history);
+    return true;
   }
 
-  async function loadOlderMessages(history) {
+  async function fetchOlderPage(history) {
     const key = history.channelId;
     // Live new/deleted messages are mirrored in the local list, so its length tracks the server offset
     const offset = channelMessages.filter(m => !m._pending).length;
@@ -128,12 +125,18 @@ export default function ChatView() {
       const older = page.filter(m => !known.has(String(m.id))).reverse();
       // A full page with nothing new means the offset no longer lines up; stop instead of refetching it forever
       history.hasMore = page.length === MESSAGE_PAGE_SIZE && older.length > 0;
+      setHasMore(history.hasMore);
       if (older.length > 0) {
         setMessages(prev => ({ ...prev, [key]: [...older, ...(prev[key] ?? [])] }));
       }
     } catch (err) {
       console.error('Failed to load older messages:', err);
       history.retryAt = Date.now() + LOAD_OLDER_RETRY_MS;
+      if (historyRef.current === history) {
+        setOlderError(true);
+        // The user may already be at the very top, where no scroll event will come to retry
+        setTimeout(() => { if (historyRef.current === history) setOlderError(false); }, LOAD_OLDER_RETRY_MS);
+      }
     } finally {
       history.loading = false;
       if (historyRef.current === history) setLoadingOlder(false);
@@ -164,44 +167,6 @@ export default function ChatView() {
     (userId, username, userColor) => getMemberColor(guildIdForColor, userId, username, userColor),
     [getMemberColor, guildIdForColor]
   );
-
-  // Pre-process messages into render units, grouping consecutive blocked-user messages
-  const renderUnits = useMemo(() => {
-    const units = [];
-    let i = 0;
-    while (i < channelMessages.length) {
-      const msg = channelMessages[i];
-      if (!msg._pending && isBlocked(msg.authorId)) {
-        if (blockedMessageMode === 'hidden') {
-          // Skip entirely
-          i++;
-          continue;
-        }
-        if (blockedMessageMode === 'visible') {
-          // Show normally — no grouping
-          units.push({ type: 'normal', key: msg.id ?? `tmp-${i}`, msg, prevMsg: channelMessages[i - 1] ?? null });
-          i++;
-          continue;
-        }
-        // 'masked' (default): collect consecutive blocked messages from the same author
-        const group = [msg];
-        let j = i + 1;
-        while (j < channelMessages.length) {
-          const next = channelMessages[j];
-          if (!next._pending && isBlocked(next.authorId) && next.authorId === msg.authorId) {
-            group.push(next);
-            j++;
-          } else break;
-        }
-        units.push({ type: 'blocked', key: `blocked-${msg.id ?? i}`, authorId: msg.authorId, messages: group });
-        i = j;
-      } else {
-        units.push({ type: 'normal', key: msg.id ?? `tmp-${i}`, msg, prevMsg: channelMessages[i - 1] ?? null });
-        i++;
-      }
-    }
-    return units;
-  }, [channelMessages, isBlocked, blockedMessageMode]);
 
   // Typing users for this channel, minus blocked users. Memoized so TypingIndicator
   // (React.memo) only re-resolves names when the set actually changes.
@@ -279,14 +244,19 @@ export default function ChatView() {
     setPopout({ userId, username: username ?? userId, anchorRect: rect });
   }, []);
 
+  // "More" button in a message's hover toolbar: open the same menu, anchored under the button
+  const handleMoreClick = useCallback((e, msg) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCtxMenu({ x: rect.left, y: rect.bottom + 4, msg, key: Date.now() });
+  }, []);
+
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
   const closeImageCtxMenu = useCallback(() => setImageCtxMenu(null), []);
 
   // ── Delete / edit ───────────────────────────────────────────────────────────
 
-  async function handleDelete() {
-    if (!ctxMenu) return;
-    const { msg } = ctxMenu;
+  // Stable so the memoized MessageBubbles (hover toolbar) don't re-render
+  const handleDelete = useCallback(async (msg) => {
     setCtxMenu(null);
     // Optimistically remove
     setMessages(p => ({
@@ -302,13 +272,12 @@ export default function ChatView() {
         .then(msgs => setMessages(p => ({ ...p, [String(msg.channelId)]: [...msgs].reverse() })))
         .catch(console.error);
     }
-  }
+  }, [setMessages]);
 
-  function handleEditFromContext() {
-    if (!ctxMenu) return;
-    setEditingMsgId(ctxMenu.msg.id);
+  const handleStartEdit = useCallback((msg) => {
+    setEditingMsgId(msg.id);
     setCtxMenu(null);
-  }
+  }, []);
 
   // Stable so the memoized MessageBubbles don't all re-render on every keystroke
   const handleEditSave = useCallback(async (msg, content) => {
@@ -348,9 +317,6 @@ export default function ChatView() {
   useEffect(() => {
     // Mark this channel as actively viewed (clears its unread count)
     setActiveChannelId(channelId);
-    // Reset message read tracking for the new channel
-    lastMarkedReadIdRef.current = null;
-    clearTimeout(markReadTimeoutRef.current);
     return () => {
       // When leaving the channel, clear active so new messages are counted
       setActiveChannelId(null);
@@ -377,6 +343,8 @@ export default function ChatView() {
     const history = { channelId: String(channelId), hasMore: false, loading: false, retryAt: 0 };
     historyRef.current = history;
     setLoadingOlder(false);
+    setHasMore(false);
+    setOlderError(false);
 
     Promise.all([
       getChannel(channelId),
@@ -426,6 +394,7 @@ export default function ChatView() {
       }
       setChannel(ch);
       history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
+      setHasMore(history.hasMore);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
     }).catch(e => {
@@ -463,85 +432,17 @@ export default function ChatView() {
     if (channel.type === 2) return probeImage(getGroupChatIconUrl(channel.id) + bust, setHasChannelIcon);
   }, [channelUpdatedEvent, channel]);
 
-  // Scrolling isn't the only way the top of the history can end up on screen: the first page, a
-  // short page, or hidden blocked messages may not fill the viewport. Re-check whenever the list changes.
-  useEffect(() => {
-    loadOlderIfNearTop();
-  }, [renderUnits, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Scroll to and highlight a linked message once messages have loaded
-  useEffect(() => {
-    const targetId = searchParams.get('message');
-    if (!targetId || loading) return;
-    const el = document.querySelector(`[data-msgid="${targetId}"]`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setHighlightMsgId(String(targetId));
-    // Remove the ?message= param from the URL without navigating
+  // ?message=<id> (from a message link) asks the list to scroll to and highlight that message
+  const jumpToId = searchParams.get('message');
+  const handleJumpHandled = useCallback(() => {
+    // Remove the param without navigating, so the same link can be followed again
     setSearchParams(p => { p.delete('message'); return p; }, { replace: true });
-    // Clear the highlight after the animation finishes
-    const t = setTimeout(() => setHighlightMsgId(null), 2200);
-    return () => clearTimeout(t);
-  }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setSearchParams]);
 
   // Focus input when channel changes or once loading finishes
   useEffect(() => {
     if (!loading) inputRef.current?.focus();
   }, [channelId, loading]);
-
-  // Mark visible messages as read when user views them
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    if (!scrollEl || channelMessages.length === 0) return;
-
-    const markVisibleMessagesAsRead = () => {
-      const msgElements = scrollEl.querySelectorAll('[data-msgid]');
-      if (msgElements.length === 0) return;
-
-      const scrollRect = scrollEl.getBoundingClientRect();
-      let highestVisibleId = null;
-
-      // Find the highest message ID that's at least partially visible
-      for (const el of msgElements) {
-        const rect = el.getBoundingClientRect();
-        if (rect.bottom > scrollRect.top && rect.top < scrollRect.bottom) {
-          const msgId = el.getAttribute('data-msgid');
-          if (msgId && !isNaN(msgId)) {
-            const id = BigInt(msgId);
-            if (highestVisibleId === null || id > highestVisibleId) {
-              highestVisibleId = id;
-            }
-          }
-        }
-      }
-
-      // If we found a visible message and it's higher than what we've already marked
-      if (highestVisibleId !== null) {
-        const lastMarked = lastMarkedReadIdRef.current ? BigInt(lastMarkedReadIdRef.current) : null;
-        if (lastMarked === null || highestVisibleId > lastMarked) {
-          // Debounce the API call to avoid too many requests
-          clearTimeout(markReadTimeoutRef.current);
-          markReadTimeoutRef.current = setTimeout(async () => {
-            try {
-              await markMessagesAsRead(String(channelId), String(highestVisibleId));
-              lastMarkedReadIdRef.current = String(highestVisibleId);
-            } catch (err) {
-              console.warn('Failed to mark messages as read:', err);
-            }
-          }, 500);
-        }
-      }
-    };
-
-    // Track scroll and message changes to detect when new messages become visible
-    scrollEl.addEventListener('scroll', markVisibleMessagesAsRead);
-    markVisibleMessagesAsRead(); // Initial check
-
-    return () => {
-      scrollEl.removeEventListener('scroll', markVisibleMessagesAsRead);
-      clearTimeout(markReadTimeoutRef.current);
-    };
-  }, [channelMessages, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Message send ─────────────────────────────────────────────────────────────
 
@@ -655,10 +556,12 @@ export default function ChatView() {
 
   if (loading) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}><ChatIcon size={32} /></div>
-          <div>Loading…</div>
+      <div className="chat-column">
+        <div style={{ height: 48, flexShrink: 0, borderBottom: '1px solid var(--border)' }} />
+        <MessageListSkeleton />
+        <div className="chat-composer-area">
+          <div className="chat-composer-placeholder" />
+          <div className="chat-typing-slot" />
         </div>
       </div>
     );
@@ -678,7 +581,7 @@ export default function ChatView() {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-base)', position: 'relative' }}
+        className="chat-column"
       >
         <ChatHeader
           channel={channel}
@@ -719,82 +622,43 @@ export default function ChatView() {
           <VoiceParticipantPreview channelId={channelId} compact={false} />
         )}
 
-        {/* Messages area */}
-        <div ref={scrollRef} onScroll={loadOlderIfNearTop} style={{
-          flex: 1,
-          overflowY: 'auto',
-          paddingTop: '0.5rem',
-          display: 'flex',
-          flexDirection: 'column-reverse',
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {/* Loading indicator above the oldest loaded message, where the older ones will appear */}
-            {loadingOlder && (
-              <div style={{ padding: '1rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{
-                  width: 16, height: 16, borderRadius: '50%',
-                  border: '2px solid color-mix(in srgb, var(--text-secondary) 25%, transparent)',
-                  borderTop: '2px solid var(--text-secondary)',
-                  animation: 'spin 0.6s linear infinite',
-                }} />
-                <span style={{ fontSize: '0.85rem' }}>Loading older messages...</span>
-              </div>
-            )}
-            {channelMessages.length === 0 && (
-              <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                  {isDmChannel ? <WaveIcon size={20} /> : <CheckCircleIcon size={20} />}
-                </div>
-                <div style={{ fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem', fontSize: '1rem' }}>
-                  {isDmChannel
-                    ? `This is the beginning of your conversation with ${channelDisplayName}`
-                    : `Welcome to ${channelDisplayName}!`}
-                </div>
-                <div style={{ fontSize: '0.85rem' }}>Send the first message!</div>
-              </div>
-            )}
-            {renderUnits.map(unit => unit.type === 'blocked' ? (
-              <BlockedGroupBubble
-                key={unit.key}
-                messages={unit.messages}
-                authorId={unit.authorId}
-                resolveUser={resolveUser}
-                onContextMenu={handleContextMenu}
-                onImageContextMenu={handleImageContextMenu}
-                onUserClick={handleUserClick}
-                getColor={getColor}
-                mentionData={mentionData}
-                guildId={guildIdForColor}
-              />
-            ) : (
-              <MessageBubble
-                key={unit.key}
-                msg={unit.msg}
-                prevMsg={unit.prevMsg}
-                resolveUser={resolveUser}
-                onContextMenu={handleContextMenu}
-                onImageContextMenu={handleImageContextMenu}
-                onUserClick={handleUserClick}
-                getColor={getColor}
-                mentionData={mentionData}
-                highlighted={highlightMsgId !== null && String(unit.msg.id) === highlightMsgId}
-                guildId={guildIdForColor}
-                isEditing={editingMsgId !== null && String(unit.msg.id) === String(editingMsgId)}
-                onEditSave={handleEditSave}
-                onEditCancel={handleEditCancel}
-              />
-            ))}
-          </div>
-        </div>
+        <MessageList
+          scrollRef={scrollRef}
+          channel={channel}
+          channelId={channelId}
+          displayName={channelDisplayName}
+          otherUser={otherUser}
+          messages={channelMessages}
+          hasMore={hasMore}
+          loadingOlder={loadingOlder}
+          olderError={olderError}
+          onLoadOlder={loadOlderMessages}
+          jumpToId={jumpToId}
+          onJumpHandled={handleJumpHandled}
+          isBlocked={isBlocked}
+          blockedMessageMode={blockedMessageMode}
+          currentUserId={currentUser?.id}
+          editingMsgId={editingMsgId}
+          activeMsgId={ctxMenu?.msg.id ?? imageCtxMenu?.msg?.id ?? null}
+          bubbleProps={{
+            peekUser,
+            resolveUser,
+            onContextMenu: handleContextMenu,
+            onImageContextMenu: handleImageContextMenu,
+            onUserClick: handleUserClick,
+            getColor,
+            mentionData,
+            guildId: guildIdForColor,
+            canManageMsgs,
+            onEditSave: handleEditSave,
+            onEditCancel: handleEditCancel,
+            onStartEdit: handleStartEdit,
+            onDelete: handleDelete,
+            onMore: handleMoreClick,
+          }}
+        />
 
-        {/* Typing indicator - between messages and input */}
-        {visibleTypingUsers && (
-          <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)' }}>
-            <TypingIndicator users={visibleTypingUsers} resolveUser={resolveUser} />
-          </div>
-        )}
-
-        <div style={{ padding: '0 1rem 1.5rem', flexShrink: 0 }}>
+        <div className="chat-composer-area">
           {/* Blocked-by-me banner — replaces the input entirely */}
           {isDmChannel && otherUser && isBlocked(otherUser.id) ? (
             <BlockedInputBanner username={otherUser.username} userId={otherUser.id} unblockUser={unblockUser} />
@@ -804,7 +668,7 @@ export default function ChatView() {
               input={input}
               setInput={setInput}
               inputRef={inputRef}
-              placeholder={`Message ${channelDisplayName}`}
+              placeholder={`Message ${isGuildChannel ? '#' : ''}${channelDisplayName}`}
               mentionData={mentionData}
               fileUploads={fileUploads}
               sendError={sendError}
@@ -815,6 +679,10 @@ export default function ChatView() {
           ) : (
             <NoPermissionNotice />
           )}
+          {/* Fixed-height slot under the input, so the typing indicator never shifts the layout */}
+          <div className="chat-typing-slot">
+            {visibleTypingUsers && <TypingIndicator users={visibleTypingUsers} resolveUser={resolveUser} />}
+          </div>
         </div>
 
         {ctxMenu && (
@@ -825,8 +693,8 @@ export default function ChatView() {
             msg={ctxMenu.msg}
             canEdit={ctxMenu.msg.authorId === currentUser?.id}
             canDelete={ctxMenu.msg.authorId === currentUser?.id || canManageMsgs}
-            onEdit={handleEditFromContext}
-            onDelete={handleDelete}
+            onEdit={() => handleStartEdit(ctxMenu.msg)}
+            onDelete={() => handleDelete(ctxMenu.msg)}
             onClose={closeCtxMenu}
           />
         )}

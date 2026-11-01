@@ -9,10 +9,6 @@ import './chat.css';
 /** Matches <@user:id>, <@channel:id>, <@role:id> */
 export const MENTION_RE = /<@(user|channel|role):([^>\s]+)>/g;
 
-// Module-level constant — avoids creating a new array on every render,
-// which would force react-markdown to rebuild its unified processor each time.
-const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
-
 // Faint background for role chips / picker icons without a colour of their own
 const NEUTRAL_TINT = 'color-mix(in srgb, var(--text-primary) 8%, transparent)';
 
@@ -49,22 +45,6 @@ class MarkdownErrorBoundary extends React.Component {
     }
     return this.props.children;
   }
-}
-
-/**
- * Always renders through ReactMarkdown (error boundary catches any crash).
- * Never truncates content — the collapsing is handled at the MentionText level.
- */
-function SafeMarkdown({ content, components }) {
-  if (!content) return null;
-  const safe = preserveBlankLines(content);
-  return (
-    <MarkdownErrorBoundary key={content} fallback={content}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
-        {safe}
-      </ReactMarkdown>
-    </MarkdownErrorBoundary>
-  );
 }
 
 // ─── MentionChip ──────────────────────────────────────────────────────────────
@@ -117,8 +97,53 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
 // ─── MentionText ─────────────────────────────────────────────────────────────
 
 /**
- * Renders a message string, replacing <@type:id> tokens with MentionChips and
- * passing remaining text through SafeMarkdown.
+ * remark plugin: split <@type:id> tokens out of text nodes into `mention`
+ * elements, so mentions render inline in the same markdown pass as the
+ * surrounding text. Code spans/blocks aren't text nodes, so tokens in code stay literal.
+ */
+function remarkMentions() {
+  return (tree) => splitMentions(tree);
+}
+
+function splitMentions(node) {
+  if (!node.children) return;
+  const out = [];
+  for (const child of node.children) {
+    if (child.type !== 'text' || !child.value.includes('<@')) {
+      splitMentions(child);
+      out.push(child);
+      continue;
+    }
+    const re = new RegExp(MENTION_RE.source, 'g');
+    let last = 0, m;
+    while ((m = re.exec(child.value)) !== null) {
+      if (m.index > last) out.push({ type: 'text', value: child.value.slice(last, m.index) });
+      out.push({
+        type: 'mention', children: [],
+        data: { hName: 'mention', hProperties: { mentionType: m[1], mentionId: m[2] } },
+      });
+      last = m.index + m[0].length;
+    }
+    if (last < child.value.length) out.push({ type: 'text', value: child.value.slice(last) });
+  }
+  node.children = out;
+}
+
+/** remark plugin: put an `edited` marker at the end of the last paragraph (or on its own line). */
+function remarkEditedMarker({ title }) {
+  return (tree) => {
+    const marker = { type: 'edited', children: [], data: { hName: 'edited', hProperties: { title } } };
+    const last = tree.children[tree.children.length - 1];
+    if (last?.type === 'paragraph') last.children.push({ type: 'text', value: ' ' }, marker);
+    else tree.children.push({ type: 'paragraph', children: [marker] });
+  };
+}
+
+const MENTION_PLUGINS = [remarkGfm, remarkBreaks, remarkMentions];
+
+/**
+ * Renders a message string as markdown, with <@type:id> tokens shown as inline
+ * MentionChips and an optional "(edited)" marker after the last line.
  *
  * Long messages (more lines than the messageLinesLimit option) are shown collapsed
  * with a "Show more" button — the full markdown is always rendered, only
@@ -126,111 +151,54 @@ export function MentionChip({ type, id, mentionData, resolveUser, onUserClick })
  *
  * Wrapped in React.memo so it only re-renders when its own props change.
  */
-export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick, appendNode }) {
+export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick, editedTitle }) {
   const [expanded, setExpanded] = useState(false);
   const { messageLinesLimit } = useClientOptions() ?? { messageLinesLimit: 28 };
-  const collapsedMaxHeight = `${messageLinesLimit * 1.5}em`;
+  const collapsedMaxHeight = `${messageLinesLimit * 1.375}rem`;
 
-  // Parse mention tokens once per unique content string.
-  const parts = useMemo(() => {
-    if (!content) return [];
-    const re = new RegExp(MENTION_RE.source, 'g');
-    const result = [];
-    let last = 0, m;
-    while ((m = re.exec(content)) !== null) {
-      if (m.index > last) result.push({ kind: 'text', value: content.slice(last, m.index) });
-      result.push({ kind: 'mention', type: m[1], id: m[2] });
-      last = m.index + m[0].length;
-    }
-    if (last < content.length) result.push({ kind: 'text', value: content.slice(last) });
-    return result;
-  }, [content]);
+  const plugins = useMemo(
+    () => editedTitle ? [...MENTION_PLUGINS, [remarkEditedMarker, { title: editedTitle }]] : MENTION_PLUGINS,
+    [editedTitle]
+  );
+
+  const components = useMemo(() => ({
+    ...mdComponents,
+    mention: ({ node }) => (
+      <MentionChip
+        type={node.properties.mentionType}
+        id={String(node.properties.mentionId)}
+        mentionData={mentionData}
+        resolveUser={resolveUser}
+        onUserClick={onUserClick}
+      />
+    ),
+    edited: ({ node }) => <span className="msg-edited" title={node.properties.title}>(edited)</span>,
+  }), [mdComponents, mentionData, resolveUser, onUserClick]);
 
   if (!content) return null;
-  if (parts.length === 0) return null;
+
+  const body = (
+    <MarkdownErrorBoundary key={content} fallback={content}>
+      <ReactMarkdown remarkPlugins={plugins} components={components}>
+        {preserveBlankLines(content)}
+      </ReactMarkdown>
+    </MarkdownErrorBoundary>
+  );
 
   const isLong = (content.match(/\n/g)?.length ?? 0) >= messageLinesLimit;
-
-  // Index of the last 'text' part — used to decide where to inject inline badge
-  const lastTextIdx = appendNode
-    ? parts.reduce((acc, p, i) => (p.kind === 'text' ? i : acc), -1)
-    : -1;
-
-  /**
-   * Returns a modified mdComponents set where the last paragraph is
-   * display:'inline' so that appendNode follows it on the same line.
-   * A fresh closure is created each call, so the counter always starts at 0.
-   */
-  function makeInlineLastP(textValue) {
-    const total = Math.max(
-      1,
-      textValue.split(/\n\n+/).filter(s => s.trim().length > 0).length
-    );
-    let rendered = 0;
-    return {
-      ...mdComponents,
-      p: ({ children }) => {
-        rendered++;
-        const isLast = rendered >= total;
-        return (
-          <span style={{ display: isLast ? 'inline' : 'block', margin: isLast ? 0 : '0 0 0.45em' }}>
-            {children}
-          </span>
-        );
-      },
-    };
-  }
-
-  const body = parts.length === 1 && parts[0].kind === 'text'
-    ? <SafeMarkdown content={content} components={lastTextIdx === 0 ? makeInlineLastP(content) : mdComponents} />
-    : (
-      <>
-        {parts.map((p, i) =>
-          p.kind === 'text'
-            ? <SafeMarkdown key={i} content={p.value} components={i === lastTextIdx ? makeInlineLastP(p.value) : mdComponents} />
-            : <MentionChip
-                key={i}
-                type={p.type}
-                id={p.id}
-                mentionData={mentionData}
-                resolveUser={resolveUser}
-                onUserClick={onUserClick}
-              />
-        )}
-      </>
-    );
-
-  if (!isLong) return <>{body}{appendNode}</>;
+  if (!isLong) return <div className="msg-md">{body}</div>;
 
   return (
     <div>
-      <div style={{
-        position: 'relative',
-        maxHeight: expanded ? 'none' : collapsedMaxHeight,
-        overflowY: expanded ? 'visible' : 'hidden',
-      }}>
-        {body}
-        {!expanded && (
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            height: '3rem',
-            background: 'linear-gradient(to bottom, transparent, var(--bg-base))',
-            pointerEvents: 'none',
-          }} />
-        )}
-      </div>
-      <button
-        onClick={() => setExpanded(v => !v)}
-        style={{
-          marginTop: '0.25rem',
-          background: 'none', border: 'none',
-          color: 'var(--text-link)', fontSize: '0.8rem', fontWeight: 600,
-          cursor: 'pointer', padding: 0,
-        }}
+      <div
+        className={expanded ? 'msg-md' : 'msg-md msg-md--collapsed'}
+        style={expanded ? undefined : { maxHeight: collapsedMaxHeight }}
       >
-        {expanded ? '▲ Show less' : '▼ Show more'}
+        {body}
+      </div>
+      <button type="button" className="msg-show-more" onClick={() => setExpanded(v => !v)}>
+        {expanded ? 'Show less' : 'Show more'}
       </button>
-      {appendNode}
     </div>
   );
 });

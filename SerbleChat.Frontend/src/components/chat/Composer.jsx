@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext.jsx';
 import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
 import { Button, ErrorBox } from '../ui/index.js';
-import { AttachmentIcon, BlockIcon, CloseIcon, LockIcon } from '../../icons.jsx';
+import { AttachmentIcon, BlockIcon, CloseIcon, LockIcon, SendIcon } from '../../icons.jsx';
+import './chat.css';
 import { MentionPicker } from './MentionRenderer.jsx';
 import { FileUploadPanel } from './FileUploadPanel.jsx';
 
@@ -183,23 +184,15 @@ export default function Composer({
           />
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-input)', borderRadius: '8px', padding: '0 0.75rem' }}>
+        <div className="composer">
           <button
             type="button"
+            className="composer-btn"
             onClick={() => fileUploads.fileInputRef.current?.click()}
             disabled={uploading}
             title="Attach files"
-            className={uploading ? undefined : 'hov-color-accent'}
-            style={{
-              background: 'none', border: 'none',
-              color: uploading ? 'var(--text-muted)' : 'var(--text-secondary)',
-              cursor: uploading ? 'not-allowed' : 'pointer',
-              padding: '0.5rem 0.25rem', height: '1.5rem', lineHeight: 1,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: uploading ? 0.5 : 1,
-            }}
           >
-            <AttachmentIcon size={16} />
+            <AttachmentIcon size={18} />
           </button>
 
           <input
@@ -213,12 +206,7 @@ export default function Composer({
           <textarea
             ref={inputRef}
             rows={1}
-            style={{
-              flex: 1, background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-              fontSize: '0.9375rem', padding: '0.875rem 0.25rem', outline: 'none',
-              resize: 'none', lineHeight: 1.5,
-              maxHeight: '20rem', overflowY: 'auto', fontFamily: 'inherit',
-            }}
+            className="composer-input"
             placeholder={placeholder}
             value={input}
             onChange={e => {
@@ -238,17 +226,15 @@ export default function Composer({
             maxLength={16384}
           />
 
-          {canSubmit && (
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={uploading}
-              title="Send"
-              style={{ borderRadius: '4px', padding: '0.3rem 0.55rem', fontSize: '0.9rem', marginLeft: '0.5rem', marginBottom: '0.875rem', lineHeight: 1, flexShrink: 0 }}
-            >
-              {uploading ? '⏳' : '↵'}
-            </Button>
-          )}
+          <button
+            type="submit"
+            className="composer-btn composer-send"
+            data-ready={!!canSubmit && !uploading}
+            disabled={!canSubmit || uploading}
+            title={uploading ? 'Uploading…' : 'Send'}
+          >
+            {uploading ? <span className="msg-spinner" /> : <SendIcon size={18} />}
+          </button>
         </div>
       </form>
     </>

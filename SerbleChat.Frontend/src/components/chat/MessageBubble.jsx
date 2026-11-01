@@ -5,34 +5,37 @@ import InviteCard from '../InviteCard.jsx';
 import MessageCard from './MessageCard.jsx';
 import FileEmbed from './FileEmbed.jsx';
 import { MentionText } from './MentionRenderer.jsx';
-import { BlockIcon } from '../../icons.jsx';
+import { BlockIcon, EditIcon, TrashIcon, MoreIcon } from '../../icons.jsx';
 import { TextArea } from '../ui/index.js';
 import { mdComponents } from './markdown.jsx';
 import { extractInviteIds, extractMessageLinks, extractFileUrls, parseUtcDate } from './utils.js';
+import './chat.css';
 
-// Consecutive messages from the same author within this window are grouped
-const GROUP_WINDOW_MS = 5 * 60 * 1000;
 const EDITOR_MAX_HEIGHT = 320;
-const PENDING_COLOR = 'var(--warning)';
 
 function autosize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, EDITOR_MAX_HEIGHT) + 'px';
 }
 
-/** Short time for compact rows, e.g. "14:30". */
-function formatShortTime(msg) {
-  if (msg._pending) return 'Sending…';
-  return parseUtcDate(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Timestamp next to the username — includes the date when the message isn't from today. */
-function formatHeaderTime(msg) {
-  if (msg._pending) return 'Sending…';
-  const d = parseUtcDate(msg.createdAt);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (d.toLocaleDateString() === new Date().toLocaleDateString()) return time;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+/** Full date + time for timestamp tooltips. */
+function formatFullDate(date) {
+  return date.toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Author of a message, from the user cache on first paint when possible. */
+function useAuthor(authorId, peekUser, resolveUser) {
+  const [author, setAuthor] = useState(() => peekUser?.(authorId) ?? null);
+  useEffect(() => {
+    let cancelled = false;
+    resolveUser(authorId).then(u => { if (!cancelled) setAuthor(u); });
+    return () => { cancelled = true; };
+  }, [authorId, resolveUser]);
+  return author;
 }
 
 /** Inline editor shown in place of the message content while editing. */
@@ -46,14 +49,16 @@ function MessageEditor({ initialContent, onSave, onCancel }) {
       const el = ref.current;
       if (!el) return;
       autosize(el);
-      el.focus();
+      el.focus({ preventScroll: true });
       el.setSelectionRange(el.value.length, el.value.length);
+      // Editing can start from the composer (up arrow) on a message that's scrolled out of view
+      el.closest('[data-msgid]')?.scrollIntoView({ block: 'nearest' });
     });
     return () => cancelAnimationFrame(id);
   }, []);
 
   return (
-    <div style={{ marginTop: '0.2rem' }}>
+    <div className="msg-editor">
       <TextArea
         ref={ref}
         rows={1}
@@ -65,16 +70,16 @@ function MessageEditor({ initialContent, onSave, onCancel }) {
         }}
         style={{
           boxSizing: 'border-box', display: 'block',
-          color: 'var(--text-secondary)', padding: '0.45rem 0.75rem',
-          resize: 'none', lineHeight: 1.5, minHeight: '2.2rem',
-          maxHeight: '20rem', overflowY: 'auto',
+          color: 'var(--text-secondary)', padding: '0.5rem 0.75rem',
+          resize: 'none', lineHeight: 1.375, minHeight: '2.25rem',
+          maxHeight: EDITOR_MAX_HEIGHT, overflowY: 'auto',
         }}
         maxLength={16384}
       />
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.3rem', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-        <span>Enter <span style={{ color: 'var(--text-subtle)' }}>to save</span></span>
-        <span style={{ color: 'var(--border)' }}>•</span>
-        <span>Esc <span style={{ color: 'var(--text-subtle)' }}>to cancel</span></span>
+      <div className="msg-editor-hint">
+        escape to <button type="button" onClick={onCancel}>cancel</button>
+        {' • '}
+        enter to <button type="button" onClick={() => onSave(draft)}>save</button>
       </div>
     </div>
   );
@@ -85,6 +90,8 @@ function MessageContent({ msg, mentionData, resolveUser, onUserClick, onImageCon
   const inviteIds    = useMemo(() => extractInviteIds(msg.content), [msg.content]);
   const messageLinks = useMemo(() => extractMessageLinks(msg.content), [msg.content]);
   const fileUrls     = useMemo(() => extractFileUrls(msg.content), [msg.content]);
+  const editedTitle  = msg.editedAt ? `Edited ${formatFullDate(parseUtcDate(msg.editedAt))}` : null;
+  const hasEmbeds    = inviteIds.length + messageLinks.length + fileUrls.length > 0;
 
   return (
     <>
@@ -94,55 +101,76 @@ function MessageContent({ msg, mentionData, resolveUser, onUserClick, onImageCon
         mentionData={mentionData}
         resolveUser={resolveUser}
         onUserClick={onUserClick}
-        appendNode={msg.editedAt ? (
-          <span
-            title={`Edited ${parseUtcDate(msg.editedAt).toLocaleString()}`}
-            style={{ fontSize: '0.65rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginLeft: '0.25rem' }}
-          >
-            (edited)
-          </span>
-        ) : undefined}
+        editedTitle={editedTitle}
       />
-      {inviteIds.map(id => (
-        <InviteCard key={id} inviteId={id} />
-      ))}
-      {messageLinks.map(link => (
-        <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
-      ))}
-      {fileUrls.map(url => {
-        const filename = url.split('/').pop();
-        return (
-          <FileEmbed
-            key={url}
-            fileUrl={url}
-            onImageContextMenu={e => onImageContextMenu(e, url, filename, false, msg)}
-            onModalImageContextMenu={e => onImageContextMenu(e, url, filename, true)}
-          />
-        );
-      })}
+      {hasEmbeds && (
+        <div className="msg-embeds">
+          {inviteIds.map(id => (
+            <InviteCard key={id} inviteId={id} />
+          ))}
+          {messageLinks.map(link => (
+            <MessageCard key={`${link.channelId}-${link.messageId}`} channelId={link.channelId} messageId={link.messageId} />
+          ))}
+          {fileUrls.map(url => {
+            const filename = url.split('/').pop();
+            return (
+              <FileEmbed
+                key={url}
+                fileUrl={url}
+                onImageContextMenu={e => onImageContextMenu(e, url, filename, false, msg)}
+                onModalImageContextMenu={e => onImageContextMenu(e, url, filename, true)}
+              />
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
 
+/** Floating quick-action bar shown when hovering a message. */
+function MessageActions({ msg, canEdit, canDelete, onStartEdit, onDelete, onMore }) {
+  return (
+    <div className="msg-actions" onContextMenu={e => e.stopPropagation()}>
+      {canEdit && (
+        <button type="button" className="msg-action" title="Edit" onClick={() => onStartEdit(msg)}>
+          <EditIcon size={16} />
+        </button>
+      )}
+      {canDelete && (
+        <button type="button" className="msg-action msg-action--danger" title="Delete" onClick={() => onDelete(msg)}>
+          <TrashIcon size={16} />
+        </button>
+      )}
+      <button type="button" className="msg-action" title="More" onClick={e => onMore(e, msg)}>
+        <MoreIcon size={16} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * A single message row. `grouped` rows continue the previous author's group:
+ * no avatar or name, with the time shown in the gutter on hover.
+ */
 export const MessageBubble = React.memo(function MessageBubble({
-  msg, prevMsg, resolveUser, onContextMenu, onImageContextMenu, onUserClick, getColor,
-  mentionData, highlighted, guildId, isEditing, onEditSave, onEditCancel,
+  msg, grouped, peekUser, resolveUser, onContextMenu, onImageContextMenu, onUserClick, getColor,
+  mentionData, highlighted, active, guildId, isEditing, onEditSave, onEditCancel,
+  currentUserId, canManageMsgs, onStartEdit, onDelete, onMore,
 }) {
-  const [author, setAuthor] = useState(null);
+  const author = useAuthor(msg.authorId, peekUser, resolveUser);
+  const pending = !!msg._pending;
+  const date = parseUtcDate(msg.createdAt);
+  const isOwn = msg.authorId === currentUserId;
+  const mentionsMe = !!currentUserId && !isOwn && !!msg.content?.includes(`<@user:${currentUserId}>`);
 
-  // Group consecutive messages from the same author
-  const compact = prevMsg && prevMsg.authorId === msg.authorId &&
-    parseUtcDate(msg.createdAt) - parseUtcDate(prevMsg.createdAt) < GROUP_WINDOW_MS;
-
-  useEffect(() => {
-    let cancelled = false;
-    resolveUser(msg.authorId).then(u => { if (!cancelled) setAuthor(u); });
-    return () => { cancelled = true; };
-  }, [msg.authorId, resolveUser]);
-
-  // Resolve color: role color > user profile color > generated hue
-  const nameColor = getColor(msg.authorId, author?.username, author?.color);
-  const timeColor = msg._pending ? PENDING_COLOR : 'var(--text-subtle)';
+  const classes = ['msg'];
+  if (!grouped) classes.push('msg--head');
+  if (pending) classes.push('msg--pending');
+  if (mentionsMe) classes.push('msg--mention');
+  if (highlighted) classes.push('msg--highlight');
+  if (isEditing) classes.push('msg--editing');
+  if (active) classes.push('msg--active');
 
   const body = isEditing
     ? <MessageEditor initialContent={msg.content} onSave={draft => onEditSave(msg, draft)} onCancel={onEditCancel} />
@@ -151,44 +179,48 @@ export const MessageBubble = React.memo(function MessageBubble({
   return (
     <div
       data-msgid={msg.id}
-      className={highlighted ? 'msg-highlighted hov-bg' : 'hov-bg'}
+      className={classes.join(' ')}
       onContextMenu={e => onContextMenu(e, msg)}
-      style={{
-        padding: compact ? '0.1rem 1rem' : '0.5rem 1rem',
-        display: 'flex', gap: '0.75rem',
-        opacity: msg._pending ? 0.55 : 1, cursor: 'default',
-      }}
     >
-      {compact ? (
-        <>
-          <span style={{ fontSize: '0.65rem', color: timeColor, width: 40, flexShrink: 0, alignSelf: 'center', textAlign: 'right' }}>
-            {formatShortTime(msg)}
-          </span>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word', flex: 1, minWidth: 0, overflowX: 'hidden' }}>
-            {body}
-          </div>
-        </>
+      {grouped ? (
+        <div className="msg-gutter">
+          <time className="msg-gutter-time" title={formatFullDate(date)}>{pending ? '' : formatTime(date)}</time>
+        </div>
       ) : (
-        <>
-          <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
-            <div style={{ flexShrink: 0 }}>
-              <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} style={{ marginTop: 2 }} />
+        <div className="msg-gutter">
+          <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
+            <div className="msg-avatar">
+              <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} />
             </div>
           </UserInteraction>
-          <div style={{ flex: 1, overflowX: 'hidden', minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.2rem' }}>
-              <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={msg._pending}>
-                <span style={{ fontWeight: 600, color: nameColor, fontSize: '0.9rem' }}>
-                  {author?.username ?? msg.authorId.slice(0, 10)}
-                </span>
-              </UserInteraction>
-              <span style={{ fontSize: '0.68rem', color: timeColor }}>{formatHeaderTime(msg)}</span>
-            </div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5, wordBreak: 'break-word' }}>
-              {body}
-            </div>
+        </div>
+      )}
+
+      <div className="msg-main">
+        {!grouped && (
+          <div className="msg-header">
+            <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
+              <span className="msg-author" style={{ color: getColor(msg.authorId, author?.username, author?.color) }}>
+                {author?.username ?? <span className="msg-author-placeholder" />}
+              </span>
+            </UserInteraction>
+            <time className="msg-time" title={pending ? undefined : formatFullDate(date)}>
+              {pending ? 'Sending…' : formatTime(date)}
+            </time>
           </div>
-        </>
+        )}
+        <div className="msg-body">{body}</div>
+      </div>
+
+      {!pending && !isEditing && (
+        <MessageActions
+          msg={msg}
+          canEdit={isOwn}
+          canDelete={isOwn || canManageMsgs}
+          onStartEdit={onStartEdit}
+          onDelete={onDelete}
+          onMore={onMore}
+        />
       )}
     </div>
   );
@@ -198,72 +230,36 @@ export const MessageBubble = React.memo(function MessageBubble({
  * A run of consecutive messages from a blocked user, collapsed behind a
  * "N messages from blocked user" bar that can be expanded on click.
  */
-export function BlockedGroupBubble({ messages, authorId, resolveUser, onContextMenu, onImageContextMenu, onUserClick, getColor, mentionData, guildId }) {
+export function BlockedGroupBubble({ messages, authorId, peekUser, resolveUser, ...bubbleProps }) {
   const [expanded, setExpanded] = useState(false);
-  const [author, setAuthor] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    resolveUser(authorId).then(u => { if (!cancelled) setAuthor(u); });
-    return () => { cancelled = true; };
-  }, [authorId, resolveUser]);
+  const author = useAuthor(authorId, peekUser, resolveUser);
 
   const count = messages.length;
   const name = author?.username ?? '…';
 
-  if (expanded) {
-    return (
-      <div>
-        {messages.map((msg, i) => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            prevMsg={i === 0 ? null : messages[i - 1]}
-            resolveUser={resolveUser}
-            onContextMenu={onContextMenu}
-            onImageContextMenu={onImageContextMenu}
-            onUserClick={onUserClick}
-            getColor={getColor}
-            mentionData={mentionData}
-            highlighted={false}
-            guildId={guildId}
-          />
-        ))}
-        <div
-          onClick={() => setExpanded(false)}
-          className="hov-text-secondary"
-          style={{
-            padding: '0.25rem 1rem 0.35rem',
-            fontSize: '0.78rem', color: 'var(--text-muted)',
-            cursor: 'pointer', userSelect: 'none',
-            display: 'flex', alignItems: 'center', gap: '0.4rem',
-          }}
-        >
-          <span>▲</span>
-          <span>Hide messages from blocked user</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      onClick={() => setExpanded(true)}
-      className="hov-bg"
-      style={{
-        margin: '0.25rem 1rem', padding: '0.45rem 0.8rem',
-        borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: '0.6rem',
-        cursor: 'pointer', userSelect: 'none', transition: 'background 0.1s',
-      }}
-    >
-      <BlockIcon size={15} style={{ flexShrink: 0 }} />
-      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flex: 1 }}>
-        {count === 1
-          ? `1 message from blocked user ${name}`
-          : `${count} messages from blocked user ${name}`}
-      </span>
-      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', flexShrink: 0 }}>click to show ▼</span>
+    <div className="msg-blocked-group">
+      <div className="msg-blocked">
+        <BlockIcon size={14} style={{ flexShrink: 0 }} />
+        <span className="msg-blocked-label">
+          {count === 1 ? '1 message' : `${count} messages`} from blocked user <strong>{name}</strong>
+        </span>
+        <button type="button" className="msg-blocked-toggle" onClick={() => setExpanded(v => !v)}>
+          {expanded ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {expanded && messages.map((msg, i) => (
+        <MessageBubble
+          key={msg.id}
+          {...bubbleProps}
+          msg={msg}
+          grouped={i > 0}
+          peekUser={peekUser}
+          resolveUser={resolveUser}
+          highlighted={false}
+          isEditing={false}
+        />
+      ))}
     </div>
   );
 }
