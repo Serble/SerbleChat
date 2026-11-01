@@ -10,7 +10,6 @@ using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
 using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.SocketHubs;
-using StackExchange.Redis;
 using Channel = SerbleChat.Backend.Database.Structs.Channel;
 using ThreadingChannel = System.Threading.Channels.Channel;
 
@@ -36,7 +35,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         IChannelRepo channels = scope.ServiceProvider.GetRequiredService<IChannelRepo>();
         IUserRepo users = scope.ServiceProvider.GetRequiredService<IUserRepo>();
         PushServiceClient pushClient = scope.ServiceProvider.GetRequiredService<PushServiceClient>();
-        IConnectionMultiplexer redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        IPresenceService presence = scope.ServiceProvider.GetRequiredService<IPresenceService>();
         IHubContext<ChatHub> updates = scope.ServiceProvider.GetRequiredService<IHubContext<ChatHub>>();
         NtfySettings ntfySettings = scope.ServiceProvider.GetRequiredService<IOptions<NtfySettings>>().Value;
         string? frontendUrl = scope.ServiceProvider.GetRequiredService<IOptions<ApiSettings>>().Value.FrontendUrl;
@@ -59,6 +58,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         Dictionary<string, UserGuildNotificationPreferences> guildPrefs = channel.GuildId.HasValue
             ? await users.GetUsersGuildNotificationPreferences(userData.Keys, channel.GuildId.Value)
             : new Dictionary<string, UserGuildNotificationPreferences>();
+        HashSet<string> connected = await presence.GetConnected(userData.Keys);
 
         if (message.AuthorNavigation == null && message.AuthorId != null) {
             // try and load using our list of users (they should be a member of the channel if they sent a message in it, so they should be in the list)
@@ -94,13 +94,16 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             }
             
             ChatUser user = userData[userId];
-            bool onlyClientNotif = false;
-            if (!user.NotificationsWhileOnline) {
-                bool isOnline = redis.GetDatabase().StringGet("status:" + userId).HasValue;
-                if (isOnline) {
-                    onlyClientNotif = true;  // if they're online, don't send a notification; they can see the message in real time
-                }
+            UserStatusType status = user.EffectiveStatusType();
+            if (status == UserStatusType.DoNotDisturb) {
+                continue;  // DND silences everything, including the in-app sound
             }
+            
+            // When connected they can see the message in real time, so push/ntfy only goes out if they asked for it.
+            // Invisible users are connected and at their client, so they follow the online setting.
+            bool onlyClientNotif = connected.Contains(userId) && !(status == UserStatusType.Away
+                ? user.NotificationsWhileAway
+                : user.NotificationsWhileOnline);
             
             NotificationPreferences prefs = channelPrefs.TryGetValue(userId, out UserChannelNotificationPreferences? cp)
                 ? cp.Preferences

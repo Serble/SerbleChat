@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
-import { Slider, TextInput, SettingRow, ToggleRow, SectionTitle, OptionGroup } from '../ui/index.js';
+import { Slider, TextInput, SettingRow, ToggleRow, SectionTitle, OptionGroup, Segmented, Select } from '../ui/index.js';
+import { TIME_FORMATS, DATE_FORMATS, formatTimeAs, formatDateAs, formatDateLong } from '../../dateFormat.js';
 import { BlockIcon, EyeIcon, TrashIcon } from '../../icons.jsx';
 import { TabBody } from './common.jsx';
 
@@ -34,6 +35,8 @@ export default function ChatTab() {
     messageLinesLimit, setMessageLinesLimit,
     blockedMessageMode, setBlockedMessageMode,
     sendTypingIndicators, setSendTypingIndicators,
+    timeFormat, setTimeFormat,
+    dateFormat, setDateFormat,
   } = useClientOptions();
 
   // The number box is edited as free text and committed on blur/Enter.
@@ -48,6 +51,11 @@ export default function ChatTab() {
 
   return (
     <TabBody>
+      <DateTimeSection
+        timeFormat={timeFormat} setTimeFormat={setTimeFormat}
+        dateFormat={dateFormat} setDateFormat={setDateFormat}
+      />
+
       <SectionTitle>Message Display</SectionTitle>
 
       <SettingRow
@@ -92,5 +100,53 @@ export default function ChatTab() {
       </div>
       <OptionGroup options={BLOCKED_MODES} value={blockedMessageMode} onChange={setBlockedMessageMode} />
     </TabBody>
+  );
+}
+
+/** Browsers only tell pages their language, so name it to explain what "Auto" does. */
+function browserLanguage() {
+  try { return Intl.DateTimeFormat().resolvedOptions().locale; } catch { return navigator.language; }
+}
+
+function DateTimeSection({ timeFormat, setTimeFormat, dateFormat, setDateFormat }) {
+  // A fixed example (an afternoon, with day > 12) so every format reads unambiguously
+  const now = new Date();
+  const sample = new Date(now.getFullYear(), 10, 24, 21, 5);
+
+  return (
+    <>
+      <SectionTitle>Date &amp; Time</SectionTitle>
+
+      <SettingRow
+        title="Time format"
+        description={`Example: ${formatTimeAs(sample, timeFormat)}`}
+        control={<Segmented options={TIME_FORMATS} value={timeFormat} onChange={setTimeFormat} aria-label="Time format" />}
+      />
+
+      <SettingRow
+        title="Date format"
+        description={`Example: ${formatDateAs(sample, dateFormat)}`}
+        control={
+          <Select
+            aria-label="Date format"
+            value={dateFormat}
+            onChange={e => setDateFormat(e.target.value)}
+            style={{ width: 'auto', minWidth: 190 }}
+          >
+            {DATE_FORMATS.map(f => (
+              <option key={f.value} value={f.value}>
+                {f.value === 'auto' ? `Auto (${formatDateAs(sample, 'auto')})` : f.label}
+              </option>
+            ))}
+          </Select>
+        }
+      />
+
+      <div className="ui-hint" style={{ margin: '-0.75rem 0 1.5rem' }}>
+        Auto follows your browser&rsquo;s language ({browserLanguage()}), which can differ from your
+        system&rsquo;s clock settings. Dates written out in words, like the day dividers
+        in chat ({formatDateLong(sample, { year: false })}), use the same day/month order.
+      </div>
+    </>
   );
 }

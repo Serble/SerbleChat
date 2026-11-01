@@ -139,12 +139,26 @@ namespace SerbleChat.Backend.Migrations
                     b.Property<bool>("IsBanned")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("NotificationsWhileAway")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("NotificationsWhileOnline")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("RefreshToken")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("StatusExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("StatusMessage")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<int>("StatusType")
+                        .HasColumnType("int");
 
                     b.Property<string>("Username")
                         .IsRequired()

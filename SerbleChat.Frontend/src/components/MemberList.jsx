@@ -4,6 +4,8 @@ import UserInteraction from './UserInteraction.jsx';
 import { useApp } from '../context/AppContext.jsx';
 import Avatar from './Avatar.jsx';
 import { CrownIcon } from '../icons.jsx';
+import { AvatarStatusDot } from './status/StatusDot.jsx';
+import { isShownOnline } from './status/status.js';
 
 /**
  * Props:
@@ -17,7 +19,7 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
   const [loading, setLoading]   = useState(true);
   const [localTick, setLocalTick] = useState(0);
 
-  const { rolesUpdatedEvent, userUpdatedEvent, userStatuses } = useApp();
+  const { rolesUpdatedEvent, userUpdatedEvent, getUserStatus, seedUserStatuses, presenceResync } = useApp();
   const isGuild = !!guildId;
 
   // When roles are updated for this guild, bump the local tick to re-fetch
@@ -34,6 +36,11 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
     setLocalTick(t => t + 1);
   }, [userUpdatedEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // After a reconnect, statuses may be stale: refetch
+  useEffect(() => {
+    if (presenceResync) setLocalTick(t => t + 1);
+  }, [presenceResync]);
+
   useEffect(() => {
     if (!channelId) return;
     // Ignore responses from a previous channel / refresh that resolve late, so a
@@ -44,27 +51,31 @@ export default function MemberList({ channelId, guildId, ownerId, refreshTick, s
       ? getGuildChannelMembersDetails(guildId, channelId)
       : getChannelMembers(channelId);
     req
-      .then(m => { if (!cancelled) setMembers(m); })
+      .then(m => {
+        if (cancelled) return;
+        setMembers(m);
+        seedUserStatuses(m);
+      })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [channelId, guildId, refreshTick, localTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Normalise to { id, username, isOnline, color?, userColor? } regardless of source
+  // Normalise to { id, username, presence, statusMessage, color?, userColor? } regardless of source
   // color     = top role colour (guild only)
   // userColor = user's own profile colour
   const normalised = members.map(m => {
-    const base = isGuild
-      ? { id: m.user.id, username: m.user.username, isOnline: m.user.isOnline, color: m.color, userColor: m.user.color ?? '' }
-      : { id: m.id, username: m.username, isOnline: m.isOnline, color: null, userColor: m.color ?? '' };
-    // Override with live SignalR status when available
-    const liveStatus = userStatuses[String(base.id)];
-    if (liveStatus !== undefined) base.isOnline = liveStatus === 'online';
-    return base;
+    const u = isGuild ? m.user : m;
+    const { presence, message } = getUserStatus(u.id, u);
+    return {
+      id: u.id, username: u.username, presence, statusMessage: message,
+      color: isGuild ? m.color : null, userColor: u.color ?? '',
+    };
   });
 
-  const online  = normalised.filter(m => m.isOnline);
-  const offline = normalised.filter(m => !m.isOnline);
+  // Away and do-not-disturb people are still around, so they're listed as online
+  const online  = normalised.filter(m => isShownOnline(m.presence));
+  const offline = normalised.filter(m => !isShownOnline(m.presence));
 
   return (
     <div style={{
@@ -131,25 +142,33 @@ function MemberRow({ member, ownerId, guildId }) {
           padding: '0.35rem 0.5rem', borderRadius: '6px', width: '100%',
           color: 'var(--text-secondary)',
           transition: 'background 0.1s, color 0.1s',
-          opacity: member.isOnline ? 1 : 0.45,
+          opacity: isShownOnline(member.presence) ? 1 : 0.45,
         }}
       >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar userId={member.id} name={member.username} size={32} color={member.userColor} />
-          <div style={{
-            position: 'absolute', bottom: 0, right: 0,
-            width: 10, height: 10, borderRadius: '50%',
-            background: member.isOnline ? 'var(--success)' : 'var(--text-subtle)',
-            border: '2px solid var(--bg-secondary)',
-          }} />
+          <AvatarStatusDot presence={member.presence} size={8} />
         </div>
-        <span style={{
-          flex: 1, color: nameColor,
-          fontSize: '0.875rem', fontWeight: 500,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {member.username}
-        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            color: nameColor,
+            fontSize: '0.875rem', fontWeight: 500,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {member.username}
+          </div>
+          {member.statusMessage && (
+            <div
+              title={member.statusMessage}
+              style={{
+                fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.3,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              {member.statusMessage}
+            </div>
+          )}
+        </div>
         {isOwner && (
           // Tooltip lives on a wrapper: a title attribute on an <svg> isn't shown
           <span title="Owner" style={{ display: 'flex', color: '#f0b232', flexShrink: 0 }}>

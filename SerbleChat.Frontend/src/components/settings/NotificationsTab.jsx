@@ -27,6 +27,7 @@ const SAVE_DEBOUNCE_MS = 500;
 function prefsFromUser(user) {
   const prefs = {
     notificationsWhileOnline: user?.notificationsWhileOnline ?? false,
+    notificationsWhileAway: user?.notificationsWhileAway ?? true,
     webPushIncludeContent: user?.webPushIncludeContent ?? true,
   };
   for (const s of SCOPES) {
@@ -255,10 +256,20 @@ export default function NotificationsTab() {
       <SectionTitle>Online Behaviour</SectionTitle>
       <ToggleRow
         title="Receive notifications while online"
-        description="When enabled, push and ntfy notifications are sent even if you are currently active in the app. Disable to suppress them while you have a session open."
+        description="When enabled, push and ntfy notifications are sent even if you are currently active in the app. Disable to suppress them while you have a session open. Also applies while you're Invisible."
         checked={prefs.notificationsWhileOnline}
         onChange={v => update({ notificationsWhileOnline: v })}
       />
+      <ToggleRow
+        title="Receive notifications while away"
+        description="When your status is Away, push and ntfy notifications are sent even if the app is open."
+        checked={prefs.notificationsWhileAway}
+        onChange={v => update({ notificationsWhileAway: v })}
+      />
+      <Hint style={{ marginTop: '0.5rem' }}>
+        Do Not Disturb mutes everything: no push, ntfy, sounds or popups until you change your status.
+        Notifications are always sent while you're offline.
+      </Hint>
 
       <Hint style={{ marginTop: '2rem' }}>
         The sections below are your <strong style={{ color: 'var(--text-secondary)' }}>default</strong> notification

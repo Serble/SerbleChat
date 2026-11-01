@@ -215,8 +215,6 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         return Ok(channel);
     }
 
-    // This is expensive, for redis this is O(n), where n is member count.
-    // But for MySQL this is O(1).
     [HttpGet("{channelId:long}/members")]
     public async Task<ActionResult<IEnumerable<PublicUserResponse>>> GetChannelMembers(long channelId) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -234,13 +232,8 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Forbid();
         }
         
-        IEnumerable<ChatUser> members = await channels.GetChannelMembers(channel);
-        List<PublicUserResponse> response = [];
-        foreach (ChatUser member in members) {
-            response.Add(await users.CompilePublicUserResponse(member));
-        }
-        
-        return Ok(response);
+        ChatUser[] members = (await channels.GetChannelMembers(channel)).ToArray();
+        return Ok(await users.CompilePublicUserResponses(members));
     }
 
     [HttpGet("{channelId:long}/unreads")]

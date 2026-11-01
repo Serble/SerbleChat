@@ -5,7 +5,6 @@ using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
 using SerbleChat.Backend.Services;
-using StackExchange.Redis;
 
 namespace SerbleChat.Backend.Controllers;
 
@@ -13,7 +12,7 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Authorize]
 public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRepo channels, 
-    IConnectionMultiplexer redis, IImagesService images) : ControllerBase {
+    IPresenceService presence, IImagesService images) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<UserAccountResponse>> Get() {
@@ -58,6 +57,10 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             user.NotificationsWhileOnline = request.NotificationsWhileOnline.Value;
         }
 
+        if (request.NotificationsWhileAway.HasValue) {
+            user.NotificationsWhileAway = request.NotificationsWhileAway.Value;
+        }
+
         if (request.WebPushIncludeContent.HasValue) {
             user.WebPushIncludeContent = request.WebPushIncludeContent.Value;
         }
@@ -81,8 +84,7 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return NotFound("User not found");
         }
         
-        RedisValue result = await redis.GetDatabase().StringGetAsync("status:" + id);
-        return Ok(PublicUserResponse.FromChatUser(user, result.HasValue));
+        return Ok(await users.CompilePublicUserResponse(user));
     }
 
     [HttpGet("from-username/{username}")]
@@ -92,8 +94,87 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return NotFound("User not found");
         }
 
-        RedisValue result = await redis.GetDatabase().StringGetAsync("status:" + user.Id);
-        return Ok(PublicUserResponse.FromChatUser(user, result.HasValue));
+        return Ok(await users.CompilePublicUserResponse(user));
+    }
+
+    /// <summary>Sets the caller's status type, optional message and optional expiry, replacing any current status.</summary>
+    [HttpPut("status")]
+    public async Task<ActionResult<OwnStatusUpdate>> SetStatus([FromBody] SetStatusRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        if (!UserStatusNames.TryParse(request.Type, out UserStatusType type)) {
+            return BadRequest("Status type must be one of online, away, dnd or invisible");
+        }
+
+        string message = UserStatusExtensions.NormaliseStatusMessage(request.Message);
+        if (message.Length > UserStatusExtensions.MaxMessageLength) {
+            return BadRequest($"Status message can be at most {UserStatusExtensions.MaxMessageLength} characters");
+        }
+
+        DateTime? expiresAt = request.ExpiresAt?.ToUniversalTime();
+        if (expiresAt.HasValue && expiresAt.Value <= DateTime.UtcNow) {
+            return BadRequest("Status expiry must be in the future");
+        }
+
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
+        user.StatusType = type;
+        user.StatusMessage = message;
+        // An Online status with no message is the default, so there's nothing to expire
+        user.StatusExpiresAt = type == UserStatusType.Online && message.Length == 0 ? null : expiresAt;
+        await users.UpdateUser(user);
+        await presence.BroadcastStatus(user);
+        return Ok(OwnStatusUpdate.From(user));
+    }
+
+    /// <summary>Resets the caller's status to Online with no message.</summary>
+    [HttpDelete("status")]
+    public async Task<ActionResult<OwnStatusUpdate>> ClearStatus() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
+        user.ClearStatus();
+        await users.UpdateUser(user);
+        await presence.BroadcastStatus(user);
+        return Ok(OwnStatusUpdate.From(user));
+    }
+
+    /// <summary>
+    /// Called by the user's client when its status's expiry passes. Clears the status only if it
+    /// really has expired, so a tab with an old timer can't wipe a status set since in another tab.
+    /// The broadcast matters for Invisible, which other clients can't time out themselves.
+    /// </summary>
+    [HttpPost("status/expire")]
+    public async Task<ActionResult<OwnStatusUpdate>> ExpireStatus() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
+        if (user.StatusExpired()) {
+            user.ClearStatus();
+            await users.UpdateUser(user);
+            await presence.BroadcastStatus(user);
+        }
+        return Ok(OwnStatusUpdate.From(user));
     }
     
     [HttpPost("blocks/{id}")]
@@ -144,12 +225,7 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
         }
         
         UserBlock[] blocks = await users.GetBlockedUsers(userId);
-        PublicUserResponse[] response = new PublicUserResponse[blocks.Length];
-        for (int i = 0; i < blocks.Length; i++) {
-            response[i] = await users.CompilePublicUserResponse(blocks[i].BlockedUserNavigation);
-        }
-        
-        return Ok(response);
+        return Ok(await users.CompilePublicUserResponses(blocks.Select(b => b.BlockedUserNavigation).ToArray()));
     }
 
     [HttpGet("client-options")]

@@ -16,6 +16,10 @@ import Avatar from './Avatar.jsx';
 import BanModal from './BanModal.jsx';
 import SettingsModal from './settings/SettingsModal.jsx';
 import { Button } from './ui/index.js';
+import StatusDot from './status/StatusDot.jsx';
+import { StatusMenu, CustomStatusModal } from './status/StatusPicker.jsx';
+import { STATUS_META, formatUntil } from './status/status.js';
+import { useDateFormat } from '../dateFormat.js';
 import './chat/chat.css';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
@@ -78,9 +82,6 @@ function BlurbMarkdown({ content }) {
   );
 }
 
-const ONLINE  = { label: 'Online',  color: 'var(--success)' };
-const OFFLINE = { label: 'Offline', color: 'var(--text-muted)' };
-
 const sectionLabel = {
   fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
   textTransform: 'uppercase', letterSpacing: '0.07em',
@@ -111,6 +112,20 @@ function ActionButton({ label, icon: Icon, onClick, disabled, variant = 'default
   );
 }
 
+const capitalise = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A status message: plain text, wrapped (it's at most 128 characters). */
+function StatusMessage({ message, style }) {
+  return (
+    <span style={{
+      display: 'block', fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.4,
+      wordBreak: 'break-word', userSelect: 'text', ...style,
+    }}>
+      {message}
+    </span>
+  );
+}
+
 /**
  * UserPopout
  * Props: userId, username, anchorRect, onClose, guildId?, placement? ('side' | 'above')
@@ -131,10 +146,13 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   const [banBusy, setBanBusy]         = useState(false);
   const [banModalOpen, setBanModalOpen] = useState(false);
   const [editOpen, setEditOpen]       = useState(false); // own card → settings modal
+  const [statusMenu, setStatusMenu]   = useState(null);  // own card → { x, y } of the status menu
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
   const dropRef   = useRef(null);
   const popoutRef = useRef(null);
+  useDateFormat();  // the status expiry is shown as a time
 
-  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends, userStatuses, isConnected } = useApp();
+  const { getMyPerms, isBlocked, blockUser, unblockUser, currentUser, friends, refreshFriends, getUserStatus, seedUserStatuses, ownStatus } = useApp();
   const isSelf         = currentUser?.id === userId;
   const myPerms        = guildId ? getMyPerms(guildId) : null;
   const canManageRoles = !!myPerms && (myPerms.administrator === 0 || myPerms.manageRoles === 0);
@@ -156,7 +174,11 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     let cancelled = false;
     setUser(null);
     getAccountById(userId)
-      .then(u => { if (!cancelled) setUser(u); })
+      .then(u => {
+        if (cancelled) return;
+        setUser(u);
+        seedUserStatuses([u]);
+      })
       .catch(() => { if (!cancelled) setUser(null); });
     return () => { cancelled = true; };
   }, [userId]);
@@ -183,7 +205,8 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
   // portalled to <body>, so clicks inside it would otherwise count as "outside"
   // and close the popout (unmounting the modal) — and it handles Escape itself.
   useEffect(() => {
-    if (banModalOpen || editOpen) return;
+    // The status menu and modal are portalled too, and handle their own Escape
+    if (banModalOpen || editOpen || statusMenu || statusModalOpen) return;
     function onKey(e) { if (e.key === 'Escape') { if (dropOpen) setDropOpen(false); else onClose(); } }
     function onDown(e) {
       if (dropRef.current?.contains(e.target)) return;
@@ -192,7 +215,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     document.addEventListener('keydown', onKey);
     document.addEventListener('mousedown', onDown);
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown); };
-  }, [onClose, dropOpen, banModalOpen, editOpen]);
+  }, [onClose, dropOpen, banModalOpen, editOpen, statusMenu, statusModalOpen]);
 
   async function toggleRole(role) {
     const roleId = Number(role.id ?? role.Id);
@@ -279,11 +302,9 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
     top = undefined;
   }
 
-  const liveStatus = userStatuses[String(userId)];
-  // Your own status is your connection to the hub, matching the user panel
-  const isOnlineResolved = isSelf ? !!isConnected
-    : liveStatus !== undefined ? liveStatus === 'online' : (user?.isOnline ?? false);
-  const sm          = user ? (isOnlineResolved ? ONLINE : OFFLINE) : null;
+  // Yours comes from your own status and hub connection; others' from live events or the fetched profile
+  const status      = getUserStatus(userId, user);
+  const sm          = (user || isSelf) ? STATUS_META[status.presence] : null;
   const displayName = user?.username ?? username;
   const sortedRoles   = guildRoles.slice().sort((a, b) => b.priority - a.priority);
   const assignedRoles = sortedRoles.filter(r =>  userRoleIds.has(Number(r.id ?? r.Id)));
@@ -317,10 +338,50 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
 
           {/* Name + status */}
           <div style={{ fontWeight: 800, fontSize: '1.05rem', color: nameTextColor(displayName, user?.color), marginBottom: '0.15rem' }}>{displayName}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.9rem' }}>
-            <div style={{ width: 9, height: 9, borderRadius: '50%', background: sm?.color ?? 'var(--text-subtle)', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.78rem', color: sm?.color ?? 'var(--text-subtle)', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
-          </div>
+          {isSelf ? (
+            <button
+              type="button"
+              className="hov-bg"
+              title="Change your status"
+              aria-haspopup="menu"
+              aria-expanded={!!statusMenu}
+              // Same toggle trick as the user panel: don't let the menu's outside-click close it first
+              onMouseDown={e => { if (statusMenu) e.stopPropagation(); }}
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setStatusMenu(statusMenu ? null : { x: r.left, y: r.bottom + 4 });
+              }}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '0.45rem', width: 'calc(100% + 0.8rem)',
+                margin: '0 0 0.9rem -0.4rem', padding: '0.3rem 0.4rem',
+                border: 'none', borderRadius: 6, background: statusMenu ? 'var(--bg-hover)' : 'transparent',
+                cursor: 'pointer', font: 'inherit', textAlign: 'left', color: 'inherit',
+              }}
+            >
+              <StatusDot presence={status.presence} size={9} title="" style={{ marginTop: '0.2rem' }} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: sm?.color, fontWeight: 600 }}>
+                  {sm?.label}
+                  {/* While disconnected, name the status you'll come back with */}
+                  {status.presence === 'offline' && ownStatus.type !== 'online' && (
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {STATUS_META[ownStatus.type].label} when connected</span>
+                  )}
+                </span>
+                {status.message && <StatusMessage message={status.message} />}
+                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                  {status.expiresAt ? capitalise(formatUntil(status.expiresAt)) : 'Set status'}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <div style={{ marginBottom: '0.9rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <StatusDot presence={status.presence} size={9} title="" />
+                <span style={{ fontSize: '0.78rem', color: sm?.color ?? 'var(--text-subtle)', fontWeight: 600 }}>{sm?.label ?? '…'}</span>
+              </div>
+              {status.message && <StatusMessage message={status.message} style={{ marginTop: '0.25rem' }} />}
+            </div>
+          )}
 
           {/* ── Your own card: edit profile ── */}
           {isSelf && (
@@ -512,6 +573,16 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           </Button>
         </div>
       )}
+
+      {statusMenu && (
+        <StatusMenu
+          x={statusMenu.x}
+          y={statusMenu.y}
+          onClose={() => setStatusMenu(null)}
+          onCustom={() => setStatusModalOpen(true)}
+        />
+      )}
+      {statusModalOpen && <CustomStatusModal onClose={() => setStatusModalOpen(false)} />}
 
       {/* Ban Modal */}
       {banModalOpen && (

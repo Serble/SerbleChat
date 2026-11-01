@@ -4,6 +4,7 @@ import { getMessage, getChannel } from '../../api.js';
 import { useApp } from '../../context/AppContext.jsx';
 import Avatar from '../Avatar.jsx';
 import { parseUtcDate, isWebhookMessage, webhookAvatarSrc } from './utils.js';
+import { useDateFormat, formatDateTime } from '../../dateFormat.js';
 import './chat.css';
 
 const cardStyle = {
@@ -19,6 +20,7 @@ const cardStyle = {
  */
 export default function MessageCard({ channelId, messageId }) {
   const { resolveUser, getMemberColor } = useApp();
+  useDateFormat();
   const nav = useNavigate();
   const [state, setState] = useState('loading'); // loading | loaded | error
   const [message, setMessage] = useState(null);
@@ -84,12 +86,7 @@ export default function MessageCard({ channelId, messageId }) {
   // Role colour (for guild channels) > profile colour > generated hue
   const authorName = isWebhookMessage(message) ? message.webhookUsername : author?.username;
   const authorColor = getMemberColor(channel?.guildId ?? null, message.authorId, authorName, author?.color);
-  const timestamp = parseUtcDate(message.createdAt).toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const timestamp = formatDateTime(parseUtcDate(message.createdAt));
 
   // Truncate long messages
   const maxLength = 100;

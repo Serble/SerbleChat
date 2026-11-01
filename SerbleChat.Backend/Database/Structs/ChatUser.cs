@@ -33,6 +33,24 @@ public class ChatUser {
     [StringLength(7)]
     public string Color { get; set; } = "";
     
+    // STATUS
+    // Read these through UserStatusExtensions, which applies the expiry.
+    // Kept out of message payloads: clients get status from user responses and UserStatusUpdated.
+    
+    [ApiJsonIgnore]
+    [NotificationJsonIgnore]
+    public UserStatusType StatusType { get; set; } = UserStatusType.Online;
+    
+    [ApiJsonIgnore]
+    [NotificationJsonIgnore]
+    [StringLength(UserStatusExtensions.MaxMessageLength)]
+    public string StatusMessage { get; set; } = "";
+    
+    /// <summary>When the status (type and message) reverts to Online with no message. Null means never.</summary>
+    [ApiJsonIgnore]
+    [NotificationJsonIgnore]
+    public DateTime? StatusExpiresAt { get; set; }
+    
     // NOTIFICATIONS
     
     [NotificationJsonIgnore]
@@ -44,6 +62,10 @@ public class ChatUser {
     
     [NotificationJsonIgnore]
     public bool NotificationsWhileOnline { get; set; } = false;
+    
+    /// <summary>Whether push/ntfy notifications are sent while connected with the Away status.</summary>
+    [NotificationJsonIgnore]
+    public bool NotificationsWhileAway { get; set; } = true;
 
     /// <summary>Whether Web Push (browser and, later, UnifiedPush) notifications include the message content.</summary>
     [NotificationJsonIgnore]

@@ -8,9 +8,13 @@ public record UserAccountResponse(
     NotificationPreferences DefaultGroupNotificationPreferences,
     NotificationPreferences DefaultGuildNotificationPreferences,
     bool NotificationsWhileOnline,
+    bool NotificationsWhileAway,
     bool WebPushIncludeContent,
     string Blurb,
-    string Color)
+    string Color,
+    string StatusType,
+    string StatusMessage,
+    DateTime? StatusExpiresAt)
 {
     public static UserAccountResponse FromChatUser(ChatUser user) {
         return new UserAccountResponse(
@@ -19,14 +23,28 @@ public record UserAccountResponse(
             user.DefaultGroupNotificationPreferences,
             user.DefaultGuildNotificationPreferences,
             user.NotificationsWhileOnline,
+            user.NotificationsWhileAway,
             user.WebPushIncludeContent,
             user.Blurb,
-            user.Color);
+            user.Color,
+            user.EffectiveStatusType().ToName(),
+            user.EffectiveStatusMessage(),
+            user.EffectiveStatusExpiresAt());
     }
 }
 
-public record PublicUserResponse(string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt, bool IsOnline, string Blurb, string Color) {
-    public static PublicUserResponse FromChatUser(ChatUser user, bool isOnline) {
-        return new PublicUserResponse(user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt, isOnline, user.Blurb, user.Color);
+/// <param name="IsOnline">Whether <paramref name="Status"/> is anything but offline. Kept for older clients.</param>
+/// <param name="Status">online, away, dnd or offline. Invisible users are reported as offline.</param>
+public record PublicUserResponse(
+    string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt, bool IsOnline,
+    string Blurb, string Color,
+    string Status, string StatusMessage, DateTime? StatusExpiresAt)
+{
+    /// <param name="connected">Whether the user has a live connection, from <see cref="Services.IPresenceService"/>.</param>
+    public static PublicUserResponse FromChatUser(ChatUser user, bool connected) {
+        string status = user.PublicPresence(connected);
+        return new PublicUserResponse(user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt,
+            status != UserStatusNames.Offline, user.Blurb, user.Color,
+            status, user.EffectiveStatusMessage(), user.EffectiveStatusExpiresAt());
     }
 }

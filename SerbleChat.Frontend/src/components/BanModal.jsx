@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { HammerIcon, LockIcon, ClockIcon } from '../icons.jsx';
 import { Modal, ModalBody, ModalFooter, Button, TextInput, ErrorBox, Field, Segmented } from './ui/index.js';
+import { useDateFormat } from '../dateFormat.js';
 
 const MAX_DAYS = 36500;
 
@@ -27,6 +28,7 @@ const DURATIONS = [
  * - busy: boolean - Whether a ban is in progress
  */
 export default function BanModal({ username, onBan, onCancel, busy }) {
+  const { formatDate } = useDateFormat();
   const [banType, setBanType]   = useState('permanent');
   const [duration, setDuration] = useState('7');      // a DURATIONS value
   const [customDays, setCustomDays] = useState('14');
@@ -117,7 +119,7 @@ export default function BanModal({ username, onBan, onCancel, busy }) {
             {banType === 'permanent'
               ? <>{who} will be removed from the guild and won't be able to rejoin unless they're unbanned.</>
               : until
-                ? <>{who} will be removed from the guild and can rejoin after <strong style={{ color: 'var(--text-primary)' }}>{until.toLocaleDateString(undefined, { dateStyle: 'medium' })}</strong>.</>
+                ? <>{who} will be removed from the guild and can rejoin after <strong style={{ color: 'var(--text-primary)' }}>{formatDate(until)}</strong>.</>
                 : <>Enter a ban length between 1 and {MAX_DAYS.toLocaleString()} days.</>}
           </div>
 

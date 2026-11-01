@@ -8,7 +8,9 @@ import {
   getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
   getGuildChannels, getUsersInVoice, getActivePolls,
+  setMyStatus, clearMyStatus, expireMyStatus,
 } from '../api.js';
+import { resolveOwnStatus, resolvePublicStatus, expiresAtMs } from '../components/status/status.js';
 import { resubscribeIfEnabled } from '../push.js';
 import { playSound, preloadSounds } from '../sound.js';
 import { navigateToRoot } from '../electron-utils.js';
@@ -69,8 +71,14 @@ export function AppProvider({ children }) {
   const voicePresenceInflightRef = useRef(new Set());
   // channelId (string) -> userId (string) -> { muted, deafened } for people in voice
   const [voiceStatesByChannel, setVoiceStatesByChannel] = useState({});
-  // userId (string) -> 'online' | 'offline'
+  // userId (string) -> { status, statusMessage, statusExpiresAt }: the latest status we know
+  // for each user, from UserStatusUpdated events and from user records fetched from the API.
+  // Read it through getUserStatus, which applies expiry and handles yourself.
   const [userStatuses, setUserStatuses] = useState({});
+  // Bumped when a status expires, so everything re-renders with it gone
+  const [statusClock, setStatusClock] = useState(0);
+  // Bumped after the hub reconnects: status events may have been missed, so lists refetch
+  const [presenceResync, setPresenceResync] = useState(0);
   // channelId (string) -> Set<userId> of users currently typing
   const [typingUsers, setTypingUsers] = useState({});
 
@@ -114,7 +122,17 @@ export function AppProvider({ children }) {
     });
   }, [groupChats]);
 
-  function addToast({ title, body, type = 'info', duration = 5000 }) {
+  /** Whether you're in Do Not Disturb right now (reads refs, so safe in SignalR handlers). */
+  function isDndNow() {
+    return resolveOwnStatus(currentUserRef.current, true).type === 'dnd';
+  }
+
+  /**
+   * `notify: true` marks a toast as a notification (something happened, rather than
+   * feedback on what you just did); those are dropped while you're in Do Not Disturb.
+   */
+  function addToast({ title, body, type = 'info', duration = 5000, notify = false }) {
+    if (notify && isDndNow()) return;
     const id = `${Date.now()}_${Math.random()}`;
     setToasts(p => [...p, { id, title, body, type, duration }]);
   }
@@ -512,6 +530,7 @@ export function AppProvider({ children }) {
     try {
       const u = await getAccountById(id);
       userCacheRef.current[id] = u;
+      seedUserStatuses([u]);
       return u;
     } catch {
       const fb = { id, username: id.slice(0, 8) + '…' };
@@ -519,6 +538,85 @@ export function AppProvider({ children }) {
       return fb;
     }
   }, []); // deps: empty — only uses a ref and a module-level import
+
+  /**
+   * Record statuses from user records just fetched from the API (PublicUserResponse,
+   * or guild member details { user }). Fresh server data, so it replaces what we had.
+   */
+  const seedUserStatuses = useCallback((records) => {
+    const patch = {};
+    for (const rec of records ?? []) {
+      const u = rec?.user ?? rec;
+      if (!u?.id || u.status === undefined) continue;
+      patch[String(u.id)] = { status: u.status, statusMessage: u.statusMessage ?? '', statusExpiresAt: u.statusExpiresAt ?? null };
+    }
+    if (Object.keys(patch).length > 0) setUserStatuses(p => ({ ...p, ...patch }));
+  }, []);
+
+  /**
+   * How a user's status looks right now: { presence, message, expiresAt }.
+   * presence is online | away | dnd | offline, or invisible for yourself while invisible.
+   * `fallback` is a user record to use when we have nothing live for them.
+   */
+  function getUserStatus(userId, fallback) {
+    if (userId == null) return resolvePublicStatus(null);
+    if (currentUser && String(userId) === String(currentUser.id)) {
+      const own = resolveOwnStatus(currentUser, isConnected);
+      return { presence: own.presence, message: own.message, expiresAt: own.expiresAt };
+    }
+    return resolvePublicStatus(userStatuses[String(userId)] ?? fallback);
+  }
+
+  /** Your own status: { type, presence, message, expiresAt }. */
+  const ownStatus = resolveOwnStatus(currentUser, isConnected);
+
+  function applyOwnStatus(update) {
+    if (!update) return;
+    setCurrentUser(p => p ? {
+      ...p,
+      statusType: update.statusType,
+      statusMessage: update.statusMessage ?? '',
+      statusExpiresAt: update.statusExpiresAt ?? null,
+    } : p);
+  }
+
+  /** Set your status. expiresAt: Date or null for never. Throws on failure. */
+  async function setOwnStatus({ type, message = '', expiresAt = null }) {
+    const update = await setMyStatus({
+      type, message,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+    });
+    applyOwnStatus(update);
+  }
+
+  async function clearOwnStatus() {
+    applyOwnStatus(await clearMyStatus());
+  }
+
+  // Expire statuses on time. One timer, set for whichever known status ends first.
+  // Your own expiry also tells the server, so everyone else hears (they can't time out
+  // an invisible status themselves). The server only clears it if it really has expired.
+  useEffect(() => {
+    const now = Date.now();
+    let next = Infinity;
+    for (const rec of Object.values(userStatuses)) {
+      const t = expiresAtMs(rec.statusExpiresAt);
+      if (t != null && t > now && t < next) next = t;
+    }
+    const ownExpiry = expiresAtMs(currentUser?.statusExpiresAt);
+    if (ownExpiry != null && ownExpiry > now && ownExpiry < next) next = ownExpiry;
+    if (ownExpiry != null && ownExpiry <= now) {
+      // Passed (or the laptop was asleep through it): have the server clear it. If our clock
+      // runs ahead of the server's it won't have expired there yet, so check again shortly.
+      expireMyStatus().then(applyOwnStatus).catch(e => console.warn('expireMyStatus failed:', e));
+      next = Math.min(next, now + 30_000);
+    }
+    if (next === Infinity) return;
+    // setTimeout caps at ~24.8 days; a longer wait just re-checks then
+    const delay = Math.min(next - now + 50, 2 ** 31 - 1);
+    const timer = setTimeout(() => setStatusClock(c => c + 1), delay);
+    return () => clearTimeout(timer);
+  }, [userStatuses, currentUser?.statusExpiresAt, statusClock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Synchronous cache lookup — lets components render a known user on first paint. */
   const peekUser = useCallback((id) => userCacheRef.current[id] ?? null, []);
@@ -617,7 +715,8 @@ export function AppProvider({ children }) {
     });
 
     conn.on('ReceiveNotification', async (content) => {
-      // Play notification sound
+      // The server doesn't send these in Do Not Disturb; this covers the moment after switching
+      if (isDndNow()) return;
       playSound('notification').catch(e => console.warn('[AppContext] Failed to play notification sound:', e));
     });
 
@@ -662,19 +761,19 @@ export function AppProvider({ children }) {
     conn.on('FriendRequestReceived', async ({ fromUserId }) => {
       await getFriends().then(setFriends).catch(console.error);
       const u = await resolveUser(fromUserId);
-      addToast({ title: 'New Friend Request', body: `${u.username} sent you a friend request.`, type: 'info' });
+      addToast({ title: 'New Friend Request', body: `${u.username} sent you a friend request.`, type: 'info', notify: true });
     });
 
     conn.on('FriendRequestAccepted', async ({ userId }) => {
       await getFriends().then(setFriends).catch(console.error);
       const u = await resolveUser(userId);
-      addToast({ title: 'Friend Request Accepted', body: `${u.username} accepted your friend request!`, type: 'success' });
+      addToast({ title: 'Friend Request Accepted', body: `${u.username} accepted your friend request!`, type: 'success', notify: true });
     });
 
     conn.on('FriendRemoved', async ({ userId }) => {
       await getFriends().then(setFriends).catch(console.error);
       const u = await resolveUser(userId);
-      addToast({ title: 'Friend Removed', body: `${u.username} removed you as a friend.`, type: 'danger' });
+      addToast({ title: 'Friend Removed', body: `${u.username} removed you as a friend.`, type: 'danger', notify: true });
     });
 
     conn.on('ChannelDeleted', ({ channelId }) => {
@@ -746,7 +845,8 @@ export function AppProvider({ children }) {
         title: 'Left Guild',
         body: 'You have been removed from the guild.',
         type: 'info',
-        duration: 5000
+        duration: 5000,
+        notify: true,
       });
     });
 
@@ -765,9 +865,14 @@ export function AppProvider({ children }) {
       setVoiceState(channelId, userId, muted, deafened);
     });
 
-    conn.on('UserStatusUpdated', ({ userId, status }) => {
-      setUserStatuses(p => ({ ...p, [String(userId)]: status }));
+    conn.on('UserStatusUpdated', ({ userId, status, statusMessage, statusExpiresAt }) => {
+      if (userId == null) return;
+      // Your own status comes from OwnStatusUpdated (this one says "offline" while you're invisible)
+      if (String(userId) === String(currentUserRef.current?.id)) return;
+      setUserStatuses(p => ({ ...p, [String(userId)]: { status, statusMessage: statusMessage ?? '', statusExpiresAt: statusExpiresAt ?? null } }));
     });
+
+    conn.on('OwnStatusUpdated', update => applyOwnStatus(update));
 
     conn.on('UserTyping', ({ userId, channelId }) => {
       if (!userId || !channelId) return;
@@ -832,6 +937,9 @@ export function AppProvider({ children }) {
     conn.onreconnecting(() => setIsConnected(false));
     conn.onreconnected(() => {
       setIsConnected(true);
+      // Status changes while we were away were missed: drop what we had and let lists refetch
+      setUserStatuses({});
+      setPresenceResync(n => n + 1);
       const sendStatus = () => conn.invoke('UpdateStatus').catch(() => {});
       sendStatus();
       clearInterval(heartbeatRef.current);
@@ -909,7 +1017,8 @@ export function AppProvider({ children }) {
       userUpdatedEvent,
       guildUpdatedEvent,
       channelUpdatedEvent,
-      userStatuses,
+      userStatuses, seedUserStatuses, getUserStatus, presenceResync, statusClock,
+      ownStatus, setOwnStatus, clearOwnStatus,
       typingUsers,
       hubRef,
       channelToGuild,

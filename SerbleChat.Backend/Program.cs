@@ -111,6 +111,7 @@ builder.Services.AddScoped<IPollRepo, PollRepo>();
 // generic services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
 builder.Services.AddSingleton<INotificationService, NotificationService>();
+builder.Services.AddSingleton<IPresenceService, PresenceService>();
 builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 builder.Services.AddScoped<IVoiceManager, VoiceManager>();

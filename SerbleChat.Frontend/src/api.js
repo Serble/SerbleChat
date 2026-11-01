@@ -116,6 +116,31 @@ export async function patchAccount(body) {
   return handle(res);
 }
 
+/**
+ * PUT /account/status  – set your status. type: online | away | dnd | invisible;
+ * expiresAt: ISO string or null for never. Returns { statusType, statusMessage, statusExpiresAt }.
+ */
+export async function setMyStatus({ type, message, expiresAt }) {
+  const res = await fetch(`${BASE}/account/status`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, message, expiresAt }),
+  });
+  return handle(res);
+}
+
+/** DELETE /account/status  – back to online with no message */
+export async function clearMyStatus() {
+  const res = await fetch(`${BASE}/account/status`, { method: 'DELETE', headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /account/status/expire  – clears your status if its expiry has passed, and tells everyone */
+export async function expireMyStatus() {
+  const res = await fetch(`${BASE}/account/status/expire`, { method: 'POST', headers: authHeaders() });
+  return handle(res);
+}
+
 /** GET /account/:id  – public profile by id */
 export async function getAccountById(id) {
   const res = await fetch(`${BASE}/account/${encodeURIComponent(id)}`, { headers: authHeaders() });

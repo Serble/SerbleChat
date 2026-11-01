@@ -12,6 +12,8 @@ import UserPanel from './UserPanel.jsx';
 import useGroupChatIcon from './useGroupChatIcon.js';
 import { IconButton } from './ui/index.js';
 import { GearIcon, PeopleIcon, PlusIcon } from '../icons.jsx';
+import { getAccountById } from '../api.js';
+import { AvatarStatusDot } from './status/StatusDot.jsx';
 
 const HOVER_CLASS = 'hov-bg hov-text-secondary';
 const DM_CHIPS_STYLE = { padding: '0.2rem 0.6rem 0.2rem 2.5rem' };
@@ -59,7 +61,7 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
 }
 
 function DmItem({ dm, currentChannelId }) {
-  const { currentUser, resolveUser, unreads, userStatuses } = useApp();
+  const { currentUser, resolveUser, unreads, getUserStatus, seedUserStatuses, presenceResync } = useApp();
   const nav = useNavigate();
   const [otherUser, setOtherUser] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y }
@@ -70,11 +72,18 @@ function DmItem({ dm, currentChannelId }) {
     resolveUser(otherId).then(setOtherUser);
   }, [dm, currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // After a reconnect, refetch their status (resolveUser would answer from its cache)
+  useEffect(() => {
+    if (!presenceResync || !currentUser) return;
+    const otherId = dm.user1Id === currentUser.id ? dm.user2Id : dm.user1Id;
+    getAccountById(otherId).then(u => seedUserStatuses([u])).catch(() => {});
+  }, [presenceResync]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const active = String(currentChannelId) === String(dm.channelId);
   const name = otherUser?.username ?? '…';
   const otherId = dm.user1Id === currentUser?.id ? dm.user2Id : dm.user1Id;
   const unread = unreads[String(dm.channelId)] ?? 0;
-  const isOnline = userStatuses[String(otherId)] === 'online';
+  const { presence, message: statusMessage } = getUserStatus(otherId, otherUser);
 
   function handleContextMenu(e) {
     e.preventDefault();
@@ -91,14 +100,22 @@ function DmItem({ dm, currentChannelId }) {
       >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
-          <div style={{
-            position: 'absolute', bottom: 0, right: 0,
-            width: 9, height: 9, borderRadius: '50%',
-            background: isOnline ? 'var(--success)' : 'var(--text-subtle)',
-            border: '2px solid var(--bg-secondary)',
-          }} />
+          <AvatarStatusDot presence={presence} size={8} />
         </div>
-        <span style={labelStyle}>{name}</span>
+        <span style={{ ...labelStyle, minWidth: 0 }}>
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+          {statusMessage && (
+            <span
+              title={statusMessage}
+              style={{
+                display: 'block', overflow: 'hidden', textOverflow: 'ellipsis',
+                fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', lineHeight: 1.3,
+              }}
+            >
+              {statusMessage}
+            </span>
+          )}
+        </span>
         {!active && <UnreadBadge count={unread} />}
       </button>
       {ctxMenu && (

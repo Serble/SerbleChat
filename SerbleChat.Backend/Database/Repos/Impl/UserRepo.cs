@@ -2,11 +2,11 @@ using SerbleChat.Backend.Services.Ntfy;
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
-using StackExchange.Redis;
+using SerbleChat.Backend.Services;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
-public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis) : IUserRepo {
+public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : IUserRepo {
     
     public async Task<ChatUser> CreateUser(ChatUser user) {
         context.Users.Add(user);
@@ -228,11 +228,15 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
         }
     }
 
-    public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
+    public async Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {
         if (user == null!) {
             throw new ArgumentNullException(nameof(user));
         }
-        bool isOnline = redis.GetDatabase().StringGet("status:" + user.Id).HasValue;
-        return Task.FromResult(PublicUserResponse.FromChatUser(user, isOnline));
+        return PublicUserResponse.FromChatUser(user, await presence.IsConnected(user.Id));
+    }
+
+    public async Task<PublicUserResponse[]> CompilePublicUserResponses(IReadOnlyCollection<ChatUser> users) {
+        HashSet<string> connected = await presence.GetConnected(users.Select(u => u.Id));
+        return users.Select(u => PublicUserResponse.FromChatUser(u, connected.Contains(u.Id))).ToArray();
     }
 }

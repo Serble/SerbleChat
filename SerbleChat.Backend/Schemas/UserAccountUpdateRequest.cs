@@ -7,6 +7,7 @@ public class UserAccountUpdateRequest {
     public NotificationPreferences? DefaultGroupNotificationPreferences { get; set; }
     public NotificationPreferences? DefaultGuildNotificationPreferences { get; set; }
     public bool? NotificationsWhileOnline { get; set; }
+    public bool? NotificationsWhileAway { get; set; }
     public bool? WebPushIncludeContent { get; set; }
     [MaxLength(1024)]
     public string? Blurb { get; set; }

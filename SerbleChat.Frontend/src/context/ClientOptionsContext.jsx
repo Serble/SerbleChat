@@ -1,6 +1,19 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useTheme } from './ThemeContext.jsx';
 import { getClientOptions, setClientOptions } from '../api.js';
+import { setDateFormatPrefs, isTimeFormat, isDateFormat } from '../dateFormat.js';
+
+// The date/time formats are also cached here, so the first paint uses them
+// before the synced options arrive from the server
+const LS_DATE_TIME_KEY = 'serbleChat_dateTimeFormat';
+function cachedDateTimeFormat() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_DATE_TIME_KEY) ?? '{}');
+    return { time: isTimeFormat(v.time) ? v.time : 'auto', date: isDateFormat(v.date) ? v.date : 'auto' };
+  } catch {
+    return { time: 'auto', date: 'auto' };
+  }
+}
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
@@ -8,6 +21,8 @@ export const OPTION_DEFAULTS = {
   messageLinesLimit: 28,
   blockedMessageMode: 'masked', // 'masked' | 'visible' | 'hidden'
   sendTypingIndicators: true, // whether to send typing notifications
+  timeFormat: 'auto', // 'auto' | '12h' | '24h'
+  dateFormat: 'auto', // 'auto' | 'DD/MM/YYYY' | 'DD/MM/YY' | 'MM/DD/YYYY' | 'MM/DD/YY' | 'YYYY/MM/DD
   voiceParticipantSettings: {}, // { [participantIdentity]: { muted: boolean, volume: number } }
   voiceAudioOptions: {
     echoCancellation: false,
@@ -44,6 +59,10 @@ export function ClientOptionsProvider({ children }) {
   const [messageLinesLimit, setMsgLimitState] = useState(OPTION_DEFAULTS.messageLinesLimit);
   const [blockedMessageMode, setBlockedModeState] = useState(OPTION_DEFAULTS.blockedMessageMode);
   const [sendTypingIndicators, setSendTypingIndicatorsState] = useState(OPTION_DEFAULTS.sendTypingIndicators);
+  const [timeFormat, setTimeFormatState] = useState(() => cachedDateTimeFormat().time);
+  const [dateFormat, setDateFormatState] = useState(() => cachedDateTimeFormat().date);
+  // Set during render (not in an effect) so children rendering in this same pass use the new format
+  setDateFormatPrefs(timeFormat, dateFormat);
   const [voiceParticipantSettings, setVoiceParticipantSettingsState] = useState(OPTION_DEFAULTS.voiceParticipantSettings);
   const [voiceAudioOptions, setVoiceAudioOptionsState] = useState(OPTION_DEFAULTS.voiceAudioOptions);
   const [keybinds, setKeybindsState] = useState(OPTION_DEFAULTS.keybinds);
@@ -55,6 +74,8 @@ export function ClientOptionsProvider({ children }) {
   const msgLimitRef        = useRef(OPTION_DEFAULTS.messageLinesLimit);
   const blockedModeRef     = useRef(OPTION_DEFAULTS.blockedMessageMode);
   const sendTypingIndicatorsRef = useRef(OPTION_DEFAULTS.sendTypingIndicators);
+  const timeFormatRef      = useRef(timeFormat);
+  const dateFormatRef      = useRef(dateFormat);
   const voiceSettingsRef   = useRef(OPTION_DEFAULTS.voiceParticipantSettings);
   const voiceAudioOptionsRef = useRef(OPTION_DEFAULTS.voiceAudioOptions);
   const keybindsRef        = useRef(OPTION_DEFAULTS.keybinds);
@@ -133,6 +154,15 @@ export function ClientOptionsProvider({ children }) {
         sendTypingIndicatorsRef.current = parsed.sendTypingIndicators;
         setSendTypingIndicatorsState(parsed.sendTypingIndicators);
       }
+      if (isTimeFormat(parsed.timeFormat)) {
+        timeFormatRef.current = parsed.timeFormat;
+        setTimeFormatState(parsed.timeFormat);
+      }
+      if (isDateFormat(parsed.dateFormat)) {
+        dateFormatRef.current = parsed.dateFormat;
+        setDateFormatState(parsed.dateFormat);
+      }
+      cacheDateTimeFormat();
       if (parsed.voiceParticipantSettings && typeof parsed.voiceParticipantSettings === 'object') {
         voiceSettingsRef.current = parsed.voiceParticipantSettings;
         setVoiceParticipantSettingsState(parsed.voiceParticipantSettings);
@@ -176,6 +206,8 @@ export function ClientOptionsProvider({ children }) {
           messageLinesLimit: msgLimitRef.current,
           blockedMessageMode: blockedModeRef.current,
           sendTypingIndicators: sendTypingIndicatorsRef.current,
+          timeFormat: timeFormatRef.current,
+          dateFormat: dateFormatRef.current,
           voiceParticipantSettings: voiceSettingsRef.current,
           voiceAudioOptions: voiceAudioOptionsRef.current,
           keybinds: keybindsRef.current,
@@ -216,6 +248,28 @@ export function ClientOptionsProvider({ children }) {
     const val = !!enabled;
     sendTypingIndicatorsRef.current = val;
     setSendTypingIndicatorsState(val);
+    if (!pendingLoad.current) scheduleSave();
+  }
+
+  function cacheDateTimeFormat() {
+    try {
+      localStorage.setItem(LS_DATE_TIME_KEY, JSON.stringify({ time: timeFormatRef.current, date: dateFormatRef.current }));
+    } catch { /* private mode etc.: the synced copy still works */ }
+  }
+
+  function setTimeFormat(value) {
+    if (!isTimeFormat(value)) return;
+    timeFormatRef.current = value;
+    setTimeFormatState(value);
+    cacheDateTimeFormat();
+    if (!pendingLoad.current) scheduleSave();
+  }
+
+  function setDateFormat(value) {
+    if (!isDateFormat(value)) return;
+    dateFormatRef.current = value;
+    setDateFormatState(value);
+    cacheDateTimeFormat();
     if (!pendingLoad.current) scheduleSave();
   }
 
@@ -295,6 +349,10 @@ export function ClientOptionsProvider({ children }) {
       setBlockedMessageMode,
       sendTypingIndicators,
       setSendTypingIndicators,
+      timeFormat,
+      setTimeFormat,
+      dateFormat,
+      setDateFormat,
       voiceParticipantSettings,
       setVoiceParticipantSetting,
       getVoiceParticipantSetting,

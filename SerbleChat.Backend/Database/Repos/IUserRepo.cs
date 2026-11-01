@@ -48,4 +48,6 @@ public interface IUserRepo {
     Task RecordNtfyDeliveryResults(IEnumerable<long> succeeded, IEnumerable<NtfyDeliveryFailure> failed, int disableAfterFailures);
     
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
+    /// <summary>Like <see cref="CompilePublicUserResponse"/>, with one presence lookup for everyone.</summary>
+    Task<PublicUserResponse[]> CompilePublicUserResponses(IReadOnlyCollection<ChatUser> users);
 }

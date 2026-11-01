@@ -2,12 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Helpers;
 using SerbleChat.Backend.Schemas;
-using StackExchange.Redis;
+using SerbleChat.Backend.Services;
 using Role = SerbleChat.Backend.Database.Structs.Role;
 
 namespace SerbleChat.Backend.Database.Repos.Impl;
 
-public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis, IRoleRepo roles) : IGuildRepo {
+public class GuildRepo(ChatDatabaseContext context, IPresenceService presence, IRoleRepo roles) : IGuildRepo {
     
     public async Task<Guild?> GetGuild(long id) {
         return await context.Guilds.FindAsync(id);
@@ -231,6 +231,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
     public async Task<GuildMemberResponse[]> GetGuildChannelMembersDetails(long channelId) {
         List<(ChatUser User, List<Role> Roles)> members = await GetVisibleMembersWithRoles(channelId);
 
+        HashSet<string> connected = await presence.GetConnected(members.Select(m => m.User.Id));
         List<GuildMemberResponse> result = new(members.Count);
         foreach ((ChatUser user, List<Role> memberRoles) in members) {
             string colour = "#ffffff";
@@ -240,8 +241,7 @@ public class GuildRepo(ChatDatabaseContext context, IConnectionMultiplexer redis
                     break;
                 }
             }
-            bool online = redis.GetDatabase().StringGet($"status:{user.Id}").HasValue;
-            result.Add(new GuildMemberResponse(PublicUserResponse.FromChatUser(user, online), colour));
+            result.Add(new GuildMemberResponse(PublicUserResponse.FromChatUser(user, connected.Contains(user.Id)), colour));
         }
 
         return result.ToArray();

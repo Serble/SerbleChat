@@ -94,11 +94,30 @@ when a poll expires on its own.
 }
 ```
 
-`UserStatusUpdated`:
+`UserStatusUpdated`: a user came online, went offline, or changed their status.
+Sent to every guild, DM and group chat group the user is in, so a connection
+can get it more than once. `status` is `online`, `away`, `dnd` or `offline`;
+Invisible users are always `offline`. The message is shown even when offline.
+When `statusExpiresAt` passes, treat the user as `online` (or `offline` if they
+were offline) with no message: nothing is sent at expiry. Ignore it for
+yourself and use `OwnStatusUpdated` instead.
 ```json
 {
     "userId": "string",
-    "status": "string"
+    "status": "online" | "away" | "dnd" | "offline",
+    "statusMessage": "string",          // "" when there's none
+    "statusExpiresAt": "DateTime" | null
+}
+```
+
+`OwnStatusUpdated`: your own status changed (from any of your clients).
+`statusType` is what you picked, including `invisible`. When `statusExpiresAt`
+passes, call `POST /account/status/expire` so others are told.
+```json
+{
+    "statusType": "online" | "away" | "dnd" | "invisible",
+    "statusMessage": "string",
+    "statusExpiresAt": "DateTime" | null
 }
 ```
 
@@ -151,7 +170,8 @@ Sent to everyone who can see the channel, not just people in the call.
 }
 ```
 
-`ReceiveNotification`:
+`ReceiveNotification`: a message you'd be notified about. Not sent while
+you're in Do Not Disturb.
 ```json
 {
     "type": "message",
@@ -177,6 +197,10 @@ For when the user leaves a guild.
 ```
 
 ## To Server
+`UpdateStatus()`:
+Presence heartbeat; send it every 30 seconds. You count as connected while
+heartbeats keep arriving (one missed beat is tolerated).
+
 `UpdateVoiceState(channelId: int, muted: bool, deafened: bool)`:
 Report your own mute/deafen state while in a voice channel. Ignored if you
 aren't in that channel's call. Broadcast to others as `ClientVoiceStateUpdated`.

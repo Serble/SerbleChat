@@ -4,7 +4,12 @@ import { useVoice } from '../context/VoiceContext.jsx';
 import { IconButton } from './ui/index.js';
 import Avatar from './Avatar.jsx';
 import UserPopout from './UserPopout.jsx';
-import { MicIcon, MicOffIcon, HeadphonesIcon, HeadphonesOffIcon } from '../icons.jsx';
+import { MicIcon, MicOffIcon, HeadphonesIcon, HeadphonesOffIcon, LogoutIcon } from '../icons.jsx';
+import { MenuItem } from './ui/index.js';
+import { StatusMenu, CustomStatusModal } from './status/StatusPicker.jsx';
+import { navigateToRoot } from '../electron-utils.js';
+import { AvatarStatusDot } from './status/StatusDot.jsx';
+import { STATUS_META } from './status/status.js';
 
 /** Mic / deafen toggle: red with a struck-through icon while off. */
 function PanelToggle({ off, onClick, disabled, title, Icon, OffIcon }) {
@@ -32,13 +37,16 @@ function PanelToggle({ off, onClick, disabled, title, Icon, OffIcon }) {
 /**
  * UserPanel
  * The "who you are" strip at the bottom of the sidebars. Clicking the
- * avatar/name opens your own profile card above it; the mic and deafen
- * toggles work in and out of calls (state carries into the next call).
+ * avatar/name opens your own profile card above it; right-clicking it opens a
+ * menu to set your status or log out. The mic and deafen toggles work in and
+ * out of calls (state carries into the next call).
  */
 export default function UserPanel() {
-  const { currentUser, isConnected } = useApp();
+  const { currentUser, ownStatus } = useApp();
   const { voiceMuted, voiceDeafened, toggleMute, toggleDeafen, voiceStatus, voiceParticipants } = useVoice();
   const [anchorRect, setAnchorRect] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y } of the right-click menu
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
   const btnRef = useRef(null);
 
   if (!currentUser) return null;
@@ -64,6 +72,11 @@ export default function UserPanel() {
         // mousedown so a second click acts as a toggle instead.
         onMouseDown={e => { if (open) e.stopPropagation(); }}
         onClick={() => setAnchorRect(open ? null : btnRef.current.getBoundingClientRect())}
+        onContextMenu={e => {
+          e.preventDefault();
+          setAnchorRect(null);
+          setCtxMenu({ x: e.clientX, y: e.clientY });
+        }}
         style={{
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.5rem',
           padding: '0.2rem 0.25rem', borderRadius: '6px', border: 'none',
@@ -79,12 +92,7 @@ export default function UserPanel() {
           transition: 'box-shadow 0.15s ease-in-out',
         }}>
           <Avatar userId={currentUser.id} name={currentUser.username} size={32} color={currentUser.color} />
-          <div style={{
-            position: 'absolute', bottom: 0, right: 0,
-            width: 10, height: 10, borderRadius: '50%',
-            background: isConnected ? 'var(--success)' : 'var(--text-subtle)',
-            border: '2px solid var(--bg-user-panel)',
-          }} />
+          <AvatarStatusDot presence={ownStatus.presence} size={8} ring="var(--bg-user-panel)" />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -96,8 +104,14 @@ export default function UserPanel() {
           >
             {currentUser.username}
           </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {isConnected ? '● Online' : '○ Offline'}
+          <div
+            title={ownStatus.message || undefined}
+            style={{
+              fontSize: '0.7rem', color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          >
+            {ownStatus.message || STATUS_META[ownStatus.presence].label}
           </div>
         </div>
       </button>
@@ -118,6 +132,24 @@ export default function UserPanel() {
         Icon={HeadphonesIcon}
         OffIcon={HeadphonesOffIcon}
       />
+
+      {ctxMenu && (
+        <StatusMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          label="Set status"
+          onClose={() => setCtxMenu(null)}
+          onCustom={() => setStatusModalOpen(true)}
+        >
+          <MenuItem
+            icon={LogoutIcon}
+            label="Log out"
+            variant="danger"
+            onClick={() => { localStorage.removeItem('jwt'); navigateToRoot(); }}
+          />
+        </StatusMenu>
+      )}
+      {statusModalOpen && <CustomStatusModal onClose={() => setStatusModalOpen(false)} />}
 
       {open && (
         <UserPopout

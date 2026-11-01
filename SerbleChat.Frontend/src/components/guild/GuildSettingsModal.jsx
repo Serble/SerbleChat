@@ -17,6 +17,7 @@ import WebhooksTab from './WebhooksTab.jsx';
 import { allowed, ALLOW } from './permissions.jsx';
 import useIconProbe from './useIconProbe.js';
 import useAutoSave from './useAutoSave.js';
+import { useDateFormat } from '../../dateFormat.js';
 import { MutedText, DangerZone, DangerRow } from './common.jsx';
 import {
   GearIcon, CheckIcon, TrashIcon, PlusIcon, TagIcon, ShieldIcon, LinkIcon, HammerIcon, ClipboardIcon, WebhookIcon,
@@ -214,6 +215,7 @@ function InvitesTab({ guildId }) {
 // ─── Bans ─────────────────────────────────────────────────────────────────────
 
 function BanRow({ ban, onUnban, unbanning }) {
+  const { formatDate } = useDateFormat();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -228,7 +230,7 @@ function BanRow({ ban, onUnban, unbanning }) {
   const expires = isPermanent ? null : new Date(ban.until);
   const expiry = isPermanent
     ? 'Permanent'
-    : expires < new Date() ? `Expired ${expires.toLocaleDateString()}` : `Until ${expires.toLocaleDateString()}`;
+    : expires < new Date() ? `Expired ${formatDate(expires)}` : `Until ${formatDate(expires)}`;
 
   return (
     <ListRow

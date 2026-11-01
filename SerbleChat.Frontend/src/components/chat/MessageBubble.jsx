@@ -10,6 +10,7 @@ import { BlockIcon, EditIcon, TrashIcon, MoreIcon } from '../../icons.jsx';
 import { TextArea } from '../ui/index.js';
 import { mdComponents } from './markdown.jsx';
 import { extractInviteIds, extractMessageLinks, extractFileUrls, parseUtcDate, isWebhookMessage, webhookAvatarSrc } from './utils.js';
+import { useDateFormat, formatTime, formatDate, formatDateLong } from '../../dateFormat.js';
 import './chat.css';
 
 const EDITOR_MAX_HEIGHT = 320;
@@ -19,13 +20,19 @@ function autosize(el) {
   el.style.height = Math.min(el.scrollHeight, EDITOR_MAX_HEIGHT) + 'px';
 }
 
-function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 /** Full date + time for timestamp tooltips. */
 function formatFullDate(date) {
-  return date.toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${formatDateLong(date)}, ${formatTime(date)}`;
+}
+
+/** Header timestamp: the time today, "Yesterday at …", or the date and time before that. */
+function formatHeaderTime(date) {
+  const now = new Date();
+  const startOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(date)) / (24 * 3600 * 1000));
+  if (days === 0) return formatTime(date);
+  if (days === 1) return `Yesterday at ${formatTime(date)}`;
+  return `${formatDate(date)} ${formatTime(date)}`;
 }
 
 /** Author of a message, from the user cache on first paint when possible. Null for webhook messages. */
@@ -89,6 +96,7 @@ function MessageEditor({ initialContent, onSave, onCancel }) {
 
 /** Message text plus any invite / message-link / file embeds found in it. */
 function MessageContent({ msg, mentionData, resolveUser, onUserClick, onImageContextMenu }) {
+  useDateFormat();  // re-render the "Edited" tooltip when the format settings change
   const inviteIds    = useMemo(() => extractInviteIds(msg.content), [msg.content]);
   const messageLinks = useMemo(() => extractMessageLinks(msg.content), [msg.content]);
   const fileUrls     = useMemo(() => extractFileUrls(msg.content), [msg.content]);
@@ -161,6 +169,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   currentUserId, canManageMsgs, onStartEdit, onDelete, onMore,
 }) {
   const author = useAuthor(msg.authorId, peekUser, resolveUser);
+  useDateFormat();  // memoised, so subscribe to format changes explicitly
   const pending = !!msg._pending;
   const webhook = isWebhookMessage(msg);
   const authorName = webhook ? msg.webhookUsername : author?.username;
@@ -224,7 +233,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               </UserInteraction>
             )}
             <time className="msg-time" title={pending ? undefined : formatFullDate(date)}>
-              {pending ? 'Sending…' : formatTime(date)}
+              {pending ? 'Sending…' : formatHeaderTime(date)}
             </time>
           </div>
         )}

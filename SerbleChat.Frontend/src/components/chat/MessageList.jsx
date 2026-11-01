@@ -4,6 +4,7 @@ import { MessageBubble, BlockedGroupBubble } from './MessageBubble.jsx';
 import { markMessagesAsRead } from '../../api.js';
 import { parseUtcDate, senderKey } from './utils.js';
 import { HashIcon, PeopleIcon, ArrowDownIcon } from '../../icons.jsx';
+import { useDateFormat, formatDateLong } from '../../dateFormat.js';
 import './chat.css';
 
 // Consecutive messages from the same author within this window are grouped
@@ -25,10 +26,7 @@ function formatDay(d) {
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
   if (dayKey(d) === dayKey(today)) return 'Today';
   if (dayKey(d) === dayKey(yesterday)) return 'Yesterday';
-  return d.toLocaleDateString([], {
-    weekday: 'long', day: 'numeric', month: 'long',
-    year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric',
-  });
+  return formatDateLong(d, { year: d.getFullYear() !== today.getFullYear() });
 }
 
 /**
@@ -81,6 +79,7 @@ function buildUnits(messages, isBlocked, blockedMode) {
 }
 
 function DayDivider({ date }) {
+  useDateFormat();  // re-render when the date format changes
   return (
     <div className="msg-divider" role="separator">
       <span>{formatDay(date)}</span>
