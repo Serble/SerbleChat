@@ -151,7 +151,10 @@ function MemberRow({ member, ownerId, guildId }) {
           {member.username}
         </span>
         {isOwner && (
-          <CrownIcon size={14} title="Owner" />
+          // Tooltip lives on a wrapper: a title attribute on an <svg> isn't shown
+          <span title="Owner" style={{ display: 'flex', color: '#f0b232', flexShrink: 0 }}>
+            <CrownIcon size={16} />
+          </span>
         )}
       </div>
     </UserInteraction>

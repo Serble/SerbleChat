@@ -145,7 +145,19 @@ export function PeopleIcon(p) {
   return <Svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Svg>;
 }
 export function CrownIcon(p) {
-  return <Svg {...p}><path d="M2 20h20M4 20 6 9l6 5 6-5 2 11"/><path d="M12 4v5"/></Svg>;
+  // Filled: three points with ball tips over a separate band. Stroke on the body
+  // only, to round its corners; the balls/band are unstroked so they stay crisp.
+  return (
+    <Svg fill="currentColor" strokeWidth={1.5} {...p}>
+      <path d="M3 8.5 7.5 12 12 5.5l4.5 6.5L21 8.5l-2 9H5z"/>
+      <g stroke="none">
+        <circle cx="3" cy="7.5" r="1.7"/>
+        <circle cx="12" cy="4.2" r="1.9"/>
+        <circle cx="21" cy="7.5" r="1.7"/>
+        <rect x="5" y="19" width="14" height="2.2" rx="1.1"/>
+      </g>
+    </Svg>
+  );
 }
 export function WaveIcon(p) {
   return <Svg {...p}><path d="M18 11.5a2.5 2.5 0 0 1 0 5H12a6 6 0 0 1-6-6V7a1 1 0 0 1 2 0v3.5"/><path d="M10 10.5V5a1 1 0 0 1 2 0v5.5"/><path d="M14 10.5V6a1 1 0 0 1 2 0v4.5"/><path d="M18 11.5V8a1 1 0 0 0-2 0v3.5"/></Svg>;
