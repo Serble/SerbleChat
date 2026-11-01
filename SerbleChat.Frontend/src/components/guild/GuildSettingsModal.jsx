@@ -13,12 +13,13 @@ import {
 import Avatar from '../Avatar.jsx';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
+import WebhooksTab from './WebhooksTab.jsx';
 import { allowed, ALLOW } from './permissions.jsx';
 import useIconProbe from './useIconProbe.js';
 import useAutoSave from './useAutoSave.js';
 import { MutedText, DangerZone, DangerRow } from './common.jsx';
 import {
-  GearIcon, CheckIcon, TrashIcon, PlusIcon, TagIcon, ShieldIcon, LinkIcon, HammerIcon, ClipboardIcon,
+  GearIcon, CheckIcon, TrashIcon, PlusIcon, TagIcon, ShieldIcon, LinkIcon, HammerIcon, ClipboardIcon, WebhookIcon,
 } from '../../icons.jsx';
 
 const inviteLink = id => `${FRONTEND_URL}/invite/${id}`;
@@ -287,12 +288,14 @@ export default function GuildSettingsModal({ guild, onClose, onSaved, onDeleted,
   const canManageGuild = allowed(perms, 'manageGuild');
   const canManageRoles = allowed(perms, 'manageRoles');
   const canManageBans  = allowed(perms, 'banMembers');
+  const canManageHooks = allowed(perms, 'manageWebhooks');
 
   const tabs = [
     canManageGuild && { id: 'overview',     label: 'Overview',            icon: GearIcon,   section: 'Guild' },
     // Always visible (read-only without manageRoles)
     { id: 'roles', label: 'Roles', icon: TagIcon, section: 'Guild' },
     canManageGuild && { id: 'defaultPerms', label: 'Default Perms',       icon: ShieldIcon, section: 'Guild' },
+    canManageHooks && { id: 'webhooks',     label: 'Webhooks',            icon: WebhookIcon, section: 'Guild' },
     canManageGuild && { id: 'invites',      label: 'Invites',             icon: LinkIcon,   section: 'Members' },
     canManageBans  && { id: 'bans',         label: 'Bans',                icon: HammerIcon, section: 'Members' },
   ].filter(Boolean);
@@ -327,6 +330,7 @@ export default function GuildSettingsModal({ guild, onClose, onSaved, onDeleted,
       {tab === 'defaultPerms' && <DefaultPermsTab guild={guild} onSaved={onSaved} />}
       {tab === 'invites'      && <InvitesTab guildId={guild.id} />}
       {tab === 'bans'         && <BansTab guildId={guild.id} />}
+      {tab === 'webhooks'     && <WebhooksTab guildId={guild.id} />}
     </TabbedModal>
   );
 }

@@ -494,6 +494,85 @@ export function getGuildIconUrl(guildId) {
   return `${S3_PUBLIC_URL}/guild-icons/${encodeURIComponent(guildId)}.webp`;
 }
 
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+
+/** GET /guild/:id/webhooks – list a guild's webhooks (needs Manage Webhooks) */
+export async function getGuildWebhooks(guildId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /guild/:id/webhooks – create a webhook that posts into channelId */
+export async function createGuildWebhook(guildId, { name, channelId }) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, channelId }),
+  });
+  return handle(res);
+}
+
+/** PATCH /guild/:id/webhooks/:webhookId – rename it or point it at another channel */
+export async function updateGuildWebhook(guildId, webhookId, patch) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks/${encodeURIComponent(webhookId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return handle(res);
+}
+
+/** POST /guild/:id/webhooks/:webhookId/token – new token; the old URL stops working */
+export async function regenerateGuildWebhookToken(guildId, webhookId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks/${encodeURIComponent(webhookId)}/token`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:id/webhooks/:webhookId */
+export async function deleteGuildWebhook(guildId, webhookId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks/${encodeURIComponent(webhookId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** PUT /guild/:id/webhooks/:webhookId/avatar */
+export async function uploadGuildWebhookAvatar(guildId, webhookId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks/${encodeURIComponent(webhookId)}/avatar`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: formData,
+  });
+  return handle(res);
+}
+
+/** DELETE /guild/:id/webhooks/:webhookId/avatar */
+export async function deleteGuildWebhookAvatar(guildId, webhookId) {
+  const res = await fetch(`${BASE}/guild/${encodeURIComponent(guildId)}/webhooks/${encodeURIComponent(webhookId)}/avatar`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
+/** Helper: the public URL integrations post to (Discord-compatible) */
+export function getWebhookUrl(webhook) {
+  const base = new URL(BASE, window.location.origin).href.replace(/\/$/, '');
+  return `${base}/webhooks/${webhook.id}/${webhook.token}`;
+}
+
+/** Helper: construct a webhook's own avatar URL (404s when it has none) */
+export function getWebhookAvatarUrl(webhookId) {
+  const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
+  return `${S3_PUBLIC_URL}/webhook-avatars/${encodeURIComponent(webhookId)}.webp`;
+}
+
 /** PATCH /guild/:id  – update guild (name and/or defaultPermissions) */
 export async function updateGuild(id, patch) {
   // Accept either (id, nameString) for legacy callers or (id, {name, defaultPermissions})

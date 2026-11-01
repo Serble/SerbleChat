@@ -20,6 +20,7 @@ const PERMS = {
   manageRoles:    { label: 'Manage Roles',    desc: 'Create, edit and delete roles' },
   manageChannels: { label: 'Manage Channels', desc: 'Create, rename and delete channels', channelLabel: 'Manage Channel', channelDesc: 'Rename or delete this channel' },
   createInvites:  { label: 'Create Invites',  desc: 'Generate invite links' },
+  manageWebhooks: { label: 'Manage Webhooks', desc: 'Create, edit and delete webhooks, and see their URLs', channelDesc: 'Point webhooks at this channel' },
   kickMembers:    { label: 'Kick Members',    desc: 'Remove members from the guild' },
   banMembers:     { label: 'Ban Members',     desc: 'Ban members from the guild' },
   viewChannel:    { label: 'View Channels',   desc: 'See channels and read their messages', channelLabel: 'View Channel', channelDesc: 'See this channel and read its messages' },
@@ -35,7 +36,7 @@ const PERMS = {
 };
 
 const GROUPS = {
-  general: { title: 'General',     keys: ['administrator', 'manageGuild', 'manageRoles', 'manageChannels', 'createInvites'] },
+  general: { title: 'General',     keys: ['administrator', 'manageGuild', 'manageRoles', 'manageChannels', 'manageWebhooks', 'createInvites'] },
   members: { title: 'Members',     keys: ['kickMembers', 'banMembers'] },
   text:    { title: 'Text',        keys: ['viewChannel', 'sendMessages', 'createPolls', 'manageMessages'] },
   voice:   { title: 'Voice',       keys: ['joinVoice', 'speak', 'videoStream', 'muteMembers', 'deafenMembers', 'moveMembers'] },
@@ -48,7 +49,7 @@ export const GUILD_PERM_GROUPS = [GROUPS.general, GROUPS.members, GROUPS.text, G
 export const CHANNEL_PERM_GROUPS = [
   GROUPS.text,
   GROUPS.voice,
-  { title: 'Channel', keys: ['manageChannels', 'createInvites'] },
+  { title: 'Channel', keys: ['manageChannels', 'manageWebhooks', 'createInvites'] },
   { title: 'Guild-wide', keys: ['administrator', 'manageGuild', 'manageRoles', 'kickMembers', 'banMembers'] },
 ];
 

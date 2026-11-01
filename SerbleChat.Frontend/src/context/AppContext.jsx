@@ -507,6 +507,7 @@ export function AppProvider({ children }) {
 
   // Stable reference — uses ref for cache so no state update is needed
   const resolveUser = useCallback(async (id) => {
+    if (!id) return null;  // webhook messages have no user author
     if (userCacheRef.current[id]) return userCacheRef.current[id];
     try {
       const u = await getAccountById(id);

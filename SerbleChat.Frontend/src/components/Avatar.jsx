@@ -12,13 +12,14 @@ import { avatarBg } from '../userColor.js';
  * @param {number} [props.size=64] - Avatar size in pixels
  * @param {string} [props.color] - Optional custom color for the fallback avatar
  * @param {Object} [props.style] - Additional inline styles
+ * @param {string} [props.src] - Image to show instead of the user's profile picture (e.g. a webhook avatar)
  */
-export default function Avatar({ userId, name, size = 64, color, style = {} }) {
+export default function Avatar({ userId, name, size = 64, color, style = {}, src }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
 
   const initial = name ? name[0].toUpperCase() : '?';
-  const pfpUrl = userId ? getProfilePictureUrl(userId) : null;
+  const pfpUrl = src ?? (userId ? getProfilePictureUrl(userId) : null);
 
   const baseStyle = {
     width: size,
@@ -30,8 +31,8 @@ export default function Avatar({ userId, name, size = 64, color, style = {} }) {
     ...style,
   };
 
-  // If no userId or image failed to load, show fallback
-  if (!userId || imageError) {
+  // If there's no image or it failed to load, show fallback
+  if (!pfpUrl || imageError) {
     return (
       <div
         style={{

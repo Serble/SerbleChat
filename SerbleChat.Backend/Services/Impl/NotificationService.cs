@@ -49,7 +49,7 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             ? await users.GetUsersGuildNotificationPreferences(userData.Keys, channel.GuildId.Value)
             : new Dictionary<string, UserGuildNotificationPreferences>();
 
-        if (message.AuthorNavigation == null!) {
+        if (message.AuthorNavigation == null && message.AuthorId != null) {
             // try and load using our list of users (they should be a member of the channel if they sent a message in it, so they should be in the list)
             if (userData.TryGetValue(message.AuthorId, out ChatUser? author)) {
                 message.AuthorNavigation = author;

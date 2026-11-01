@@ -401,7 +401,6 @@ namespace SerbleChat.Backend.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<string>("AuthorId")
-                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
@@ -419,6 +418,17 @@ namespace SerbleChat.Backend.Migrations
                     b.Property<DateTime?>("EditedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("WebhookAvatarUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)");
+
+                    b.Property<long?>("WebhookId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("WebhookUsername")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorId");
@@ -426,6 +436,8 @@ namespace SerbleChat.Backend.Migrations
                     b.HasIndex("ChannelId");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("WebhookId");
 
                     b.ToTable("Messages");
                 });
@@ -747,6 +759,52 @@ namespace SerbleChat.Backend.Migrations
                     b.ToTable("UserWebNotificationHooks");
                 });
 
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Webhook", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ChannelId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedById")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<long?>("GuildId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("HasAvatar")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("GuildId");
+
+                    b.ToTable("Webhooks");
+                });
+
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Channel", b =>
                 {
                     b.HasOne("SerbleChat.Backend.Database.Structs.Guild", "GuildNavigation")
@@ -811,6 +869,9 @@ namespace SerbleChat.Backend.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<int>("ManageRoles")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("ManageWebhooks")
                                 .HasColumnType("int");
 
                             b1.Property<int>("MoveMembers")
@@ -1078,6 +1139,9 @@ namespace SerbleChat.Backend.Migrations
                             b1.Property<int>("ManageRoles")
                                 .HasColumnType("int");
 
+                            b1.Property<int>("ManageWebhooks")
+                                .HasColumnType("int");
+
                             b1.Property<int>("MoveMembers")
                                 .HasColumnType("int");
 
@@ -1183,8 +1247,7 @@ namespace SerbleChat.Backend.Migrations
                     b.HasOne("SerbleChat.Backend.Database.Structs.ChatUser", "AuthorNavigation")
                         .WithMany()
                         .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("SerbleChat.Backend.Database.Structs.Channel", "ChannelNavigation")
                         .WithMany()
@@ -1192,9 +1255,16 @@ namespace SerbleChat.Backend.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Webhook", "WebhookNavigation")
+                        .WithMany()
+                        .HasForeignKey("WebhookId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("AuthorNavigation");
 
                     b.Navigation("ChannelNavigation");
+
+                    b.Navigation("WebhookNavigation");
                 });
 
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.MessageMention", b =>
@@ -1309,6 +1379,9 @@ namespace SerbleChat.Backend.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<int>("ManageRoles")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("ManageWebhooks")
                                 .HasColumnType("int");
 
                             b1.Property<int>("MoveMembers")
@@ -1472,6 +1545,31 @@ namespace SerbleChat.Backend.Migrations
                         .IsRequired();
 
                     b.Navigation("UserNavigation");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Webhook", b =>
+                {
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Channel", "ChannelNavigation")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SerbleChat.Backend.Database.Structs.ChatUser", "CreatedByNavigation")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Guild", "GuildNavigation")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("ChannelNavigation");
+
+                    b.Navigation("CreatedByNavigation");
+
+                    b.Navigation("GuildNavigation");
                 });
 
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Poll", b =>

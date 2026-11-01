@@ -20,7 +20,8 @@ public record GuildPermissions(
     PermissionState MoveMembers = PermissionState.Inherit,
     PermissionState VideoStream = PermissionState.Inherit,
     PermissionState ViewChannel = PermissionState.Inherit,
-    PermissionState CreatePolls = PermissionState.Inherit
+    PermissionState CreatePolls = PermissionState.Inherit,
+    PermissionState ManageWebhooks = PermissionState.Inherit
 ) {
     public static readonly GuildPermissions Default = new() {
         Administrator = PermissionState.Deny,
@@ -39,7 +40,8 @@ public record GuildPermissions(
         MoveMembers = PermissionState.Deny,
         VideoStream = PermissionState.Allow,
         ViewChannel = PermissionState.Allow,
-        CreatePolls = PermissionState.Allow
+        CreatePolls = PermissionState.Allow,
+        ManageWebhooks = PermissionState.Deny
     };
 
     /// <summary>All permissions granted — returned for guild owners.</summary>
@@ -68,7 +70,8 @@ public record GuildPermissions(
             MoveMembers:      overrides.MoveMembers      != PermissionState.Inherit ? overrides.MoveMembers      : MoveMembers,
             VideoStream:      overrides.VideoStream      != PermissionState.Inherit ? overrides.VideoStream      : VideoStream,
             ViewChannel:      overrides.ViewChannel      != PermissionState.Inherit ? overrides.ViewChannel      : ViewChannel,
-            CreatePolls:      overrides.CreatePolls      != PermissionState.Inherit ? overrides.CreatePolls      : CreatePolls
+            CreatePolls:      overrides.CreatePolls      != PermissionState.Inherit ? overrides.CreatePolls      : CreatePolls,
+            ManageWebhooks:   overrides.ManageWebhooks   != PermissionState.Inherit ? overrides.ManageWebhooks   : ManageWebhooks
         );
     }
 

@@ -109,7 +109,7 @@ self.addEventListener('push', event => {
 
   if (payload.type === 'message' && payload.message) {
     const msg = payload.message;
-    title = msg.author.username ?? msg.author_id;
+    title = msg.author?.username ?? msg.webhook_username ?? msg.author_id ?? 'Serble Chat';
     body = msg.content ?? 'New message';
     tag = `message:${msg.channel_id}`;
     data = { channelId: msg.channel_id };

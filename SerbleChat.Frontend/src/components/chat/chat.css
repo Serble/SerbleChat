@@ -222,6 +222,8 @@
 .msg-gutter { width: 40px; flex-shrink: 0; }
 .msg-avatar { margin-top: 0.125rem; cursor: pointer; border-radius: 50%; }
 .msg-avatar:active { transform: translateY(1px); }
+.msg-avatar--static { cursor: default; }
+.msg-avatar--static:active { transform: none; }
 .msg-gutter-time {
   display: block;
   height: var(--msg-line);
@@ -239,6 +241,22 @@
 .msg-header { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
 .msg-author { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg-author:hover { text-decoration: underline; }
+.msg-author--static { cursor: default; }
+.msg-author--static:hover { text-decoration: none; }
+/* Marks a message posted by a webhook rather than a person */
+.msg-bot-tag {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 .msg-author-placeholder {
   display: inline-block;
   width: 6rem;
@@ -383,6 +401,8 @@
 .msg-md table { margin: 0.35rem 0; border-collapse: collapse; font-size: 0.875rem; }
 .msg-md th, .msg-md td { padding: 0.25rem 0.6rem; border: 1px solid var(--border); }
 .msg-md img { max-width: 100%; }
+/* Images from webhook embeds (rendered as quotes) shouldn't take over the chat */
+.msg-md blockquote img { display: block; max-height: 300px; margin: 0.3rem 0; border-radius: 4px; }
 .msg-edited { font-size: 0.68rem; color: var(--text-muted); cursor: default; user-select: none; }
 
 .msg-md--collapsed {

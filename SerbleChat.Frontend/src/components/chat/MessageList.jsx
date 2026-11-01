@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import Avatar from '../Avatar.jsx';
 import { MessageBubble, BlockedGroupBubble } from './MessageBubble.jsx';
 import { markMessagesAsRead } from '../../api.js';
-import { parseUtcDate } from './utils.js';
+import { parseUtcDate, senderKey } from './utils.js';
 import { HashIcon, PeopleIcon, ArrowDownIcon } from '../../icons.jsx';
 import './chat.css';
 
@@ -43,7 +43,7 @@ function buildUnits(messages, isBlocked, blockedMode) {
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    const blocked = !msg._pending && isBlocked(msg.authorId);
+    const blocked = !msg._pending && msg.authorId != null && isBlocked(msg.authorId);
     if (blocked && blockedMode === 'hidden') continue;
 
     const date = parseUtcDate(msg.createdAt);
@@ -72,7 +72,7 @@ function buildUnits(messages, isBlocked, blockedMode) {
       continue;
     }
 
-    const grouped = !!prev && prev.authorId === msg.authorId &&
+    const grouped = !!prev && senderKey(prev) === senderKey(msg) &&
       date - parseUtcDate(prev.createdAt) < GROUP_WINDOW_MS;
     units.push({ type: 'message', key: msg._key ?? msg.id, msg, grouped });
     prev = msg;

@@ -112,6 +112,8 @@ builder.Services.AddHostedService<NotificationBackgroundService>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 builder.Services.AddScoped<IVoiceManager, VoiceManager>();
 builder.Services.AddScoped<IImagesService, ImagesService>();
+builder.Services.AddScoped<IMessageSender, MessageSender>();
+builder.Services.AddScoped<IWebhookRepo, WebhookRepo>();
 
 // push notifications
 builder.Services.AddMemoryCache();

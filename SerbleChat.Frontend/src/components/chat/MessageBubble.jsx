@@ -9,7 +9,7 @@ import { MentionText } from './MentionRenderer.jsx';
 import { BlockIcon, EditIcon, TrashIcon, MoreIcon } from '../../icons.jsx';
 import { TextArea } from '../ui/index.js';
 import { mdComponents } from './markdown.jsx';
-import { extractInviteIds, extractMessageLinks, extractFileUrls, parseUtcDate } from './utils.js';
+import { extractInviteIds, extractMessageLinks, extractFileUrls, parseUtcDate, isWebhookMessage, webhookAvatarSrc } from './utils.js';
 import './chat.css';
 
 const EDITOR_MAX_HEIGHT = 320;
@@ -28,10 +28,11 @@ function formatFullDate(date) {
   return date.toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Author of a message, from the user cache on first paint when possible. */
+/** Author of a message, from the user cache on first paint when possible. Null for webhook messages. */
 function useAuthor(authorId, peekUser, resolveUser) {
-  const [author, setAuthor] = useState(() => peekUser?.(authorId) ?? null);
+  const [author, setAuthor] = useState(() => (authorId ? peekUser?.(authorId) : null) ?? null);
   useEffect(() => {
+    if (!authorId) { setAuthor(null); return; }
     let cancelled = false;
     resolveUser(authorId).then(u => { if (!cancelled) setAuthor(u); });
     return () => { cancelled = true; };
@@ -161,6 +162,8 @@ export const MessageBubble = React.memo(function MessageBubble({
 }) {
   const author = useAuthor(msg.authorId, peekUser, resolveUser);
   const pending = !!msg._pending;
+  const webhook = isWebhookMessage(msg);
+  const authorName = webhook ? msg.webhookUsername : author?.username;
   const date = parseUtcDate(msg.createdAt);
   const isOwn = msg.authorId === currentUserId;
   const mentionsMe = !!currentUserId && !isOwn && !!msg.content?.includes(`<@user:${currentUserId}>`);
@@ -191,22 +194,35 @@ export const MessageBubble = React.memo(function MessageBubble({
         </div>
       ) : (
         <div className="msg-gutter">
-          <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
-            <div className="msg-avatar">
-              <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} />
+          {webhook ? (
+            <div className="msg-avatar msg-avatar--static">
+              <Avatar key={webhookAvatarSrc(msg)} src={webhookAvatarSrc(msg)} name={authorName} size={40} />
             </div>
-          </UserInteraction>
+          ) : (
+            <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
+              <div className="msg-avatar">
+                <Avatar userId={msg.authorId} name={author?.username} size={40} color={author?.color} />
+              </div>
+            </UserInteraction>
+          )}
         </div>
       )}
 
       <div className="msg-main">
         {!grouped && (
           <div className="msg-header">
-            <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
-              <span className="msg-author" style={{ color: getColor(msg.authorId, author?.username, author?.color) }}>
-                {author?.username ?? <span className="msg-author-placeholder" />}
-              </span>
-            </UserInteraction>
+            {webhook ? (
+              <>
+                <span className="msg-author msg-author--static" style={{ color: getColor(null, authorName) }}>{authorName}</span>
+                <span className="msg-bot-tag" title="Posted by a webhook">Webhook</span>
+              </>
+            ) : (
+              <UserInteraction userId={msg.authorId} username={author?.username} guildId={guildId} disabled={pending}>
+                <span className="msg-author" style={{ color: getColor(msg.authorId, author?.username, author?.color) }}>
+                  {author?.username ?? <span className="msg-author-placeholder" />}
+                </span>
+              </UserInteraction>
+            )}
             <time className="msg-time" title={pending ? undefined : formatFullDate(date)}>
               {pending ? 'Sending…' : formatTime(date)}
             </time>

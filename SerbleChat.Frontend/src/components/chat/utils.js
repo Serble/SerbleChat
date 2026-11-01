@@ -1,4 +1,21 @@
 // Shared helpers for parsing message content and timestamps.
+import { getWebhookAvatarUrl } from '../../api.js';
+
+/** Messages from webhooks have no user author (the webhook itself may since have been deleted). */
+export function isWebhookMessage(msg) {
+  return msg.authorId == null && !msg._pending;
+}
+
+/** Who a message is "from", for grouping runs: a user, or a webhook posting under a given name. */
+export function senderKey(msg) {
+  return msg.authorId ?? `webhook:${msg.webhookId ?? ''}:${msg.webhookUsername ?? ''}`;
+}
+
+/** Avatar for a webhook message: the per-message override, else the webhook's own (may 404). */
+export function webhookAvatarSrc(msg) {
+  if (msg.webhookAvatarUrl) return msg.webhookAvatarUrl;
+  return msg.webhookId != null ? getWebhookAvatarUrl(msg.webhookId) : null;
+}
 
 // Regex that matches invite links anywhere in a message.
 // Intentionally origin-agnostic so that links shared from a different

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getMessage, getChannel } from '../../api.js';
 import { useApp } from '../../context/AppContext.jsx';
 import Avatar from '../Avatar.jsx';
-import { parseUtcDate } from './utils.js';
+import { parseUtcDate, isWebhookMessage, webhookAvatarSrc } from './utils.js';
 import './chat.css';
 
 const cardStyle = {
@@ -82,7 +82,8 @@ export default function MessageCard({ channelId, messageId }) {
   }
 
   // Role colour (for guild channels) > profile colour > generated hue
-  const authorColor = getMemberColor(channel?.guildId ?? null, message.authorId, author?.username, author?.color);
+  const authorName = isWebhookMessage(message) ? message.webhookUsername : author?.username;
+  const authorColor = getMemberColor(channel?.guildId ?? null, message.authorId, authorName, author?.color);
   const timestamp = parseUtcDate(message.createdAt).toLocaleString([], {
     month: 'short',
     day: 'numeric',
@@ -105,7 +106,8 @@ export default function MessageCard({ channelId, messageId }) {
       {/* Author avatar */}
       <Avatar
         userId={message.authorId}
-        name={author?.username}
+        src={isWebhookMessage(message) ? webhookAvatarSrc(message) : undefined}
+        name={authorName}
         size={32}
         color={author?.color}
         style={{ flexShrink: 0, marginTop: 2 }}
@@ -144,7 +146,7 @@ export default function MessageCard({ channelId, messageId }) {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap'
           }}>
-            {author?.username ?? message.authorId.slice(0, 10)}
+            {authorName ?? message.authorId?.slice(0, 10)}
           </span>
           <span style={{ fontSize: '0.65rem', color: 'var(--text-subtle)', flexShrink: 0 }}>
             {timestamp}

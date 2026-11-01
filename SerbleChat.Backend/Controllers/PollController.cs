@@ -19,7 +19,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("channel/{channelId:long}")]
 [Authorize]
 public class PollController(IChannelRepo channels, IGuildRepo guilds, IPollRepo polls,
-    IHubContext<ChatHub> updates, INotificationService notifications) : ControllerBase {
+    IHubContext<ChatHub> updates, IMessageSender sender) : ControllerBase {
 
     [HttpPost("poll")]
     public async Task<ActionResult<Message>> CreatePoll(long channelId, [FromBody] CreatePollBody body) {
@@ -80,8 +80,7 @@ public class PollController(IChannelRepo channels, IGuildRepo guilds, IPollRepo 
         await polls.CreatePoll(msg, poll);
 
         msg.Poll = PollResponse.FromPoll(poll);
-        await updates.Clients.Group($"channel-{channel.Id}").SendAsync("NewMessage", msg);
-        notifications.EnqueueMessageProcessing(channel, msg, []);
+        await sender.Deliver(channel, msg, parseMentions: false);
         return Ok(msg);
     }
 

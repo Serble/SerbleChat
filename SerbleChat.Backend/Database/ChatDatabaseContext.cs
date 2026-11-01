@@ -29,6 +29,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<Poll> Polls { get; set; } = null!;
     public DbSet<PollOption> PollOptions { get; set; } = null!;
     public DbSet<PollVote> PollVotes { get; set; } = null!;
+    public DbSet<Webhook> Webhooks { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Message>()
@@ -114,6 +115,33 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
 
         modelBuilder.Entity<PollVote>()
             .HasIndex(v => new { v.PollId, v.UserId });
+
+        modelBuilder.Entity<Webhook>()
+            .HasOne(w => w.GuildNavigation)
+            .WithMany()
+            .HasForeignKey(w => w.GuildId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Deleting the channel leaves the webhook (and its URL) alive, just unassigned
+        modelBuilder.Entity<Webhook>()
+            .HasOne(w => w.ChannelNavigation)
+            .WithMany()
+            .HasForeignKey(w => w.ChannelId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Webhook messages have no author, but user messages still go when their author does
+        modelBuilder.Entity<Message>()
+            .HasOne(m => m.AuthorNavigation)
+            .WithMany()
+            .HasForeignKey(m => m.AuthorId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Messages outlive their webhook; they keep the copied name
+        modelBuilder.Entity<Message>()
+            .HasOne(m => m.WebhookNavigation)
+            .WithMany()
+            .HasForeignKey(m => m.WebhookId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Channel>()
             .HasOne(c => c.GuildNavigation)

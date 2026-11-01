@@ -800,3 +800,22 @@ select.ui-input { cursor: pointer; }
   0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ── Webhooks (guild settings) ── */
+.webhook-url-row { display: flex; align-items: center; gap: 0.5rem; }
+.webhook-url {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.webhook-item-channel { font-size: 0.7rem; font-weight: 400; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.webhook-item-channel[data-missing='true'] { color: var(--danger); }

@@ -21,9 +21,25 @@ public class Message {
     [JsonProperty(PropertyName = "created_at")]
     public DateTime CreatedAt { get; set; }
     
+    /// <summary>The user who sent it, or null when it came from a webhook.</summary>
     [ForeignKey(nameof(AuthorNavigation)), StringLength(64)]
     [JsonProperty(PropertyName = "author_id")]
-    public string AuthorId { get; set; } = null!;
+    public string? AuthorId { get; set; }
+
+    /// <summary>The webhook that sent it. Null for user messages, and once the webhook is deleted.</summary>
+    [ForeignKey(nameof(WebhookNavigation))]
+    [JsonProperty(PropertyName = "webhook_id")]
+    public long? WebhookId { get; set; }
+
+    /// <summary>Name shown for a webhook message, copied when it was sent so renames don't rewrite history.</summary>
+    [StringLength(WebhookLimits.NameMaxLength)]
+    [JsonProperty(PropertyName = "webhook_username")]
+    public string? WebhookUsername { get; set; }
+
+    /// <summary>Avatar the webhook request asked for. Null means use the webhook's own avatar.</summary>
+    [StringLength(WebhookLimits.AvatarUrlMaxLength)]
+    [JsonProperty(PropertyName = "webhook_avatar_url")]
+    public string? WebhookAvatarUrl { get; set; }
     
     [StringLength(16384)]
     [JsonProperty(PropertyName = "content")]
@@ -40,8 +56,15 @@ public class Message {
     // Navigation Properties
     [ApiJsonIgnore]
     [JsonProperty(PropertyName = "author")]
-    public ChatUser AuthorNavigation { get; set; } = null!;
+    public ChatUser? AuthorNavigation { get; set; }
+    [ApiJsonIgnore]
+    [NotificationJsonIgnore]
+    public Webhook? WebhookNavigation { get; set; }
     [ApiJsonIgnore]
     [JsonProperty(PropertyName = "channel")]
     public Channel ChannelNavigation { get; set; } = null!;
+}
+
+public static class MessageLimits {
+    public const int ContentMaxLength = 16384;
 }

@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text.RegularExpressions;
 using Livekit.Server.Sdk.Dotnet;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,10 +17,10 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Route("channel")]
 [Authorize]
-public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
+public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
-    IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications,
-    IImagesService images, IFriendshipRepo friends, IPollRepo polls) : ControllerBase {
+    IUnreadsRepo unreads, IVoiceManager voiceManager,
+    IImagesService images, IFriendshipRepo friends, IPollRepo polls, IMessageSender sender) : ControllerBase {
 
     private Task SignalChannelUpdated(long channelId) {
         return updates.Clients.Group("channel-" + channelId).SendAsync("ChannelUpdated", new {
@@ -61,25 +60,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             Content = body.Content,
             CreatedAt = DateTime.UtcNow
         };
-        await msgs.CreateMessage(msg);
-        await updates.Clients.Group($"channel-{channel.Id}").SendAsync("NewMessage", msg);
-        
-        // add all the mentions
-        List<string> mentionedUserIds = [];
-        foreach (Match match in UserMentionsMatcher().Matches(body.Content)) {
-            mentionedUserIds.Add(match.Groups[1].Value);
-        }
-        
-        await updates.Clients.Users(mentionedUserIds).SendAsync("MentionedInMessage", new {
-            MessageId = msg.Id,
-            ChannelId = channel.Id
-        });
-
-        if (mentionedUserIds.Count != 0) {
-            await unreads.AddUserMentions(channelId, msg.Id, mentionedUserIds);
-        }
-        
-        notifications.EnqueueMessageProcessing(channel, msg, mentionedUserIds);
+        await sender.Send(channel, msg);
         return Ok();
     }
 
@@ -641,6 +622,4 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         return Ok();
     }
 
-    [GeneratedRegex("<@user:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})>")]
-    private static partial Regex UserMentionsMatcher();
 }
