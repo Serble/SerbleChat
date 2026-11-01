@@ -10,6 +10,7 @@ import UserPopout from './UserPopout.jsx';
 import MemberList from './MemberList.jsx';
 import AddMembersModal from './AddMembersModal.jsx';
 import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
+import PollCreateModal from './poll/PollCreateModal.jsx';
 import ChatHeader from './chat/ChatHeader.jsx';
 import Composer, { BlockedInputBanner, NoPermissionNotice } from './chat/Composer.jsx';
 import MessageList, { MessageListSkeleton } from './chat/MessageList.jsx';
@@ -47,7 +48,7 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, rememberMessagePolls } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [input, setInput]           = useState('');
@@ -64,6 +65,7 @@ export default function ChatView() {
   );
   const [memberRefreshTick, setMemberRefreshTick] = useState(0);
   const [showAddMembers, setShowAddMembers] = useState(false);
+  const [showCreatePoll, setShowCreatePoll] = useState(false);
   const [leaveBusy, setLeaveBusy]   = useState(false);
   // Mention autocomplete data for the composer and mention chips
   const [mentionData, setMentionData] = useState(EMPTY_MENTION_DATA);
@@ -127,6 +129,7 @@ export default function ChatView() {
       history.hasMore = page.length === MESSAGE_PAGE_SIZE && older.length > 0;
       setHasMore(history.hasMore);
       if (older.length > 0) {
+        rememberMessagePolls(older);
         setMessages(prev => ({ ...prev, [key]: [...older, ...(prev[key] ?? [])] }));
       }
     } catch (err) {
@@ -159,6 +162,8 @@ export default function ChatView() {
   const isAdmin       = myGuildPerms?.administrator === 0;
   const canSend       = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.sendMessages === 0;
   const canManageMsgs = !isGuildChannel || !myGuildPerms || isAdmin || myGuildPerms.manageMessages === 0;
+  // Polls need Send Messages too. Perms from before polls existed lack the key; the server decides then.
+  const canCreatePolls = canSend && (!isGuildChannel || !myGuildPerms || isAdmin || (myGuildPerms.createPolls ?? 0) === 0);
 
   // Memoized so MessageBubble (which is React.memo'd) doesn't re-render just because
   // the parent re-renders with an otherwise unchanged getColor inline lambda.
@@ -306,7 +311,7 @@ export default function ChatView() {
 
   /** Up-arrow in an empty composer: edit your most recent message. Returns true if handled. */
   function editLastOwnMessage() {
-    const ownMessages = channelMessages.filter(m => !m._pending && m.authorId === currentUser?.id);
+    const ownMessages = channelMessages.filter(m => !m._pending && !m.poll && m.authorId === currentUser?.id);
     if (ownMessages.length === 0) return false;
     setEditingMsgId(ownMessages[ownMessages.length - 1].id);
     return true;
@@ -336,6 +341,7 @@ export default function ChatView() {
     setImageCtxMenu(null);
     setPopout(null);
     setDragOver(false);
+    setShowCreatePoll(false);
     // Attachments belong to the draft, which is discarded on channel switch too
     fileUploads.clearFiles();
 
@@ -395,6 +401,7 @@ export default function ChatView() {
       setChannel(ch);
       history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
       setHasMore(history.hasMore);
+      rememberMessagePolls(msgs);
       setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
       setLoading(false);
     }).catch(e => {
@@ -619,7 +626,7 @@ export default function ChatView() {
 
         {/* Voice participants preview (below header buttons, above messages) */}
         {(isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable)) && (
-          <VoiceParticipantPreview channelId={channelId} compact={false} />
+          <VoiceParticipantPreview channelId={channelId} compact={false} canManageMsgs={isGuildChannel && canManageMsgs} />
         )}
 
         <MessageList
@@ -675,6 +682,7 @@ export default function ChatView() {
               onDismissError={() => setSendError(null)}
               onSend={handleSend}
               onEditLast={editLastOwnMessage}
+              onCreatePoll={canCreatePolls ? () => setShowCreatePoll(true) : undefined}
             />
           ) : (
             <NoPermissionNotice />
@@ -691,7 +699,7 @@ export default function ChatView() {
             x={ctxMenu.x}
             y={ctxMenu.y}
             msg={ctxMenu.msg}
-            canEdit={ctxMenu.msg.authorId === currentUser?.id}
+            canEdit={ctxMenu.msg.authorId === currentUser?.id && !ctxMenu.msg.poll}
             canDelete={ctxMenu.msg.authorId === currentUser?.id || canManageMsgs}
             onEdit={() => handleStartEdit(ctxMenu.msg)}
             onDelete={() => handleDelete(ctxMenu.msg)}
@@ -748,6 +756,14 @@ export default function ChatView() {
           /* Desktop: plain flex sibling — only render when open */
           showMembers && <MemberList {...memberListProps} />
         )
+      )}
+
+      {showCreatePoll && (
+        <PollCreateModal
+          channelId={channelId}
+          onClose={() => setShowCreatePoll(false)}
+          onCreated={() => requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; })}
+        />
       )}
 
       {showAddMembers && (

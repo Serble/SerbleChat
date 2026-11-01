@@ -455,6 +455,112 @@ namespace SerbleChat.Backend.Migrations
                     b.ToTable("MessageMentions");
                 });
 
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Poll", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("AllowMultiple")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("AuthorId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<long>("ChannelId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelId");
+
+                    b.HasIndex("MessageId")
+                        .IsUnique();
+
+                    b.ToTable("Polls");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.PollOption", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Index")
+                        .HasColumnType("int");
+
+                    b.Property<long>("PollId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PollId");
+
+                    b.ToTable("PollOptions");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.PollVote", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("OptionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PollId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("OptionId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("PollId", "UserId");
+
+                    b.ToTable("PollVotes");
+                });
+
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Role", b =>
                 {
                     b.Property<long>("Id")
@@ -681,6 +787,9 @@ namespace SerbleChat.Backend.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<int>("CreateInvites")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("CreatePolls")
                                 .HasColumnType("int");
 
                             b1.Property<int>("DeafenMembers")
@@ -945,6 +1054,9 @@ namespace SerbleChat.Backend.Migrations
                             b1.Property<int>("CreateInvites")
                                 .HasColumnType("int");
 
+                            b1.Property<int>("CreatePolls")
+                                .HasColumnType("int");
+
                             b1.Property<int>("DeafenMembers")
                                 .HasColumnType("int");
 
@@ -1104,6 +1216,55 @@ namespace SerbleChat.Backend.Migrations
                     b.Navigation("UserNavigation");
                 });
 
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Poll", b =>
+                {
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Message", "MessageNavigation")
+                        .WithOne()
+                        .HasForeignKey("SerbleChat.Backend.Database.Structs.Poll", "MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MessageNavigation");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.PollOption", b =>
+                {
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Poll", "PollNavigation")
+                        .WithMany("Options")
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PollNavigation");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.PollVote", b =>
+                {
+                    b.HasOne("SerbleChat.Backend.Database.Structs.PollOption", "OptionNavigation")
+                        .WithMany()
+                        .HasForeignKey("OptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SerbleChat.Backend.Database.Structs.Poll", "PollNavigation")
+                        .WithMany("Votes")
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SerbleChat.Backend.Database.Structs.ChatUser", "UserNavigation")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OptionNavigation");
+
+                    b.Navigation("PollNavigation");
+
+                    b.Navigation("UserNavigation");
+                });
+
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Role", b =>
                 {
                     b.HasOne("SerbleChat.Backend.Database.Structs.Guild", "GuildNavigation")
@@ -1124,6 +1285,9 @@ namespace SerbleChat.Backend.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<int>("CreateInvites")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("CreatePolls")
                                 .HasColumnType("int");
 
                             b1.Property<int>("DeafenMembers")
@@ -1308,6 +1472,13 @@ namespace SerbleChat.Backend.Migrations
                         .IsRequired();
 
                     b.Navigation("UserNavigation");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Poll", b =>
+                {
+                    b.Navigation("Options");
+
+                    b.Navigation("Votes");
                 });
 #pragma warning restore 612, 618
         }

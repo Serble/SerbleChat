@@ -24,7 +24,8 @@ const PERMS = {
   banMembers:     { label: 'Ban Members',     desc: 'Ban members from the guild' },
   viewChannel:    { label: 'View Channels',   desc: 'See channels and read their messages', channelLabel: 'View Channel', channelDesc: 'See this channel and read its messages' },
   sendMessages:   { label: 'Send Messages',   desc: 'Post messages in channels', channelDesc: 'Post messages in this channel' },
-  manageMessages: { label: 'Manage Messages', desc: "Delete other members' messages" },
+  manageMessages: { label: 'Manage Messages', desc: "Delete other members' messages and end their polls" },
+  createPolls:    { label: 'Create Polls',    desc: 'Post polls in channels', channelDesc: 'Post polls in this channel' },
   joinVoice:      { label: 'Connect',         desc: 'Join voice channels', channelDesc: "Join this channel's voice call" },
   speak:          { label: 'Speak',           desc: 'Talk in voice channels' },
   videoStream:    { label: 'Video & Screen',  desc: 'Share a camera or screen in voice' },
@@ -36,7 +37,7 @@ const PERMS = {
 const GROUPS = {
   general: { title: 'General',     keys: ['administrator', 'manageGuild', 'manageRoles', 'manageChannels', 'createInvites'] },
   members: { title: 'Members',     keys: ['kickMembers', 'banMembers'] },
-  text:    { title: 'Text',        keys: ['viewChannel', 'sendMessages', 'manageMessages'] },
+  text:    { title: 'Text',        keys: ['viewChannel', 'sendMessages', 'createPolls', 'manageMessages'] },
   voice:   { title: 'Voice',       keys: ['joinVoice', 'speak', 'videoStream', 'muteMembers', 'deafenMembers', 'moveMembers'] },
 };
 

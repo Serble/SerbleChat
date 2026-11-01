@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
@@ -8,7 +9,9 @@ import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, VideoIcon, VideoOffIcon } from '../icons.jsx';
+import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, VideoIcon, VideoOffIcon, PollIcon, ChevronRightIcon } from '../icons.jsx';
+import { useActivePolls } from './poll/useActivePolls.js';
+import './poll/poll.css';
 
 // Helper to safely play sounds with consistent error handling
 const playSoundSafe = (soundName) => {
@@ -301,6 +304,8 @@ export default function VoicePanel({
         </VoiceButton>
       )}
 
+      {canControl && <VoicePollChip channelId={channelId} />}
+
       {/* Camera and screen share buttons */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <VoiceButton
@@ -344,5 +349,31 @@ export default function VoicePanel({
         onApply={handleApplyQualitySettings}
       />
     </div>
+  );
+}
+/**
+ * "Poll: <question>" when the call's channel has polls running, so people in the call
+ * who are looking at another channel notice them. Hidden while viewing that channel,
+ * where the voice panel above the messages already shows them.
+ */
+function VoicePollChip({ channelId }) {
+  const nav = useNavigate();
+  const { pathname } = useLocation();
+  const active = useActivePolls(channelId);
+  if (active.length === 0 || pathname === `/app/channel/${channelId}`) return null;
+  const newest = active[0];
+  return (
+    <button
+      type="button"
+      className="poll-voice-chip"
+      onClick={() => nav(`/app/channel/${channelId}`)}
+      title={newest.question}
+    >
+      <PollIcon size={14} />
+      <span className="poll-voice-chip-text">
+        {active.length === 1 ? `Poll: ${newest.question}` : `${active.length} polls running`}
+      </span>
+      <ChevronRightIcon size={14} />
+    </button>
   );
 }

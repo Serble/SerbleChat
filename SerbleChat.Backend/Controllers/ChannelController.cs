@@ -21,7 +21,7 @@ namespace SerbleChat.Backend.Controllers;
 public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
     IUnreadsRepo unreads, IVoiceManager voiceManager, INotificationService notifications,
-    IImagesService images, IFriendshipRepo friends) : ControllerBase {
+    IImagesService images, IFriendshipRepo friends, IPollRepo polls) : ControllerBase {
 
     private Task SignalChannelUpdated(long channelId) {
         return updates.Clients.Group("channel-" + channelId).SendAsync("ChannelUpdated", new {
@@ -98,6 +98,10 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         if (message.AuthorId != userId) {
             return Forbid();
         }
+
+        if (await polls.MessageHasPoll(messageId)) {
+            return BadRequest("Polls can't be edited");
+        }
         
         if (body.Content != null) {
             message.Content = body.Content;
@@ -164,6 +168,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
         }
     
         List<Message> messages = await msgs.GetMessages(channelId, limit, offset);
+        await polls.AttachPolls(messages);
         return Ok(messages);
     }
 
@@ -205,6 +210,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             return NotFound("Message not found");
         }
         
+        await polls.AttachPolls([message]);
         return Ok(message);
     }
 

@@ -490,6 +490,23 @@
 .composer-btn:not(:disabled):hover { background: var(--bg-hover); color: var(--text-secondary); }
 .composer-btn:disabled { cursor: default; opacity: 0.5; }
 .composer-send:disabled { opacity: 0.35; }
+.composer-plus > svg { transition: transform 0.15s ease; }
+.composer-plus[data-open='true'] { background: var(--bg-hover); color: var(--text-primary); }
+.composer-plus[data-open='true'] > svg { transform: rotate(45deg); }
+
+/* The "+" menu opens upwards from the composer's left edge */
+.composer-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 200;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-overlay);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
 .composer-send[data-ready='true'] { color: var(--accent); }
 .composer-send[data-ready='true']:hover { background: var(--accent-soft); color: var(--accent); }
 

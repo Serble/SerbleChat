@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Newtonsoft.Json;
+using SerbleChat.Backend.Schemas;
+using NotificationJsonIgnore = Newtonsoft.Json.JsonIgnoreAttribute;
 using ApiJsonIgnore = System.Text.Json.Serialization.JsonIgnoreAttribute;
 
 namespace SerbleChat.Backend.Database.Structs;
@@ -29,6 +31,11 @@ public class Message {
 
     [JsonProperty(PropertyName = "edited_at")]
     public DateTime? EditedAt { get; set; }
+
+    /// <summary>The poll attached to this message, if any. Filled in by the poll repo, not stored here.</summary>
+    [NotMapped]
+    [NotificationJsonIgnore]
+    public PollResponse? Poll { get; set; }
     
     // Navigation Properties
     [ApiJsonIgnore]

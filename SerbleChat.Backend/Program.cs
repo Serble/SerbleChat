@@ -103,6 +103,7 @@ builder.Services.AddScoped<IGroupChatRepo, GroupChatRepo>();
 builder.Services.AddScoped<IGuildRepo, GuildRepo>();
 builder.Services.AddScoped<IRoleRepo, RoleRepo>();
 builder.Services.AddScoped<IUnreadsRepo, UnreadsRepo>();
+builder.Services.AddScoped<IPollRepo, PollRepo>();
 
 // generic services
 builder.Services.AddScoped<IJwtManager, JwtManager>();

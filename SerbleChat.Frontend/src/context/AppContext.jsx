@@ -7,7 +7,7 @@ import {
   getBlockedUsers, blockUser as blockUserApi, unblockUser as unblockUserApi,
   getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
-  getGuildChannels, getUsersInVoice,
+  getGuildChannels, getUsersInVoice, getActivePolls,
 } from '../api.js';
 import { resubscribeIfEnabled } from '../push.js';
 import { playSound, preloadSounds } from '../sound.js';
@@ -28,6 +28,9 @@ export function AppProvider({ children }) {
   const [isConnected, setIsConnected]   = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false); // Track when guilds/channels are loaded
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
+  // pollId (string) -> poll: the latest copy of every poll we've seen. Poll cards and the
+  // voice-panel strip read from here, so a PollUpdated event refreshes them all at once.
+  const [polls, setPolls] = useState({});
   const [channelLastActive, setChannelLastActive] = useState({}); // channelId (string) -> ms timestamp
   const [toasts,        setToasts]        = useState([]);
   const [channelEvent,  setChannelEvent]  = useState(null); // { type, channelId, data }
@@ -519,6 +522,27 @@ export function AppProvider({ children }) {
   /** Synchronous cache lookup — lets components render a known user on first paint. */
   const peekUser = useCallback((id) => userCacheRef.current[id] ?? null, []);
 
+  /** Store server copies of polls (from messages, events or API responses). */
+  const upsertPolls = useCallback((list) => {
+    const valid = (list ?? []).filter(Boolean);
+    if (valid.length === 0) return;
+    setPolls(p => {
+      const next = { ...p };
+      for (const poll of valid) next[String(poll.id)] = poll;
+      return next;
+    });
+  }, []);
+
+  /** Remember the polls attached to a batch of messages. */
+  const rememberMessagePolls = useCallback((msgs) => {
+    upsertPolls((msgs ?? []).map(m => m.poll));
+  }, [upsertPolls]);
+
+  /** Fetch a channel's running polls (they may be far up its history). */
+  const loadActivePolls = useCallback((channelId) => {
+    return getActivePolls(channelId).then(upsertPolls).catch(e => console.warn('[AppContext] Failed to load active polls:', e));
+  }, [upsertPolls]);
+
   async function reconnectHub() {
     try { await hubRef.current?.stop(); } catch { /* ignore */ }
     hubRef.current = null;
@@ -543,6 +567,7 @@ export function AppProvider({ children }) {
 
     conn.on('NewMessage', msg => {
       const key = String(msg.channelId);
+      if (msg.poll) upsertPolls([msg.poll]);
       setMessages(p => {
         const existing = p[key] ?? [];
         const pendingIdx = existing.findIndex(
@@ -595,7 +620,19 @@ export function AppProvider({ children }) {
       playSound('notification').catch(e => console.warn('[AppContext] Failed to play notification sound:', e));
     });
 
+    conn.on('PollUpdated', poll => {
+      if (poll?.id != null) upsertPolls([poll]);
+    });
+
     conn.on('DeleteMessage', ({ id }) => {
+      // A deleted message takes its poll with it
+      setPolls(p => {
+        const gone = Object.keys(p).filter(k => String(p[k].messageId) === String(id));
+        if (gone.length === 0) return p;
+        const next = { ...p };
+        for (const k of gone) delete next[k];
+        return next;
+      });
       setMessages(p => {
         const next = { ...p };
         for (const key of Object.keys(next)) {
@@ -849,6 +886,7 @@ export function AppProvider({ children }) {
       isConnected,
       initialDataLoaded,
       messages,  setMessages,
+      polls, upsertPolls, rememberMessagePolls, loadActivePolls,
       channelLastActive,
       toasts, addToast, removeToast,
       channelEvent,

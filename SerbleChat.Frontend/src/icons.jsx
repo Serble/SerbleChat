@@ -52,6 +52,9 @@ export function MinusIcon(p) {
 export function ChevronLeftIcon(p) {
   return <Svg {...p}><polyline points="15 18 9 12 15 6"/></Svg>;
 }
+export function ChevronRightIcon(p) {
+  return <Svg {...p}><polyline points="9 18 15 12 9 6"/></Svg>;
+}
 export function PlusIcon(p) {
   return <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
 }
@@ -268,4 +271,7 @@ export function PaletteIcon(p) {
 }
 export function InheritIcon(p) {
   return <Svg {...p}><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></Svg>;
+}
+export function PollIcon(p) {
+  return <Svg {...p}><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="5" width="3" height="12" rx="0.5"/><rect x="16" y="8" width="3" height="9" rx="0.5"/></Svg>;
 }

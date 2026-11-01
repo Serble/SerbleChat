@@ -4,6 +4,7 @@ import Avatar from '../Avatar.jsx';
 import InviteCard from '../InviteCard.jsx';
 import MessageCard from './MessageCard.jsx';
 import FileEmbed from './FileEmbed.jsx';
+import PollCard from '../poll/PollCard.jsx';
 import { MentionText } from './MentionRenderer.jsx';
 import { BlockIcon, EditIcon, TrashIcon, MoreIcon } from '../../icons.jsx';
 import { TextArea } from '../ui/index.js';
@@ -172,7 +173,9 @@ export const MessageBubble = React.memo(function MessageBubble({
   if (isEditing) classes.push('msg--editing');
   if (active) classes.push('msg--active');
 
-  const body = isEditing
+  const body = msg.poll
+    ? <PollCard poll={msg.poll} canManageMsgs={canManageMsgs} isGuildChannel={guildId != null} />
+    : isEditing
     ? <MessageEditor initialContent={msg.content} onSave={draft => onEditSave(msg, draft)} onCancel={onEditCancel} />
     : <MessageContent msg={msg} mentionData={mentionData} resolveUser={resolveUser} onUserClick={onUserClick} onImageContextMenu={onImageContextMenu} />;
 
@@ -215,7 +218,7 @@ export const MessageBubble = React.memo(function MessageBubble({
       {!pending && !isEditing && (
         <MessageActions
           msg={msg}
-          canEdit={isOwn}
+          canEdit={isOwn && !msg.poll}
           canDelete={isOwn || canManageMsgs}
           onStartEdit={onStartEdit}
           onDelete={onDelete}

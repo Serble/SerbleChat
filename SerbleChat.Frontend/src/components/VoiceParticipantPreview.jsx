@@ -6,6 +6,7 @@ import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
 import { MicIcon, ScreenShareIcon, VideoIcon } from '../icons.jsx';
+import VoicePollStrip from './poll/VoicePollStrip.jsx';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -67,7 +68,7 @@ function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
   return bestLayout;
 }
 
-export default function VoiceParticipantPreview({ channelId, compact = false }) {
+export default function VoiceParticipantPreview({ channelId, compact = false, canManageMsgs = false }) {
   const { resolveUser, voiceUsersByChannel, voiceStatesByChannel, primeVoiceUsers } = useApp();
   const voiceStates = voiceStatesByChannel[String(channelId)] ?? {};
   const { voiceChannelId, remoteScreenShares, localScreenShare, localCamera, voiceParticipants } = useVoice();
@@ -523,6 +524,11 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
               ⤢
             </VoiceButton>
           </div>
+        )}
+
+        {/* Running polls, pinned where people in the call will see them */}
+        {expandedShare === null && (
+          <VoicePollStrip channelId={channelId} canManageMsgs={canManageMsgs} />
         )}
 
         {/* Screen shares grid */}

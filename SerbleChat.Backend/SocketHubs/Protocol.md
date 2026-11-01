@@ -21,6 +21,31 @@ it comes to IDs of things.
 }
 ```
 
+Messages may carry a `poll` (see `PollUpdated` for its shape); it's `null` on
+ordinary messages.
+
+`PollUpdated`: someone voted, changed or removed a vote, or ended a poll.
+Sent to the poll's channel group with the full poll, so it can replace the
+client's copy. Votes are public: each option lists who voted for it. A poll
+has ended when `closedAt` is set or `expiresAt` has passed; nothing is sent
+when a poll expires on its own.
+```json
+{
+    "id": int,
+    "messageId": int,
+    "channelId": int,
+    "authorId": "string",
+    "question": "string",
+    "allowMultiple": bool,
+    "createdAt": "DateTime",
+    "expiresAt": "DateTime?",
+    "closedAt": "DateTime?",
+    "options": [
+        { "id": int, "text": "string", "voterIds": ["string"] }
+    ]
+}
+```
+
 `NewChannel`:
 ```json
 {

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext.jsx';
 import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
 import { Button, ErrorBox } from '../ui/index.js';
-import { AttachmentIcon, BlockIcon, CloseIcon, LockIcon, SendIcon } from '../../icons.jsx';
+import { AttachmentIcon, BlockIcon, CloseIcon, LockIcon, PlusIcon, PollIcon, SendIcon } from '../../icons.jsx';
+import { MenuItem } from '../ui/index.js';
 import './chat.css';
 import { MentionPicker } from './MentionRenderer.jsx';
 import { FileUploadPanel } from './FileUploadPanel.jsx';
@@ -28,23 +29,59 @@ function buildSuggestions(query, mentionData) {
 }
 
 /**
+ * The "+" button's menu of extras (upload, poll), opening upwards from the
+ * composer. Closes on Escape, a click outside, or picking an item.
+ */
+function ComposerMenu({ onClose, buttonRef, children }) {
+  const ref = useRef(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
+  useEffect(() => {
+    function onDown(e) {
+      // The "+" button toggles the menu itself
+      if (ref.current?.contains(e.target) || buttonRef.current?.contains(e.target)) return;
+      onCloseRef.current();
+    }
+    function onKey(e) {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onCloseRef.current();
+      buttonRef.current?.focus();
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    ref.current?.querySelector('[role="menuitem"]')?.focus();
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [buttonRef]);
+
+  return <div ref={ref} role="menu" className="ui-menu composer-menu">{children}</div>;
+}
+
+/**
  * Message input bar: attachments, send error, @mention autocomplete and the
  * auto-growing textarea. The draft text lives in ChatView (it's reset on
  * channel switch and read by the send logic); everything else is local.
  */
 export default function Composer({
   channelId, input, setInput, inputRef, placeholder, mentionData,
-  fileUploads, sendError, onDismissError, onSend, onEditLast,
+  fileUploads, sendError, onDismissError, onSend, onEditLast, onCreatePoll,
 }) {
   const { hubRef } = useApp();
   const { sendTypingIndicators } = useClientOptions() ?? { sendTypingIndicators: true };
   const [mentionPicker, setMentionPicker] = useState(null); // { query, atIndex } | null
   const [pickerIndex, setPickerIndex] = useState(0);
   const lastTypingNotifyRef = useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const plusRef = useRef(null);
 
   // Fresh picker and typing throttle for each channel
   useEffect(() => {
     setMentionPicker(null);
+    setMenuOpen(false);
     lastTypingNotifyRef.current = 0;
   }, [channelId]);
 
@@ -184,15 +221,37 @@ export default function Composer({
           />
         )}
 
+        {menuOpen && (
+          <ComposerMenu onClose={() => setMenuOpen(false)} buttonRef={plusRef}>
+            <MenuItem
+              icon={AttachmentIcon}
+              label="Upload a file"
+              disabled={uploading}
+              onClick={() => { setMenuOpen(false); fileUploads.fileInputRef.current?.click(); }}
+            />
+            {onCreatePoll && (
+              <MenuItem
+                icon={PollIcon}
+                label="Create a poll"
+                onClick={() => { setMenuOpen(false); onCreatePoll(); }}
+              />
+            )}
+          </ComposerMenu>
+        )}
+
         <div className="composer">
           <button
+            ref={plusRef}
             type="button"
-            className="composer-btn"
-            onClick={() => fileUploads.fileInputRef.current?.click()}
-            disabled={uploading}
-            title="Attach files"
+            className="composer-btn composer-plus"
+            data-open={menuOpen}
+            onClick={() => setMenuOpen(v => !v)}
+            title="More options"
+            aria-label="More options"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
-            <AttachmentIcon size={18} />
+            <PlusIcon size={20} />
           </button>
 
           <input

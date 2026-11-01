@@ -312,6 +312,43 @@ export async function sendMessage(channelId, content) {
   return handle(res);
 }
 
+// ── Polls ─────────────────────────────────────────────────────────────────────
+
+/** POST /channel/:channelId/poll  – post a poll; durationSeconds null = runs until ended */
+export async function createPoll(channelId, { question, options, allowMultiple, durationSeconds }) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/poll`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, options, allowMultiple, durationSeconds }),
+  });
+  return handle(res);
+}
+
+/** GET /channel/:channelId/polls/active  – polls still taking votes, newest first */
+export async function getActivePolls(channelId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/polls/active`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** PUT /channel/:channelId/poll/:pollId/vote  – replace my choices (empty list removes my vote) */
+export async function votePoll(channelId, pollId, optionIds) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/poll/${encodeURIComponent(pollId)}/vote`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ optionIds }),
+  });
+  return handle(res);
+}
+
+/** POST /channel/:channelId/poll/:pollId/close  – end voting now */
+export async function closePoll(channelId, pollId) {
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/poll/${encodeURIComponent(pollId)}/close`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 // ── Group Chats ───────────────────────────────────────────────────────────────
 
 /** POST /channel/group  – create a new group chat */

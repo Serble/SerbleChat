@@ -26,6 +26,9 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<ChannelRead> ChannelReads { get; set; } = null!;
     public DbSet<UserWebNotificationHook> UserWebNotificationHooks { get; set; } = null!;
     public DbSet<GuildBan> GuildBans { get; set; } = null!;
+    public DbSet<Poll> Polls { get; set; } = null!;
+    public DbSet<PollOption> PollOptions { get; set; } = null!;
+    public DbSet<PollVote> PollVotes { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Message>()
@@ -77,6 +80,41 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
             .HasForeignKey(cpo => cpo.UserId)
             .OnDelete(DeleteBehavior.Cascade);
         
+        // A message has at most one poll, and deleting the message deletes it
+        modelBuilder.Entity<Poll>()
+            .HasOne(p => p.MessageNavigation)
+            .WithOne()
+            .HasForeignKey<Poll>(p => p.MessageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Poll>()
+            .HasIndex(p => p.ChannelId);
+
+        modelBuilder.Entity<Poll>()
+            .HasMany(p => p.Options)
+            .WithOne(o => o.PollNavigation)
+            .HasForeignKey(o => o.PollId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Poll>()
+            .HasMany(p => p.Votes)
+            .WithOne(v => v.PollNavigation)
+            .HasForeignKey(v => v.PollId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PollVote>()
+            .HasOne(v => v.OptionNavigation)
+            .WithMany()
+            .HasForeignKey(v => v.OptionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PollVote>()
+            .HasIndex(v => new { v.OptionId, v.UserId })
+            .IsUnique();
+
+        modelBuilder.Entity<PollVote>()
+            .HasIndex(v => new { v.PollId, v.UserId });
+
         modelBuilder.Entity<Channel>()
             .HasOne(c => c.GuildNavigation)
             .WithMany()
