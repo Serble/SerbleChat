@@ -14,7 +14,7 @@ const TABS = [
   { id: 'files',         icon: FolderIcon,   label: 'Files',         section: 'My Account',   Component: FilesTab },
   { id: 'appearance',    icon: PaletteIcon,  label: 'Appearance',    section: 'App Settings', Component: AppearanceTab },
   { id: 'chat',          icon: ChatIcon,     label: 'Chat',          section: 'App Settings', Component: ChatTab },
-  { id: 'voiceAudio',    icon: MicIcon,      label: 'Voice Audio',   section: 'App Settings', Component: VoiceAudioTab },
+  { id: 'voiceAudio',    icon: MicIcon,      label: 'Voice & Video', section: 'App Settings', Component: VoiceAudioTab },
   { id: 'notifications', icon: BellIcon,     label: 'Notifications', section: 'App Settings', Component: NotificationsTab },
   { id: 'keybinds',      icon: KeyboardIcon, label: 'Keybinds',      section: 'App Settings', Component: KeybindsTab },
 ];

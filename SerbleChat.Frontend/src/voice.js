@@ -1,5 +1,5 @@
 import {getChannelVoiceToken} from "./api.js";
-import {createLocalAudioTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track} from "livekit-client";
+import {createLocalAudioTrack, createLocalVideoTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track, VideoPresets} from "livekit-client";
 import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
 import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
 
@@ -21,6 +21,14 @@ async function ensureRnnoiseLoaded(ctx) {
     })();
     
     return rnnoiseLoadPromise;
+}
+
+/**
+ * Whether a remote video publication is a screen share or a camera.
+ * @returns {'screen' | 'camera'}
+ */
+function videoKind(publication) {
+    return publication?.source === Track.Source.Camera ? 'camera' : 'screen';
 }
 
 class VoiceSession {
@@ -65,6 +73,8 @@ class VoiceSession {
     rawMicTrack;
     /** @type {LocalVideoTrack} */
     streamTrack;
+    /** @type {LocalVideoTrack | null} */
+    cameraTrack = null;
     /** @type {Function} */
     onParticipantsChange;
     /** @type {boolean} */
@@ -386,10 +396,6 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 if (onParticipantsChange) onParticipantsChange(session.getParticipants());
             }
             else if (track.kind === "video") {
-                // TODO: Detect if this is a screen share track or regular video
-                // Check track metadata or source to determine if it's a screen share
-                // For screen shares, call onRemoteScreenShare(videoElement, participantIdentity)
-                // For regular video, continue with current behavior
                 if (session.trackElements[track.sid]) return;
                 const video = document.createElement("video");
                 video.srcObject = new MediaStream([track.mediaStreamTrack]);
@@ -410,9 +416,10 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                     }, 100);
                 });
                 
-                // Call the callback with video element and participant identity
+                // Call the callback with the video element, who it's from, and whether
+                // it's a screen share or a camera (one person can send both at once)
                 if (onRemoteScreenShare) {
-                    onRemoteScreenShare(video, participant.identity);
+                    onRemoteScreenShare(video, participant.identity, videoKind(publication), track.sid);
                 }
             }
         } catch (err) {
@@ -433,8 +440,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         
         removeTrackElement(track.sid);
         if (track.kind === "video" && onRemoteUnScreenShare) {
-            // TODO: You can add additional checks here to verify it's a screen share
-            onRemoteUnScreenShare(participant.identity);
+            onRemoteUnScreenShare(participant.identity, videoKind(publication), track.sid);
         }
     });
     
@@ -901,6 +907,82 @@ export async function stopScreenShare(session, onScreenTrackRemoved) {
     await session.room.localParticipant.unpublishTrack(session.streamTrack);
     session.streamTrack = null;
     onScreenTrackRemoved();
+}
+
+/**
+ * Start sending the local camera
+ * @param {VoiceSession} session
+ * @param {Object} options - { deviceId, onEnded } - onEnded is called if the camera stops on its own (e.g. unplugged)
+ * @returns {Promise<HTMLVideoElement>} - A (mirrored) video element showing the local camera
+ */
+export async function startCamera(session, { deviceId, onEnded } = {}) {
+    if (!session?.isActive) return null;
+    if (session.cameraTrack) throw new Error('Camera is already on');
+
+    let cameraTrack;
+    try {
+        cameraTrack = await createLocalVideoTrack({
+            ...(deviceId && deviceId !== 'default' ? { deviceId } : {}),
+            resolution: VideoPresets.h720.resolution,
+        });
+    } catch (err) {
+        console.error('Failed to open camera:', err);
+        let message = err.message || 'Unknown error';
+        if (err.name === 'NotAllowedError') message = 'Camera access was denied.';
+        else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') message = 'No camera found. Check that one is connected.';
+        else if (err.name === 'NotReadableError') message = 'The camera is in use by another app.';
+        const error = new Error(message);
+        error.originalError = err;
+        throw error;
+    }
+
+    // Left the call while the camera was opening
+    if (!session.isActive) {
+        cameraTrack.stop();
+        return null;
+    }
+
+    session.cameraTrack = cameraTrack;
+    try {
+        await session.room.localParticipant.publishTrack(cameraTrack, {
+            source: Track.Source.Camera,
+            // Simulcast so small tiles (and slow connections) get a lower layer
+            simulcast: true,
+        });
+    } catch (err) {
+        session.cameraTrack = null;
+        cameraTrack.stop();
+        throw err;
+    }
+
+    cameraTrack.mediaStreamTrack.addEventListener('ended', () => {
+        if (session.cameraTrack !== cameraTrack) return;
+        stopCamera(session).finally(() => onEnded?.());
+    });
+
+    const video = document.createElement("video");
+    video.srcObject = new MediaStream([cameraTrack.mediaStreamTrack]);
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.style.transform = 'scaleX(-1)'; // Mirror your own camera, like a mirror
+    return video;
+}
+
+/**
+ * Stop sending the local camera
+ * @param {VoiceSession} session
+ * @returns {Promise<void>}
+ */
+export async function stopCamera(session) {
+    const cameraTrack = session?.cameraTrack;
+    if (!cameraTrack) return;
+    session.cameraTrack = null;
+    if (session.isActive) {
+        await session.room.localParticipant.unpublishTrack(cameraTrack); // also stops it
+    } else {
+        cameraTrack.stop();
+    }
 }
 
 /**

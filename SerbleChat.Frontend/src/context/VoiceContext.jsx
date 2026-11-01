@@ -17,8 +17,10 @@ export function VoiceProvider({ children }) {
   const [voiceStatus, setVoiceStatus] = useState('idle'); // idle | connecting | connected | error
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceParticipants, setVoiceParticipants] = useState([]);
+  // Remote video feeds: [{ videoElement, participantIdentity, source: 'screen' | 'camera', trackSid }]
   const [remoteScreenShares, setRemoteScreenShares] = useState([]);
   const [localScreenShare, setLocalScreenShare] = useState(null); // { videoElement, username }
+  const [localCamera, setLocalCamera] = useState(null); // { videoElement, username }
   const [voiceError, setVoiceError] = useState(null); // { message, context, timestamp }
 
   const activeJoinIdRef = useRef(0);
@@ -82,6 +84,7 @@ export function VoiceProvider({ children }) {
       setVoiceParticipants([]);
       setRemoteScreenShares([]);
       setLocalScreenShare(null);
+      setLocalCamera(null);
       setVoiceBusy(false);
       // Play sound effect when leaving voice channel (only if not an error state)
       if (!keepError) {
@@ -123,18 +126,18 @@ export function VoiceProvider({ children }) {
       const session = await joinChannel({ channelId }, (participants) => {
         if (!isCurrentJoin()) return;
         setVoiceParticipants(participants);
-      }, (videoElement, participantIdentity) => {
+      }, (videoElement, participantIdentity, source, trackSid) => {
         if (!isCurrentJoin()) return;
-        // Handle remote screen share
-        setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity }]);
-        // Play sound effect when someone starts screen sharing
-        playSoundSafe('stream_start');
-      }, (participantIdentity) => {
+        // Handle remote screen share or camera
+        setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity, source, trackSid }]);
+        // Play sound effect when someone starts screen sharing (not for cameras)
+        if (source === 'screen') playSoundSafe('stream_start');
+      }, (participantIdentity, source, trackSid) => {
         if (!isCurrentJoin()) return;
-        // Handle remote screen share stop
-        setRemoteScreenShares(prev => prev.filter(s => s.participantIdentity !== participantIdentity));
+        // Handle remote screen share or camera stop
+        setRemoteScreenShares(prev => prev.filter(s => s.trackSid !== trackSid));
         // Play sound effect when someone stops screen sharing
-        playSoundSafe('stream_end');
+        if (source === 'screen') playSoundSafe('stream_end');
       }, (err, context) => {
         if (!isCurrentJoin()) return;
         reportFatalError(err, context);
@@ -558,8 +561,10 @@ export function VoiceProvider({ children }) {
       voiceParticipants,
       remoteScreenShares,
       localScreenShare,
+      localCamera,
       voiceError,
       setLocalScreenShare,
+      setLocalCamera,
       joinVoice: handleJoinVoice,
       leaveVoice: handleLeaveVoice,
       toggleMute: handleToggleMute,

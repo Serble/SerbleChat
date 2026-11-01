@@ -2,13 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
-import { startScreenShare, stopScreenShare, updateScreenShareQuality } from '../voice.js';
+import { startScreenShare, stopScreenShare, updateScreenShareQuality, startCamera, stopCamera } from '../voice.js';
 import { playSound } from '../sound.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon } from '../icons.jsx';
+import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, VideoIcon, VideoOffIcon } from '../icons.jsx';
 
 // Helper to safely play sounds with consistent error handling
 const playSoundSafe = (soundName) => {
@@ -28,9 +28,11 @@ export default function VoicePanel({
   voiceError,
   onRetry,
 }) {
-  const { resolveUser, currentUser } = useApp();
-  const { setLocalScreenShare } = useVoice();
-  const { voiceAudioOptions } = useClientOptions();
+  const { resolveUser, currentUser, addToast } = useApp();
+  const { setLocalScreenShare, localCamera, setLocalCamera } = useVoice();
+  const { voiceAudioOptions, localDeviceSettings } = useClientOptions();
+  const isCameraOn = Boolean(localCamera);
+  const [cameraBusy, setCameraBusy] = useState(false);
   const [userDetails, setUserDetails] = useState({});
   // Derive isScreenSharing from localScreenShare prop instead of local state
   const isScreenSharing = Boolean(localScreenShare);
@@ -125,6 +127,31 @@ export default function VoicePanel({
       } else if (error.name === 'AbortError' || errorMessage.includes('cancelled')) {
         errorMessage = 'Screen sharing was cancelled.';
       }
+    }
+  };
+
+  const handleToggleCamera = async () => {
+    if (!canControl || cameraBusy) return;
+    setCameraBusy(true);
+    try {
+      if (isCameraOn) {
+        await stopCamera(voiceSession);
+        setLocalCamera(null);
+      } else {
+        const videoElement = await startCamera(voiceSession, {
+          deviceId: localDeviceSettings.cameraDeviceId,
+          // Camera stopped on its own (e.g. unplugged)
+          onEnded: () => setLocalCamera(null),
+        });
+        if (videoElement) {
+          setLocalCamera({ videoElement, username: currentUser?.username || 'Your Camera' });
+        }
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      addToast({ title: 'Camera Error', body: error.message || 'Failed to turn on the camera.', type: 'danger' });
+    } finally {
+      setCameraBusy(false);
     }
   };
 
@@ -273,8 +300,19 @@ export default function VoicePanel({
         </VoiceButton>
       )}
 
-      {/* Screen share button */}
+      {/* Camera and screen share buttons */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <VoiceButton
+          tone={isCameraOn ? 'success' : 'neutral'}
+          disabled={!canControl || cameraBusy}
+          style={{ flex: 1 }}
+          onClick={handleToggleCamera}
+          title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
+        >
+          {isCameraOn ? <VideoOffIcon size={16} /> : <VideoIcon size={16} />}
+          <span>Video</span>
+        </VoiceButton>
+
         <VoiceButton
           tone={isScreenSharing ? 'success' : 'neutral'}
           disabled={!canControl}
@@ -283,7 +321,7 @@ export default function VoicePanel({
           title={isScreenSharing ? 'Stop screen share' : 'Start screen share'}
         >
           {isScreenSharing ? <StopScreenShareIcon size={16} /> : <ScreenShareIcon size={16} />}
-          <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
+          <span>Share</span>
         </VoiceButton>
 
         {isScreenSharing && (

@@ -5,7 +5,7 @@ import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, ScreenShareIcon } from '../icons.jsx';
+import { MicIcon, ScreenShareIcon, VideoIcon } from '../icons.jsx';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -69,7 +69,7 @@ function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
 
 export default function VoiceParticipantPreview({ channelId, compact = false }) {
   const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
-  const { voiceChannelId, remoteScreenShares, localScreenShare, voiceParticipants } = useVoice();
+  const { voiceChannelId, remoteScreenShares, localScreenShare, localCamera, voiceParticipants } = useVoice();
   const [users, setUsers] = useState({});
   const [showTooltip, setShowTooltip] = useState(false);
   const [expandedShare, setExpandedShare] = useState(null); // null or index of expanded share
@@ -102,12 +102,20 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   // Check if we're in this voice channel
   const isInVoiceChannel = voiceChannelId === Number(channelId);
   
-  // Collect all screen shares (local + remote) if we're in this channel.
-  // Memoized so effects keyed on it only run when the shares actually change.
-  const allScreenShares = useMemo(() => isInVoiceChannel ? [
-    ...(localScreenShare ? [{ ...localScreenShare, isLocal: true }] : []),
-    ...remoteScreenShares.map(share => ({ ...share, isLocal: false }))
-  ] : [], [isInVoiceChannel, localScreenShare, remoteScreenShares]);
+  // Collect all video feeds (local + remote; screen shares first, then cameras)
+  // if we're in this channel. Memoized so effects keyed on it only run when the
+  // feeds actually change.
+  const allScreenShares = useMemo(() => {
+    if (!isInVoiceChannel) return [];
+    const remoteScreens = remoteScreenShares.filter(s => s.source !== 'camera');
+    const remoteCameras = remoteScreenShares.filter(s => s.source === 'camera');
+    return [
+      ...(localScreenShare ? [{ ...localScreenShare, source: 'screen', isLocal: true }] : []),
+      ...remoteScreens.map(share => ({ ...share, isLocal: false })),
+      ...(localCamera ? [{ ...localCamera, source: 'camera', isLocal: true }] : []),
+      ...remoteCameras.map(share => ({ ...share, isLocal: false })),
+    ];
+  }, [isInVoiceChannel, localScreenShare, localCamera, remoteScreenShares]);
 
   const getMinPanelHeight = () => (allScreenShares.length > 0 ? 200 : 100);
 
@@ -175,16 +183,23 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
   
   // Constrain panel height when streams are added to prevent going off-screen
   useEffect(() => {
-    if (allScreenShares.length === 0) return;
-    
+    // Once the last stream ends, go back to fitting the content. Otherwise a height
+    // set while streaming (dragged, or capped below) leaves a big empty panel behind.
+    if (allScreenShares.length === 0) {
+      setHeight(null);
+      return;
+    }
+
     const panel = panelRef.current;
     if (!panel) return;
-    
+
     const checkAndConstrain = () => {
       const maxHeight = getMaxPanelHeight();
       const currentHeight = panel.offsetHeight;
-      
-      if (currentHeight > maxHeight) {
+
+      // 1px of slack: at fractional zoom levels offsetHeight can round up past the
+      // CSS max-height (which already keeps the panel on screen) and lock the height
+      if (currentHeight > maxHeight + 1) {
         setHeight(maxHeight);
       }
     };
@@ -521,7 +536,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
           }}>
             {allScreenShares.map((share, index) => (
               <ScreenShareTile
-                key={share.isLocal ? 'local' : share.participantIdentity}
+                key={share.isLocal ? `local-${share.source}` : share.trackSid}
                 share={share}
                 isExpanded={expandedShare === index}
                 onClick={() => setExpandedShare(expandedShare === index ? null : index)}
@@ -655,7 +670,9 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
     }
   }, [share.videoElement, hidden, share.participantIdentity]);
 
-  const username = share.isLocal ? share.username || 'Your Screen' : (user?.username || users[share.participantIdentity]?.username || share.participantIdentity);
+  const isCamera = share.source === 'camera';
+  const TileIcon = isCamera ? VideoIcon : ScreenShareIcon;
+  const username = share.isLocal ? share.username || (isCamera ? 'Your Camera' : 'Your Screen') : (user?.username || users[share.participantIdentity]?.username || share.participantIdentity);
 
    return (
     <div 
@@ -691,9 +708,9 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}>
-            <ScreenShareIcon size={14} /> {username}
+            <TileIcon size={14} /> {username}
           </span>
-          {share.isLocal && (
+          {share.isLocal && !isCamera && (
             <span style={{
               fontSize: '0.65rem',
               color: 'var(--success)',

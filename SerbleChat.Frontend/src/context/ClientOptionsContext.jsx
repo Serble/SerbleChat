@@ -30,6 +30,7 @@ export const OPTION_DEFAULTS = {
   localDeviceSettings: {
     inputDeviceId: 'default',
     outputDeviceId: 'default',
+    cameraDeviceId: 'default',
   },
 };
 
