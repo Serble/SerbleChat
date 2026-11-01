@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Services;
 using StackExchange.Redis;
 
 namespace SerbleChat.Backend.SocketHubs;
 
 [Authorize]
-public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultiplexer redis) : Hub {
+public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultiplexer redis, IVoiceManager voice) : Hub {
     
     public async Task SayHello(string name) {
         await Clients.All.SendAsync("ReceiveMessage", $"Hello, {name}!");
@@ -41,6 +42,15 @@ public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IConnectionMultip
             UserId = userId,
             ChannelId = channelId
         });
+    }
+
+    /// <summary>
+    /// Sent by a client in a voice channel whenever its mute/deafen state changes,
+    /// so people outside the call can see it. Ignored if the caller isn't in that call.
+    /// </summary>
+    public async Task UpdateVoiceState(long channelId, bool muted, bool deafened) {
+        string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");
+        await voice.UpdateVoiceState(channelId, userId, muted, deafened);
     }
 
     public async Task RefreshListeners() {

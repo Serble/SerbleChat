@@ -524,9 +524,7 @@ public partial class ChannelController(IChannelRepo channels, IDmChannelRepo dms
             return error;
         }
 
-        return Ok(new UsersInVoiceResponse {
-            Users = await voiceManager.GetConnectedUsers(channelId)
-        });
+        return Ok(await voiceManager.GetConnectedUsers(channelId));
     }
     
     private async Task<Result<string, ActionResult<T>>> CheckVoicePerms<T>(long channelId, bool joining) {

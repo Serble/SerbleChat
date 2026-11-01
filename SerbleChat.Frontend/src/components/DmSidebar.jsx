@@ -6,14 +6,15 @@ import CreateGroupModal from './CreateGroupModal.jsx';
 import ChannelNotifContextMenu from './ChannelNotifContextMenu.jsx';
 import GroupChatSettingsModal from './GroupChatSettingsModal.jsx';
 import VoicePanel from './VoicePanel.jsx';
+import VoiceUserChips from './voice/VoiceUserChips.jsx';
 import Avatar from './Avatar.jsx';
 import UserPanel from './UserPanel.jsx';
-import UserInteraction from './UserInteraction.jsx';
 import useGroupChatIcon from './useGroupChatIcon.js';
 import { IconButton } from './ui/index.js';
 import { GearIcon, PeopleIcon, PlusIcon } from '../icons.jsx';
 
 const HOVER_CLASS = 'hov-bg hov-text-secondary';
+const DM_CHIPS_STYLE = { padding: '0.2rem 0.6rem 0.2rem 2.5rem' };
 
 /** Shared look for sidebar rows (Friends, DMs, group chats). */
 function rowStyle(active, bold) {
@@ -54,71 +55,6 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
       <span style={labelStyle}>{label}</span>
       <UnreadBadge count={badge} />
     </button>
-  );
-}
-
-function VoiceParticipantsBelow({ channelId }) {
-  const [users, setUsers] = useState({});
-  const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
-  const userIds = voiceUsersByChannel[String(channelId)] ?? [];
-
-  useEffect(() => {
-    primeVoiceUsers(channelId);
-  }, [channelId, primeVoiceUsers]);
-
-  useEffect(() => {
-    userIds.forEach(id => {
-      if (!users[id]) {
-        resolveUser(id).then(user => {
-          setUsers(prev => ({ ...prev, [id]: user }));
-        });
-      }
-    });
-  }, [userIds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (userIds.length === 0) {
-    return null;
-  }
-
-  return (
-    <div style={{
-      paddingLeft: '2.5rem',
-      paddingRight: '0.6rem',
-      paddingTop: '0.2rem',
-      paddingBottom: '0.2rem',
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '0.35rem',
-      alignItems: 'center',
-    }}>
-      {userIds.map(id => {
-        const user = users[id];
-        const name = user?.username ?? id.slice(0, 10);
-        
-        return (
-          <UserInteraction key={id} userId={user?.id} username={name}>
-            <div
-              title={name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                padding: '0.2rem 0.35rem',
-                borderRadius: '3px',
-                background: 'var(--accent-softer)',
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }}>
-                {name}
-              </span>
-            </div>
-          </UserInteraction>
-        );
-      })}
-    </div>
   );
 }
 
@@ -173,7 +109,7 @@ function DmItem({ dm, currentChannelId }) {
           onClose={() => setCtxMenu(null)}
         />
       )}
-      <VoiceParticipantsBelow channelId={dm.channelId} />
+      <VoiceUserChips channelId={dm.channelId} style={DM_CHIPS_STYLE} />
     </>
   );
 }
@@ -259,7 +195,7 @@ function GroupItem({ chat, currentChannelId }) {
           channelUpdatedEvent={channelUpdatedEvent}
         />
       )}
-      <VoiceParticipantsBelow channelId={chat.channelId} />
+      <VoiceUserChips channelId={chat.channelId} style={DM_CHIPS_STYLE} />
     </>
   );
 }

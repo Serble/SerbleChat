@@ -64,6 +64,8 @@ export function AppProvider({ children }) {
   const voiceUsersByChannelRef = useRef({});
   const voicePresencePrimedRef = useRef(new Set());
   const voicePresenceInflightRef = useRef(new Set());
+  // channelId (string) -> userId (string) -> { muted, deafened } for people in voice
+  const [voiceStatesByChannel, setVoiceStatesByChannel] = useState({});
   // userId (string) -> 'online' | 'offline'
   const [userStatuses, setUserStatuses] = useState({});
   // channelId (string) -> Set<userId> of users currently typing
@@ -213,7 +215,28 @@ export function AppProvider({ children }) {
     const nextList = existing.filter(id => String(id) !== String(userId));
     voiceUsersByChannelRef.current = { ...voiceUsersByChannelRef.current, [key]: nextList };
     setVoiceUsersByChannel(prev => ({ ...prev, [key]: nextList }));
+    setVoiceStatesByChannel(prev => {
+      if (!prev[key]?.[String(userId)]) return prev;
+      const { [String(userId)]: _removed, ...rest } = prev[key];
+      return { ...prev, [key]: rest };
+    });
   }
+
+  function setVoiceState(channelId, userId, muted, deafened) {
+    const key = String(channelId);
+    setVoiceStatesByChannel(prev => ({
+      ...prev,
+      [key]: { ...prev[key], [String(userId)]: { muted: !!muted, deafened: !!deafened } },
+    }));
+  }
+
+  /** Tell everyone who can see the channel our mute/deafen state (we must be in its call). */
+  const reportVoiceState = useCallback((channelId, muted, deafened) => {
+    const me = currentUserRef.current?.id;
+    if (me) setVoiceState(channelId, me, muted, deafened);
+    hubRef.current?.invoke('UpdateVoiceState', Number(channelId), !!muted, !!deafened)
+      .catch(e => console.warn('UpdateVoiceState failed:', e));
+  }, []);
 
   async function primeVoiceUsers(channelId) {
     const key = String(channelId);
@@ -222,6 +245,12 @@ export function AppProvider({ children }) {
     try {
       const response = await getUsersInVoice(key);
       setVoiceUsersForChannel(key, response?.users ?? []);
+      // older backends don't send states
+      const states = {};
+      for (const st of response?.states ?? []) {
+        states[String(st.userId)] = { muted: !!st.muted, deafened: !!st.deafened };
+      }
+      setVoiceStatesByChannel(prev => ({ ...prev, [key]: states }));
       voicePresencePrimedRef.current.add(key);
     } catch (e) {
       console.warn('primeVoiceUsers failed:', e);
@@ -693,6 +722,11 @@ export function AppProvider({ children }) {
       removeVoiceUser(channelId, userId);
     });
 
+    conn.on('ClientVoiceStateUpdated', ({ userId, channelId, muted, deafened }) => {
+      if (userId == null || channelId == null) return;
+      setVoiceState(channelId, userId, muted, deafened);
+    });
+
     conn.on('UserStatusUpdated', ({ userId, status }) => {
       setUserStatuses(p => ({ ...p, [String(userId)]: status }));
     });
@@ -855,7 +889,9 @@ export function AppProvider({ children }) {
       updateGuildNotifPrefs,
       updateUserDefaultPrefs,
       voiceUsersByChannel,
+      voiceStatesByChannel,
       primeVoiceUsers,
+      reportVoiceState,
     }}>
       {children}
     </Ctx.Provider>

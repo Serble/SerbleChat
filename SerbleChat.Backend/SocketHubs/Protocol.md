@@ -93,6 +93,17 @@ it comes to IDs of things.
 }
 ```
 
+`ClientVoiceStateUpdated`: a user in a voice channel muted/unmuted or deafened/undeafened.
+Sent to everyone who can see the channel, not just people in the call.
+```json
+{
+    "userId": "string",
+    "channelId": int,
+    "muted": bool,
+    "deafened": bool
+}
+```
+
 `GuildUpdated`:
 ```json
 {
@@ -139,3 +150,8 @@ For when the user leaves a guild.
     "message": messagedata
 }
 ```
+
+## To Server
+`UpdateVoiceState(channelId: int, muted: bool, deafened: bool)`:
+Report your own mute/deafen state while in a voice channel. Ignored if you
+aren't in that channel's call. Broadcast to others as `ClientVoiceStateUpdated`.

@@ -68,7 +68,8 @@ function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
 }
 
 export default function VoiceParticipantPreview({ channelId, compact = false }) {
-  const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
+  const { resolveUser, voiceUsersByChannel, voiceStatesByChannel, primeVoiceUsers } = useApp();
+  const voiceStates = voiceStatesByChannel[String(channelId)] ?? {};
   const { voiceChannelId, remoteScreenShares, localScreenShare, localCamera, voiceParticipants } = useVoice();
   const [users, setUsers] = useState({});
   const [showTooltip, setShowTooltip] = useState(false);
@@ -438,7 +439,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                     }}>
                       <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
                       <span style={{ flex: 1 }}>{name}</span>
-                      <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isClientMuted={isClientMuted} />
+                      <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} />
                     </div>
                   </UserInteraction>
                 );
@@ -580,7 +581,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false }) 
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
-                    <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isClientMuted={isClientMuted} />
+                    <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} />
                   </div>
                 </UserInteraction>
               );

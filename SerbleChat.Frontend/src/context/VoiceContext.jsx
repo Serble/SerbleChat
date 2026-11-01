@@ -8,7 +8,7 @@ import { playSound } from '../sound.js';
 const VoiceContext = createContext();
 
 export function VoiceProvider({ children }) {
-  const { addToast } = useApp();
+  const { addToast, reportVoiceState, isConnected } = useApp();
   const { getVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings, keybinds } = useClientOptions();
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [voiceSession, setVoiceSession] = useState(null);
@@ -542,6 +542,15 @@ export function VoiceProvider({ children }) {
       console.warn('Failed to update output device on active session:', err);
     });
   }, [localDeviceSettings.outputDeviceId, voiceSession]);
+
+  // Let people outside the call see whether we're muted/deafened. In push-to-talk the
+  // mic is "muted" whenever the key isn't held, so report it as unmuted (unless
+  // deafened) rather than flickering every time the key is pressed.
+  const reportedMuted = voiceAudioOptions.inputMode === 'push-to-talk' ? voiceDeafened : voiceMuted;
+  useEffect(() => {
+    if (!voiceSession || voiceStatus !== 'connected' || voiceChannelId == null || !isConnected) return;
+    reportVoiceState(voiceChannelId, reportedMuted, voiceDeafened);
+  }, [voiceSession, voiceStatus, voiceChannelId, reportedMuted, voiceDeafened, isConnected, reportVoiceState]);
 
   // Function to manually refresh participants (useful after muting/unmuting)
   function refreshParticipants() {

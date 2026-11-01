@@ -1,62 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useApp } from '../../context/AppContext.jsx';
 import { getChannelIconUrl } from '../../api.js';
 import ChannelNotifContextMenu from '../ChannelNotifContextMenu.jsx';
-import Avatar from '../Avatar.jsx';
-import UserInteraction from '../UserInteraction.jsx';
+import VoiceUserChips from '../voice/VoiceUserChips.jsx';
 import useIconProbe from './useIconProbe.js';
 import { MicIcon, GearIcon, SpeakerIcon } from '../../icons.jsx';
-
-// ─── Voice participants under a voice channel ─────────────────────────────────
-
-function VoiceParticipantsBelow({ channelId }) {
-  const [users, setUsers] = useState({});
-  const { resolveUser, voiceUsersByChannel, primeVoiceUsers } = useApp();
-  const userIds = voiceUsersByChannel[String(channelId)] ?? [];
-
-  useEffect(() => {
-    primeVoiceUsers(channelId);
-  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    userIds.forEach(id => {
-      if (!users[id]) {
-        resolveUser(id).then(user => {
-          setUsers(prev => ({ ...prev, [id]: user }));
-        });
-      }
-    });
-  }, [userIds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (userIds.length === 0) return null;
-
-  return (
-    <div style={{ padding: '0.2rem 0.4rem 0.2rem 2rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
-      {userIds.map(id => {
-        const user = users[id];
-        const name = user?.username ?? id.slice(0, 10);
-        return (
-          <UserInteraction key={id} userId={user?.id} username={name}>
-            <div
-              title={name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.25rem',
-                padding: '0.2rem 0.35rem', borderRadius: 3,
-                background: 'var(--accent-softer)',
-                fontSize: '0.75rem', color: 'var(--text-secondary)',
-              }}
-            >
-              <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 80 }}>
-                {name}
-              </span>
-            </div>
-          </UserInteraction>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─── Channel Row ──────────────────────────────────────────────────────────────
 
@@ -187,7 +135,7 @@ export default function ChannelRow({ ch, canManage, active, onNavigate, onSettin
       )}
 
       {/* Voice participants below voice-capable channels */}
-      {ch.voiceCapable && <VoiceParticipantsBelow channelId={ch.id} />}
+      {ch.voiceCapable && <VoiceUserChips channelId={ch.id} style={{ padding: '0.2rem 0.4rem 0.2rem 2rem' }} />}
     </>
   );
 }

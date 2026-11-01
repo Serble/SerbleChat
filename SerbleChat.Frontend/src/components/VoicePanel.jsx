@@ -28,7 +28,8 @@ export default function VoicePanel({
   voiceError,
   onRetry,
 }) {
-  const { resolveUser, currentUser, addToast } = useApp();
+  const { resolveUser, currentUser, addToast, voiceStatesByChannel } = useApp();
+  const voiceStates = voiceStatesByChannel[String(channelId)] ?? {};
   const { setLocalScreenShare, localCamera, setLocalCamera } = useVoice();
   const { voiceAudioOptions, localDeviceSettings } = useClientOptions();
   const isCameraOn = Boolean(localCamera);
@@ -276,7 +277,7 @@ export default function VoicePanel({
                     {name}
                     {p.isLocal && <span style={{ color: 'var(--text-muted)', marginLeft: '0.3rem' }}>(you)</span>}
                   </span>
-                  <VoiceStatusIcons isSpeaking={p.isSpeaking} isMuted={p.isMuted} isClientMuted={p.isClientMuted} />
+                  <VoiceStatusIcons isSpeaking={p.isSpeaking} isMuted={p.isMuted} isDeafened={voiceStates[p.identity]?.deafened} isClientMuted={p.isClientMuted} />
                 </div>
               </UserInteraction>
             );

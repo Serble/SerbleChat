@@ -1,4 +1,4 @@
-import { MicIcon, SpeakerMutedIcon, BellOffIcon } from '../../icons.jsx';
+import { MicIcon, MicOffIcon, HeadphonesOffIcon, BellOffIcon } from '../../icons.jsx';
 import './voice.css';
 
 /**
@@ -10,18 +10,23 @@ export function VoiceButton({ tone = 'neutral', size, className, type = 'button'
   return <button type={type} className={classes} data-tone={tone} {...rest} />;
 }
 
-/** Speaking / muted / muted-by-you indicators shown after a participant's name. */
-export function VoiceStatusIcons({ isSpeaking, isMuted, isClientMuted, size = 12 }) {
+/** Speaking / muted / deafened / muted-by-you indicators shown after a participant's name. */
+export function VoiceStatusIcons({ isSpeaking, isMuted, isDeafened, isClientMuted, size = 12 }) {
   return (
     <>
-      {isSpeaking && !isMuted && (
+      {isSpeaking && !isMuted && !isDeafened && (
         <span style={{ color: 'var(--success)', animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-flex' }} title="Speaking">
           <MicIcon size={size} />
         </span>
       )}
-      {isMuted && (
-        <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }} title="Muted">
-          <SpeakerMutedIcon size={size} />
+      {/* Deafened implies muted, so only show the stronger of the two */}
+      {isDeafened ? (
+        <span style={{ color: 'var(--danger)', display: 'inline-flex' }} title="Deafened">
+          <HeadphonesOffIcon size={size} />
+        </span>
+      ) : isMuted && (
+        <span style={{ color: 'var(--danger)', display: 'inline-flex' }} title="Muted">
+          <MicOffIcon size={size} />
         </span>
       )}
       {isClientMuted && (
