@@ -151,6 +151,9 @@ namespace SerbleChat.Backend.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<bool>("WebPushIncludeContent")
+                        .HasColumnType("tinyint(1)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Users");
@@ -688,6 +691,62 @@ namespace SerbleChat.Backend.Migrations
                         .IsUnique();
 
                     b.ToTable("UserGuildNotificationPreferences");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.UserNtfySubscription", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccessToken")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IncludeContent")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("LastFailureAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastSuccessAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ServerUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserNtfySubscriptions");
                 });
 
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.UserRoleAssignment", b =>
@@ -1512,6 +1571,17 @@ namespace SerbleChat.Backend.Migrations
                     b.Navigation("GuildNavigation");
 
                     b.Navigation("Preferences")
+                        .IsRequired();
+
+                    b.Navigation("UserNavigation");
+                });
+
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.UserNtfySubscription", b =>
+                {
+                    b.HasOne("SerbleChat.Backend.Database.Structs.ChatUser", "UserNavigation")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("UserNavigation");

@@ -58,6 +58,10 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             user.NotificationsWhileOnline = request.NotificationsWhileOnline.Value;
         }
 
+        if (request.WebPushIncludeContent.HasValue) {
+            user.WebPushIncludeContent = request.WebPushIncludeContent.Value;
+        }
+
         if (request.Blurb != null) {
             user.Blurb = request.Blurb;
         }

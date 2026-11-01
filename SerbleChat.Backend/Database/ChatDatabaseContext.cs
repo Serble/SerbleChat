@@ -25,6 +25,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<MessageMention> MessageMentions { get; set; } = null!;
     public DbSet<ChannelRead> ChannelReads { get; set; } = null!;
     public DbSet<UserWebNotificationHook> UserWebNotificationHooks { get; set; } = null!;
+    public DbSet<UserNtfySubscription> UserNtfySubscriptions { get; set; } = null!;
     public DbSet<GuildBan> GuildBans { get; set; } = null!;
     public DbSet<Poll> Polls { get; set; } = null!;
     public DbSet<PollOption> PollOptions { get; set; } = null!;

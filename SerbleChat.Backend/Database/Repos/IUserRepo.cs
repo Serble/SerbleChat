@@ -1,3 +1,4 @@
+using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
 
@@ -33,6 +34,18 @@ public interface IUserRepo {
     Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId);
     Task DeleteWebNotificationSubscriptions(params long[] subscriptionId);
     Task<Dictionary<string, IEnumerable<UserWebNotificationHook>>> GetUsersWebNotificationSubscriptions(IEnumerable<string> userIds);
+
+    // ntfy
+    Task CreateNtfySubscription(UserNtfySubscription subscription);
+    Task<UserNtfySubscription[]> GetNtfySubscriptions(string userId);
+    Task<UserNtfySubscription?> GetNtfySubscription(string userId, long id);
+    Task<int> CountNtfySubscriptions(string userId);
+    Task UpdateNtfySubscription(UserNtfySubscription subscription);
+    Task DeleteNtfySubscription(UserNtfySubscription subscription);
+    /// <summary>Enabled subscriptions only, grouped by user.</summary>
+    Task<Dictionary<string, UserNtfySubscription[]>> GetUsersEnabledNtfySubscriptions(IEnumerable<string> userIds);
+    /// <summary>Records delivery outcomes without loading the rows. Failures past the threshold disable the subscription.</summary>
+    Task RecordNtfyDeliveryResults(IEnumerable<long> succeeded, IEnumerable<NtfyDeliveryFailure> failed, int disableAfterFailures);
     
     Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user);
 }

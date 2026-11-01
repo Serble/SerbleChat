@@ -8,6 +8,7 @@ public record UserAccountResponse(
     NotificationPreferences DefaultGroupNotificationPreferences,
     NotificationPreferences DefaultGuildNotificationPreferences,
     bool NotificationsWhileOnline,
+    bool WebPushIncludeContent,
     string Blurb,
     string Color)
 {
@@ -18,6 +19,7 @@ public record UserAccountResponse(
             user.DefaultGroupNotificationPreferences,
             user.DefaultGuildNotificationPreferences,
             user.NotificationsWhileOnline,
+            user.WebPushIncludeContent,
             user.Blurb,
             user.Color);
     }

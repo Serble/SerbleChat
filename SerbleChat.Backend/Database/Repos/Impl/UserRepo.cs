@@ -1,3 +1,4 @@
+using SerbleChat.Backend.Services.Ntfy;
 using Microsoft.EntityFrameworkCore;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
@@ -159,6 +160,72 @@ public class UserRepo(ChatDatabaseContext context, IConnectionMultiplexer redis)
             .Where(h => userIds.Contains(h.UserId))
             .GroupBy(h => h.UserId)
             .ToDictionaryAsync(g => g.Key, g => g.AsEnumerable());
+    }
+
+    public Task CreateNtfySubscription(UserNtfySubscription subscription) {
+        context.UserNtfySubscriptions.Add(subscription);
+        return context.SaveChangesAsync();
+    }
+
+    public Task<UserNtfySubscription[]> GetNtfySubscriptions(string userId) {
+        return context.UserNtfySubscriptions
+            .Where(s => s.UserId == userId)
+            .OrderBy(s => s.Id)
+            .ToArrayAsync();
+    }
+
+    public Task<UserNtfySubscription?> GetNtfySubscription(string userId, long id) {
+        return context.UserNtfySubscriptions
+            .FirstOrDefaultAsync(s => s.UserId == userId && s.Id == id);
+    }
+
+    public Task<int> CountNtfySubscriptions(string userId) {
+        return context.UserNtfySubscriptions.CountAsync(s => s.UserId == userId);
+    }
+
+    public Task UpdateNtfySubscription(UserNtfySubscription subscription) {
+        context.UserNtfySubscriptions.Update(subscription);
+        return context.SaveChangesAsync();
+    }
+
+    public Task DeleteNtfySubscription(UserNtfySubscription subscription) {
+        context.UserNtfySubscriptions.Remove(subscription);
+        return context.SaveChangesAsync();
+    }
+
+    public async Task<Dictionary<string, UserNtfySubscription[]>> GetUsersEnabledNtfySubscriptions(IEnumerable<string> userIds) {
+        UserNtfySubscription[] subs = await context.UserNtfySubscriptions
+            .Where(s => s.Enabled && userIds.Contains(s.UserId))
+            .ToArrayAsync();
+        return subs.GroupBy(s => s.UserId).ToDictionary(g => g.Key, g => g.ToArray());
+    }
+
+    public async Task RecordNtfyDeliveryResults(IEnumerable<long> succeeded, IEnumerable<NtfyDeliveryFailure> failed, int disableAfterFailures) {
+        DateTime now = DateTime.UtcNow;
+
+        long[] okIds = succeeded.ToArray();
+        if (okIds.Length > 0) {
+            await context.UserNtfySubscriptions
+                .Where(s => okIds.Contains(s.Id))
+                .ExecuteUpdateAsync(u => u
+                    .SetProperty(s => s.LastSuccessAt, now)
+                    .SetProperty(s => s.ConsecutiveFailures, 0));
+        }
+
+        foreach (NtfyDeliveryFailure failure in failed) {
+            string error = failure.Error.Length > 255 ? failure.Error[..255] : failure.Error;
+            // Rate limiting is usually the shared server IP being throttled (ntfy.sh without a token), not this
+            // subscription's fault, so it doesn't count. Rejections won't fix themselves, so they disable straight away.
+            int increment = failure.Outcome == NtfyPublishOutcome.RateLimited ? 0 : 1;
+            bool disableNow = failure.Outcome == NtfyPublishOutcome.Rejected;
+            await context.UserNtfySubscriptions
+                .Where(s => s.Id == failure.SubscriptionId)
+                .ExecuteUpdateAsync(u => u
+                    .SetProperty(s => s.LastFailureAt, now)
+                    .SetProperty(s => s.LastError, error)
+                    .SetProperty(s => s.ConsecutiveFailures, s => s.ConsecutiveFailures + increment)
+                    .SetProperty(s => s.Enabled, s => s.Enabled && !disableNow && s.ConsecutiveFailures + increment < disableAfterFailures));
+        }
     }
 
     public Task<PublicUserResponse> CompilePublicUserResponse(ChatUser user) {

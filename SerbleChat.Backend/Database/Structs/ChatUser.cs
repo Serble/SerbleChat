@@ -44,6 +44,10 @@ public class ChatUser {
     
     [NotificationJsonIgnore]
     public bool NotificationsWhileOnline { get; set; } = false;
+
+    /// <summary>Whether Web Push (browser and, later, UnifiedPush) notifications include the message content.</summary>
+    [NotificationJsonIgnore]
+    public bool WebPushIncludeContent { get; set; } = true;
     
     // ACCOUNT STATES
     

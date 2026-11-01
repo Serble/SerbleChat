@@ -10,6 +10,7 @@ using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Repos.Impl;
 using SerbleChat.Backend.Services;
 using SerbleChat.Backend.Services.Impl;
+using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.SocketHubs;
 using StackExchange.Redis;
 
@@ -21,11 +22,13 @@ builder.Services.AddOptions<ApiSettings>().Bind(builder.Configuration.GetSection
 builder.Services.AddOptions<LiveKitSettings>().Bind(builder.Configuration.GetSection("LiveKit"));
 builder.Services.AddOptions<PushNotificationsSettings>().Bind(builder.Configuration.GetSection("PushNotifications"));
 builder.Services.AddOptions<S3Settings>().Bind(builder.Configuration.GetSection("S3"));
+builder.Services.AddOptions<NtfySettings>().Bind(builder.Configuration.GetSection("Ntfy"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
 ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
 PushNotificationsSettings pushSettings = builder.Configuration.GetSection("PushNotifications").Get<PushNotificationsSettings>() ?? throw new Exception("Push notifications settings not found");
 S3Settings s3Settings = builder.Configuration.GetSection("S3").Get<S3Settings>() ?? throw new Exception("S3 settings not found");
+NtfySettings ntfySettings = builder.Configuration.GetSection("Ntfy").Get<NtfySettings>() ?? new NtfySettings();
 
 builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -114,6 +117,14 @@ builder.Services.AddScoped<IVoiceManager, VoiceManager>();
 builder.Services.AddScoped<IImagesService, ImagesService>();
 builder.Services.AddScoped<IMessageSender, MessageSender>();
 builder.Services.AddScoped<IWebhookRepo, WebhookRepo>();
+
+// ntfy: user-chosen URLs, so the handler refuses non-public addresses (see NtfyClient.CreateHandler)
+builder.Services.AddHttpClient<INtfyClient, NtfyClient>(client => {
+        client.Timeout = Timeout.InfiniteTimeSpan;  // NtfyClient applies its own per-request timeout
+        client.MaxResponseContentBufferSize = 64 * 1024;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("SerbleChat");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => NtfyClient.CreateHandler(ntfySettings));
 
 // push notifications
 builder.Services.AddMemoryCache();

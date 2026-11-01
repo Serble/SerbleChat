@@ -6,6 +6,7 @@ import { isInstalled, canInstall, promptInstall, onInstallAvailabilityChange } f
 import { Button, SaveStatus, SectionTitle, ToggleRow, OptionGroup, Hint, useFlashStatus } from '../ui/index.js';
 import { BellIcon, BellOffIcon, ChatIcon, ErrorDotIcon, WarningIcon, XCircleIcon, CheckIcon, LightbulbIcon, DownloadIcon } from '../../icons.jsx';
 import { TabBody } from './common.jsx';
+import NtfySection from './NtfySection.jsx';
 
 // NotificationPreference enum: Inherit=0, AllMessages=1, MentionsOnly=2, Nothing=3
 // Inherit isn't offered here — user defaults are the bottom of the hierarchy.
@@ -24,7 +25,10 @@ const SCOPES = [
 const SAVE_DEBOUNCE_MS = 500;
 
 function prefsFromUser(user) {
-  const prefs = { notificationsWhileOnline: user?.notificationsWhileOnline ?? false };
+  const prefs = {
+    notificationsWhileOnline: user?.notificationsWhileOnline ?? false,
+    webPushIncludeContent: user?.webPushIncludeContent ?? true,
+  };
   for (const s of SCOPES) {
     prefs[s.key] = {
       notifications: user?.[s.key]?.notifications ?? s.defaults.notifications,
@@ -235,13 +239,23 @@ export default function NotificationsTab() {
       <div style={{ marginBottom: '1.5rem' }}>
         <PushSection />
       </div>
+      <ToggleRow
+        title="Include message content in push notifications"
+        description="Push notifications are end-to-end encrypted, so only your devices can read them. Turn this off to show only who messaged you and where, e.g. on a shared screen."
+        checked={prefs.webPushIncludeContent}
+        onChange={v => update({ webPushIncludeContent: v })}
+      />
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        <NtfySection />
+      </div>
 
       <InstallSection />
 
       <SectionTitle>Online Behaviour</SectionTitle>
       <ToggleRow
         title="Receive notifications while online"
-        description="When enabled, push notifications are sent even if you are currently active in the app. Disable to suppress push notifications while you have a session open."
+        description="When enabled, push and ntfy notifications are sent even if you are currently active in the app. Disable to suppress them while you have a session open."
         checked={prefs.notificationsWhileOnline}
         onChange={v => update({ notificationsWhileOnline: v })}
       />

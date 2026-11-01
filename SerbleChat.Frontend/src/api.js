@@ -53,6 +53,46 @@ export async function addWebPushSubscription({ url, p256dh, auth }) {
 }
 
 /** GET /auth  – verify the current JWT is still valid */
+// ── ntfy ──────────────────────────────────────────────────────────────────────
+
+/** GET /account/ntfy  – the user's ntfy topics (access tokens are never returned, only hasAccessToken) */
+export async function getNtfySubscriptions() {
+  const res = await fetch(`${BASE}/account/ntfy`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /account/ntfy  – { serverUrl, topic, accessToken?, includeContent } */
+export async function createNtfySubscription(body) {
+  const res = await fetch(`${BASE}/account/ntfy`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handle(res);
+}
+
+/** PATCH /account/ntfy/:id  – accessToken: null keeps it, '' removes it */
+export async function updateNtfySubscription(id, body) {
+  const res = await fetch(`${BASE}/account/ntfy/${id}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handle(res);
+}
+
+/** DELETE /account/ntfy/:id */
+export async function deleteNtfySubscription(id) {
+  const res = await fetch(`${BASE}/account/ntfy/${id}`, { method: 'DELETE', headers: authHeaders() });
+  return handle(res);
+}
+
+/** POST /account/ntfy/:id/test  – sends a test notification, returns { success, error } */
+export async function testNtfySubscription(id) {
+  const res = await fetch(`${BASE}/account/ntfy/${id}/test`, { method: 'POST', headers: authHeaders() });
+  return handle(res);
+}
+
 export async function verifyAuth() {
   const res = await fetch(`${BASE}/auth`, { headers: authHeaders() });
   return handle(res);

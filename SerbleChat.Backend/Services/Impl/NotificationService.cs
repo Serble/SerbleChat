@@ -1,10 +1,14 @@
+using System.Collections.Concurrent;
+using System.Net;
 using System.Threading.Channels;
 using Lib.Net.Http.WebPush;
 using Microsoft.AspNetCore.SignalR;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Options;
+using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
+using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.SocketHubs;
 using StackExchange.Redis;
 using Channel = SerbleChat.Backend.Database.Structs.Channel;
@@ -13,6 +17,9 @@ using ThreadingChannel = System.Threading.Channels.Channel;
 namespace SerbleChat.Backend.Services.Impl;
 
 public class NotificationService(IServiceProvider serviceProvider) : INotificationService {
+    /// <summary>How many ntfy requests a single message fans out to at once.</summary>
+    private const int NtfyParallelism = 16;
+
     private readonly Channel<Func<Task>> _work = ThreadingChannel.CreateUnbounded<Func<Task>>();
     
     public void EnqueueMessageProcessing(Channel channel, Message message, IEnumerable<string> userMentions) {
@@ -31,6 +38,8 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         PushServiceClient pushClient = scope.ServiceProvider.GetRequiredService<PushServiceClient>();
         IConnectionMultiplexer redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
         IHubContext<ChatHub> updates = scope.ServiceProvider.GetRequiredService<IHubContext<ChatHub>>();
+        NtfySettings ntfySettings = scope.ServiceProvider.GetRequiredService<IOptions<NtfySettings>>().Value;
+        string? frontendUrl = scope.ServiceProvider.GetRequiredService<IOptions<ApiSettings>>().Value.FrontendUrl;
         
         logger.LogInformation("Processing message {MessageId} in channel {ChannelId} for notifications", message.Id, channel.Id);
             
@@ -41,6 +50,8 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
         // get actual notif endpoints
         Dictionary<string, IEnumerable<UserWebNotificationHook>> endpoints = 
             await users.GetUsersWebNotificationSubscriptions(userData.Keys);
+        Dictionary<string, UserNtfySubscription[]> ntfyEndpoints =
+            await users.GetUsersEnabledNtfySubscriptions(userData.Keys);
         
         // get all prefs from db
         Dictionary<string, UserChannelNotificationPreferences> channelPrefs =
@@ -65,10 +76,13 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             type = "message",
             message
         };
-        PushMessage notif = new(JsonConvert.SerializeObject(content)) {
-            Urgency = PushMessageUrgency.Normal,
-            Topic = "message:" + message.Id
-        };
+        // Web Push payloads come in two flavours, depending on the recipient's include-content setting
+        Lazy<PushMessage> pushWithContent = new(() => CreatePushMessage(content, message, includeContent: true));
+        Lazy<PushMessage> pushWithoutContent = new(() => CreatePushMessage(content, message, includeContent: false));
+
+        // ntfy is plaintext and rendered by the ntfy app, so it gets a pre-formatted title and body
+        Lazy<Task<(string Title, string Body)>> ntfyText = new(() => BuildNtfyText(scope.ServiceProvider, channel, message, userData));
+        List<(UserNtfySubscription Sub, NtfyNotification Notification)> ntfyJobs = [];
 
         List<long> badEndpoints = [];
         
@@ -131,28 +145,95 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             // first off, send a real-time update to their clients
             await updates.Clients.User(userId).SendAsync("ReceiveNotification", content);
             
-            // then web push notifications
             if (onlyClientNotif) continue;
+
+            // queue ntfy, sent concurrently after the loop since it's a plain HTTP call to a server of the user's choice
+            if (ntfyEndpoints.TryGetValue(userId, out UserNtfySubscription[]? ntfySubs)) {
+                (string title, string body) = await ntfyText.Value;
+                bool mentioned = mentionedUsers.Contains(userId);
+                foreach (UserNtfySubscription sub in ntfySubs) {
+                    ntfyJobs.Add((sub, NotificationFormatter.BuildNtfy(
+                        title, sub.IncludeContent ? body : null, mentioned, channel, frontendUrl)));
+                }
+            }
+
+            // then web push notifications (browser push, and UnifiedPush once a native client registers one)
             if (!endpoints.TryGetValue(userId, out IEnumerable<UserWebNotificationHook>? hooks)) {
                 continue;  // no endpoints, skip
             }
-            
+
+            PushMessage notif = user.WebPushIncludeContent ? pushWithContent.Value : pushWithoutContent.Value;
             foreach (UserWebNotificationHook hook in hooks) {
                 // cool, we need to send a notification to this user, let's do it
                 try {
                     logger.LogInformation("Sending notification to user {UserId} for message {MessageId} in channel {ChannelId}", hook.UserId, message.Id, channel.Id);
                     await pushClient.RequestPushMessageDeliveryAsync(hook.ToPushSubscription(), notif);
                 }
-                catch (Exception) {
-                    // if this fails, we should just delete the subscription; it's probably invalid
+                catch (PushServiceClientException e) when (IsSubscriptionGone(e.StatusCode)) {
+                    // the push service says this subscription is dead (expired, unsubscribed, keys no longer valid)
                     badEndpoints.Add(hook.Id);
+                }
+                catch (Exception e) {
+                    // Network errors, rate limits and 5xx are transient: keep the subscription.
+                    logger.LogWarning(e, "Web push to subscription {HookId} failed", hook.Id);
                 }
             }
         }
             
-        // finally, delete any bad endpoints we found
+        // delete any bad endpoints we found
         if (badEndpoints.Count > 0) {
             await users.DeleteWebNotificationSubscriptions(badEndpoints.ToArray());
         }
+
+        if (ntfyJobs.Count > 0) {
+            await SendNtfy(scope.ServiceProvider, users, ntfySettings, ntfyJobs, logger, message);
+        }
+    }
+
+    private static bool IsSubscriptionGone(HttpStatusCode status) => status is
+        HttpStatusCode.NotFound or HttpStatusCode.Gone or HttpStatusCode.BadRequest or HttpStatusCode.Forbidden;
+
+    private static PushMessage CreatePushMessage(object content, Message message, bool includeContent) {
+        return new PushMessage(NotificationFormatter.BuildWebPushPayload(content, includeContent)) {
+            Urgency = PushMessageUrgency.Normal,
+            Topic = "message-" + message.Id  // topics must be URL-safe base64 characters, so no colon
+        };
+    }
+
+    private static async Task<(string Title, string Body)> BuildNtfyText(IServiceProvider services, Channel channel,
+        Message message, IReadOnlyDictionary<string, ChatUser> members) {
+        string? guildName = null;
+        Dictionary<long, string> roleNames = [];
+        if (channel.GuildId.HasValue) {
+            guildName = (await services.GetRequiredService<IGuildRepo>().GetGuild(channel.GuildId.Value))?.Name;
+            if (NotificationFormatter.HasRoleMentions(message.Content)) {
+                roleNames = (await services.GetRequiredService<IRoleRepo>().GetGuildRoles(channel.GuildId.Value))
+                    .ToDictionary(r => r.Id, r => r.Name);
+            }
+        }
+
+        string title = NotificationFormatter.BuildTitle(message, channel, guildName);
+        string body = NotificationFormatter.ResolveMentions(message.Content, members, roleNames, channel);
+        return (title, body);
+    }
+
+    private static async Task SendNtfy(IServiceProvider services, IUserRepo users, NtfySettings settings,
+        List<(UserNtfySubscription Sub, NtfyNotification Notification)> jobs, ILogger logger, Message message) {
+        INtfyClient ntfy = services.GetRequiredService<INtfyClient>();
+        ConcurrentBag<long> succeeded = [];
+        ConcurrentBag<NtfyDeliveryFailure> failed = [];
+
+        await Parallel.ForEachAsync(jobs, new ParallelOptions { MaxDegreeOfParallelism = NtfyParallelism }, async (job, token) => {
+            NtfyPublishResult result = await ntfy.Publish(job.Sub, job.Notification, token);
+            if (result.Success) {
+                succeeded.Add(job.Sub.Id);
+                return;
+            }
+            logger.LogInformation("ntfy subscription {SubId} failed for message {MessageId}: {Outcome} {Error}",
+                job.Sub.Id, message.Id, result.Outcome, result.Error);
+            failed.Add(new NtfyDeliveryFailure(job.Sub.Id, result.Outcome, result.Error ?? result.Outcome.ToString()));
+        });
+
+        await users.RecordNtfyDeliveryResults(succeeded, failed, settings.DisableAfterFailures);
     }
 }
