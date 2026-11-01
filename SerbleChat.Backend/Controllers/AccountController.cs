@@ -306,23 +306,46 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
         return Ok(response);
     }
 
+    /// <summary>Registers a Web Push endpoint, or refreshes it if it's already registered.</summary>
     [HttpPost("web-push-subscription")]
     public async Task<ActionResult> AddWebPushSubscription([FromBody] WebNotificationHookAddRequest request) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
         }
-        
+
+        PushSubscriptionKind? kind = request.Kind?.ToLowerInvariant() switch {
+            null or "" or "browser" => PushSubscriptionKind.Browser,
+            "unifiedpush" => PushSubscriptionKind.UnifiedPush,
+            _ => null
+        };
+        if (kind == null) {
+            return BadRequest("kind must be 'browser' or 'unifiedpush'");
+        }
+
+        string userAgent = Request.Headers.UserAgent.FirstOrDefault("") ?? "";
         UserWebNotificationHook subscription = new() {
             UserId = userId,
             Url = request.Url,
             P256dh = request.P256dh,
             Auth = request.Auth,
-            UserAgent = Request.Headers.UserAgent.FirstOrDefault("") ?? "",
+            UserAgent = userAgent.Length > 255 ? userAgent[..255] : userAgent,
+            Kind = kind.Value,
             CreatedAt = DateTime.UtcNow
         };
-        await users.CreateWebNotificationSubscription(subscription);
+        await users.UpsertWebNotificationSubscription(subscription);
         return Ok();
+    }
+
+    /// <summary>Unregisters a Web Push endpoint, e.g. when the user turns notifications off or logs out.</summary>
+    [HttpDelete("web-push-subscription")]
+    public async Task<ActionResult> RemoveWebPushSubscription([FromBody] WebNotificationHookRemoveRequest request) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        return await users.DeleteWebNotificationSubscription(userId, request.Url) ? Ok() : NotFound();
     }
     
     [HttpPut("pfp")]

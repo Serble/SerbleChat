@@ -805,6 +805,9 @@ namespace SerbleChat.Backend.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
                     b.Property<string>("P256dh")
                         .IsRequired()
                         .HasMaxLength(128)

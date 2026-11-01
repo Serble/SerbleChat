@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Lets message notifications' conversation shortcuts be shared to. -->
+    <share-target android:targetClass="net.serble.chat.MainActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="net.serble.chat.CONVERSATION" />
+    </share-target>
+</shortcuts>

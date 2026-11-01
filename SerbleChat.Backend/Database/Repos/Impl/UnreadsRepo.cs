@@ -6,22 +6,14 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
     
     public async Task MarkRead(string userId, long channelId, long messageId) {
-        ChannelRead? existing = context.ChannelReads.FirstOrDefault(x => x.ChannelId == channelId && x.UserId == userId);
-        if (existing == null) {
-            ChannelRead newRead = new() {
-                ChannelId = channelId,
-                UserId = userId,
-                LastReadMessageId = messageId
-            };
-            context.ChannelReads.Add(newRead);
-        } else {
-            if (existing.LastReadMessageId >= messageId) {
-                return;  // already marked as read up to this message or further, no update needed
-            }
-            existing.LastReadMessageId = messageId;
-            context.ChannelReads.Update(existing);
-        }
-        await context.SaveChangesAsync();
+        // One atomic statement: a client marking a channel read twice at once (it does, as messages
+        // arrive) used to race between the lookup and the insert and fail on the unique index.
+        // GREATEST keeps the read position from ever moving backwards.
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ChannelReads (ChannelId, UserId, LastReadMessageId)
+            VALUES ({channelId}, {userId}, {messageId})
+            ON DUPLICATE KEY UPDATE LastReadMessageId = GREATEST(LastReadMessageId, {messageId})
+            """);
     }
 
     public async Task<long> GetLastReadMessageId(string userId, long channelId) {

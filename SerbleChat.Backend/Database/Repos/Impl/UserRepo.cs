@@ -138,9 +138,31 @@ public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : 
             .ToDictionaryAsync(p => p.UserId);
     }
 
-    public Task CreateWebNotificationSubscription(UserWebNotificationHook subscription) {
-        context.UserWebNotificationHooks.Add(subscription);
-        return context.SaveChangesAsync();
+    public async Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription) {
+        UserWebNotificationHook[] existing = await context.UserWebNotificationHooks
+            .Where(h => h.Url == subscription.Url)
+            .ToArrayAsync();
+        if (existing.Length == 0) {
+            context.UserWebNotificationHooks.Add(subscription);
+            await context.SaveChangesAsync();
+            return;
+        }
+
+        UserWebNotificationHook hook = existing[0];
+        hook.UserId = subscription.UserId;
+        hook.P256dh = subscription.P256dh;
+        hook.Auth = subscription.Auth;
+        hook.UserAgent = subscription.UserAgent;
+        hook.Kind = subscription.Kind;
+        // older clients re-registered on every launch, so there may be duplicates to clean up
+        context.UserWebNotificationHooks.RemoveRange(existing.Skip(1));
+        await context.SaveChangesAsync();
+    }
+
+    public async Task<bool> DeleteWebNotificationSubscription(string userId, string url) {
+        return await context.UserWebNotificationHooks
+            .Where(h => h.UserId == userId && h.Url == url)
+            .ExecuteDeleteAsync() > 0;
     }
 
     public async Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId) {

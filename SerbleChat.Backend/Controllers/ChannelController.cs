@@ -20,7 +20,7 @@ namespace SerbleChat.Backend.Controllers;
 public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroupChatRepo groups, IMessageRepo msgs,
     IHubContext<ChatHub> updates, IUserRepo users, IGuildRepo guilds, IOptions<LiveKitSettings> liveKitSettings,
     IUnreadsRepo unreads, IVoiceManager voiceManager,
-    IImagesService images, IFriendshipRepo friends, IPollRepo polls, IMessageSender sender) : ControllerBase {
+    IImagesService images, IFriendshipRepo friends, IPollRepo polls, IMessageSender sender, INotificationService notifications) : ControllerBase {
 
     private Task SignalChannelUpdated(long channelId) {
         return updates.Clients.Group("channel-" + channelId).SendAsync("ChannelUpdated", new {
@@ -131,8 +131,14 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         return Ok();
     }
 
+    /// <summary>
+    /// Messages newest first. Page back with <c>before</c> (the oldest ID you have) and catch up with <c>after</c>
+    /// (the newest ID you have): with <c>after</c> you get the <c>limit</c> messages straight after it, so a full
+    /// page means there are more. <c>offset</c> still works but shifts as messages arrive.
+    /// </summary>
     [HttpGet("{channelId:long}/messages")]
-    public async Task<ActionResult<IEnumerable<Message>>> GetMessages(long channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0) {
+    public async Task<ActionResult<IEnumerable<Message>>> GetMessages(long channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0,
+        [FromQuery] long? before = null, [FromQuery] long? after = null) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -148,7 +154,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Forbid();
         }
     
-        List<Message> messages = await msgs.GetMessages(channelId, limit, offset);
+        List<Message> messages = await msgs.GetMessages(channelId, limit, offset, before, after);
         await polls.AttachPolls(messages);
         return Ok(messages);
     }
@@ -166,6 +172,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         await unreads.MarkRead(userId, channelId, messageId);
+        notifications.EnqueueReadSync(userId, channelId, messageId);
         return Ok();
     }
 

@@ -1,6 +1,7 @@
 {
   "appId": "net.serble.chat",
   "productName": "Serble Chat",
+  "artifactName": "serble-chat-${version}-${os}-${arch}.${ext}",
   "directories": {
     "output": "dist-electron",
     "buildResources": "build"
@@ -8,27 +9,39 @@
   "files": [
     "dist/**/*",
     "electron/**/*",
+    "!electron/adhoc-sign.cjs",
     "package.json"
   ],
   "extraMetadata": {
     "main": "electron/main.cjs"
   },
+  "afterPack": "electron/adhoc-sign.cjs",
+  "publish": null,
   "win": {
-    "target": ["nsis", "portable"],
+    "target": [
+      { "target": "nsis", "arch": ["x64"] },
+      { "target": "portable", "arch": ["x64"] }
+    ],
     "icon": "public/icons/512.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "serble-chat-${version}-windows-${arch}-setup.${ext}"
+  },
+  "portable": {
+    "artifactName": "serble-chat-${version}-windows-${arch}-portable.${ext}"
   },
   "mac": {
     "target": ["dmg", "zip"],
     "icon": "public/icons/512.png",
-    "category": "public.app-category.social-networking"
+    "category": "public.app-category.social-networking",
+    "artifactName": "serble-chat-${version}-macos-${arch}.${ext}"
   },
   "linux": {
-    "target": ["AppImage", "deb", "snap"],
+    "target": [{ "target": "tar.xz", "arch": ["x64"] }],
     "icon": "public/icons/512.png",
-    "category": "Network;InstantMessaging"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true
+    "category": "Network;InstantMessaging",
+    "artifactName": "serble-chat-${version}-linux-${arch}.${ext}"
   }
 }

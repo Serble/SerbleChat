@@ -1,0 +1,20 @@
+# Build output and caches
+.gradle/
+build/
+.kotlin/
+.cxx/
+/captures/
+*.iml
+
+# Per-machine: the SDK path
+/local.properties
+
+# Signing keys and anything holding their passwords. Release signing reads them from the
+# SIGNING_* environment variables (see app/build.gradle.kts), never from the tree.
+*.jks
+*.keystore
+keystore.properties
+
+# Where Android Studio's "Generate Signed App Bundle / APK" writes its output
+/app/release/
+/app/preview/

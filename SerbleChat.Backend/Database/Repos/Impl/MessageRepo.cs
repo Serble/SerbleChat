@@ -5,10 +5,24 @@ namespace SerbleChat.Backend.Database.Repos.Impl;
 
 public class MessageRepo(ChatDatabaseContext context) : IMessageRepo {
     
-    public async Task<List<Message>> GetMessages(long channelId, int limit = 50, int offset = 0) {
-        return await context.Messages
-            .Where(m => m.ChannelId == channelId)
-            .OrderByDescending(m => m.CreatedAt)
+    public async Task<List<Message>> GetMessages(long channelId, int limit = 50, int offset = 0, long? before = null, long? after = null) {
+        IQueryable<Message> query = context.Messages.Where(m => m.ChannelId == channelId);
+        if (before.HasValue) query = query.Where(m => m.Id < before.Value);
+
+        if (after.HasValue) {
+            List<Message> page = await query
+                .Where(m => m.Id > after.Value)
+                .OrderBy(m => m.Id)
+                .Skip(offset)
+                .Take(limit)
+                .ToListAsync();
+            page.Reverse();
+            return page;
+        }
+
+        // IDs are assigned in creation order, so ordering by them matches CreatedAt and works with the cursors
+        return await query
+            .OrderByDescending(m => m.Id)
             .Skip(offset)
             .Take(limit)
             .ToListAsync();

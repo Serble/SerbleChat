@@ -8,6 +8,7 @@ import { MicIcon, MicOffIcon, HeadphonesIcon, HeadphonesOffIcon, LogoutIcon } fr
 import { MenuItem } from './ui/index.js';
 import { StatusMenu, CustomStatusModal } from './status/StatusPicker.jsx';
 import { navigateToRoot } from '../electron-utils.js';
+import { disablePush } from '../push.js';
 import { AvatarStatusDot } from './status/StatusDot.jsx';
 import { STATUS_META } from './status/status.js';
 
@@ -145,7 +146,7 @@ export default function UserPanel() {
             icon={LogoutIcon}
             label="Log out"
             variant="danger"
-            onClick={() => { localStorage.removeItem('jwt'); navigateToRoot(); }}
+            onClick={async () => { await disablePush(); localStorage.removeItem('jwt'); navigateToRoot(); }}
           />
         </StatusMenu>
       )}

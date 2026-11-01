@@ -52,6 +52,17 @@ export async function addWebPushSubscription({ url, p256dh, auth }) {
   return handle(res);
 }
 
+/** DELETE /account/web-push-subscription  – stop sending pushes to an endpoint */
+export async function removeWebPushSubscription(url) {
+  const res = await fetch(`${BASE}/account/web-push-subscription`, {
+    method: 'DELETE',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (res.status === 404) return;  // already gone
+  return handle(res);
+}
+
 /** GET /auth  – verify the current JWT is still valid */
 // ── ntfy ──────────────────────────────────────────────────────────────────────
 

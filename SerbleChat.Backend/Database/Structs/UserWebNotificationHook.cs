@@ -22,6 +22,12 @@ public class UserWebNotificationHook {
     
     [StringLength(255)]  // not super important to store all of this
     public string UserAgent { get; set; } = null!;
+
+    /// <summary>
+    /// Browsers must show a notification for every push they get, so only UnifiedPush (native app) subscriptions
+    /// are sent silent pushes, like the one that clears notifications read on another device.
+    /// </summary>
+    public PushSubscriptionKind Kind { get; set; } = PushSubscriptionKind.Browser;
     
     public DateTime CreatedAt { get; set; }
     
@@ -37,4 +43,9 @@ public class UserWebNotificationHook {
         s.Keys["auth"] = Auth;
         return s;
     }
+}
+
+public enum PushSubscriptionKind {
+    Browser = 0,
+    UnifiedPush = 1
 }

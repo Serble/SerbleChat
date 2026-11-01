@@ -1,0 +1,198 @@
+# Builds the Android and desktop apps and publishes them together as a GitHub release, for every
+# push to main that touches an app. Obtainium (and the like) can follow these releases.
+#
+# Needs, under Settings > Secrets and variables > Actions:
+#   Secrets:   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#   Variables: VITE_API_BASE_URL, VITE_CLIENT_ID, VITE_FRONTEND_URL, VITE_LIVEKIT_URL, VITE_S3_ENDPOINT,
+#              VITE_SERBLE_FILES_API_URL, VITE_FILES_CLIENT_ID (the desktop app's build settings)
+name: Release apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'SerbleChat.Android/**'
+      - 'SerbleChat.Frontend/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+# One release at a time, in push order; a newer push waits rather than cancelling one half-published
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The run number only ever goes up, which Android needs of versionCode
+  VERSION: 1.0.${{ github.run_number }}
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install SDK platform, NDK and CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-37" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+
+      # Never publish an APK signed with a throwaway key: Android would refuse it as an update
+      # to installs signed with the real one.
+      - name: Set up the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::The Android signing secrets aren't set. See the comment at the top of this workflow."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APKs
+        working-directory: SerbleChat.Android
+        env:
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          # PKCS12 keystores (keytool's default) use the store password for the key as well
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -PversionCode=${{ github.run_number }} -PversionName=$VERSION --no-daemon
+
+      - name: Name and check the APKs
+        run: |
+          mkdir -p out
+          for abi in arm64-v8a armeabi-v7a x86_64 universal; do
+            cp "SerbleChat.Android/app/build/outputs/apk/release/app-$abi-release.apk" "out/serble-chat-$VERSION-android-$abi.apk"
+          done
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
+          # Fails the job if an APK isn't properly signed; prints the certificate for the log
+          "$apksigner" verify --print-certs "out/serble-chat-$VERSION-android-universal.apk" | grep -E "SHA-256|DN"
+          for f in out/*.apk; do "$apksigner" verify "$f"; done
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*.apk
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            target: --linux
+            files: SerbleChat.Frontend/dist-electron/*.tar.xz
+          - name: Windows
+            os: windows-latest
+            target: --win
+            files: SerbleChat.Frontend/dist-electron/*.exe
+          - name: macOS
+            os: macos-latest
+            target: --mac --x64 --arm64
+            files: |
+              SerbleChat.Frontend/dist-electron/*.dmg
+              SerbleChat.Frontend/dist-electron/*.zip
+    defaults:
+      run:
+        working-directory: SerbleChat.Frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: SerbleChat.Frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build the web app for Electron
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_CLIENT_ID: ${{ vars.VITE_CLIENT_ID }}
+          VITE_FRONTEND_URL: ${{ vars.VITE_FRONTEND_URL }}
+          VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
+          VITE_S3_ENDPOINT: ${{ vars.VITE_S3_ENDPOINT }}
+          VITE_SERBLE_FILES_API_URL: ${{ vars.VITE_SERBLE_FILES_API_URL }}
+          VITE_FILES_CLIENT_ID: ${{ vars.VITE_FILES_CLIENT_ID }}
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ] || [ -z "$VITE_CLIENT_ID" ]; then
+            echo "::error::The VITE_* repository variables aren't set. See the comment at the top of this workflow."
+            exit 1
+          fi
+          npx vite build --mode electron
+
+      - name: Package
+        env:
+          # No certificates (yet): skip looking for them. The Mac app is ad-hoc signed by electron/adhoc-sign.cjs.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.target }} --publish never -c.extraMetadata.version=$VERSION
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la assets
+          cat > notes.md <<EOF
+          ## Downloads
+
+          **Android**: most phones want \`serble-chat-$VERSION-android-arm64-v8a.apk\`. If unsure, take the
+          \`universal\` one. To get updates automatically, add this repository to
+          [Obtainium](https://github.com/ImranR98/Obtainium) and filter APKs by \`arm64-v8a\` (or \`universal\`).
+
+          **Windows**: \`setup.exe\` installs it; \`portable.exe\` runs without installing. The app isn't signed
+          yet, so SmartScreen may warn about an unrecognised app: choose *More info* then *Run anyway*.
+
+          **macOS**: \`arm64\` for Apple Silicon, \`x64\` for Intel. The app isn't notarised yet, so the first
+          time, open it, then allow it under *System Settings > Privacy & Security* (*Open Anyway*).
+
+          **Linux**: extract the \`.tar.xz\` and run \`serble-chat\` inside it.
+
+          EOF
+          gh release create "v$VERSION" assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Serble Chat $VERSION" \
+            --notes-file notes.md \
+            --generate-notes

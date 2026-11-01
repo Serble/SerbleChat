@@ -42,6 +42,15 @@ public static partial class NotificationFormatter {
         return payload.ToString(Formatting.None);
     }
 
+    /// <summary>The silent push that tells native clients a channel was read up to a message on another device.</summary>
+    public static string BuildReadPayload(long channelId, long messageId) {
+        return new JObject {
+            ["type"] = "read",
+            ["channel_id"] = channelId,
+            ["message_id"] = messageId
+        }.ToString(Formatting.None);
+    }
+
     public static string BuildTitle(Message message, Channel channel, string? guildName) {
         string author = message.AuthorNavigation?.Username ?? message.WebhookUsername ?? "Someone";
         return channel.Type switch {

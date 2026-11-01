@@ -12,6 +12,7 @@ import {
 } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
 import { copyToClipboard, navigateToRoot } from '../electron-utils.js';
+import { disablePush } from '../push.js';
 import Avatar from './Avatar.jsx';
 import BanModal from './BanModal.jsx';
 import SettingsModal from './settings/SettingsModal.jsx';
@@ -565,7 +566,7 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
           <div style={{ height: 1, background: 'var(--border)', marginBottom: '0.65rem' }} />
           <Button
             variant="danger-outline"
-            onClick={() => { localStorage.removeItem('jwt'); navigateToRoot(); }}
+            onClick={async () => { await disablePush(); localStorage.removeItem('jwt'); navigateToRoot(); }}
             style={{ width: '100%', justifyContent: 'flex-start', gap: '0.5rem', padding: '0.45rem 0.75rem', fontSize: '0.82rem', fontWeight: 600 }}
           >
             <LogoutIcon size={16} />

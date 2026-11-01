@@ -14,7 +14,7 @@
  * so callers can surface the exact failure reason in the UI.
  */
 
-import { getVapidPublicKey, addWebPushSubscription } from './api.js';
+import { getVapidPublicKey, addWebPushSubscription, removeWebPushSubscription } from './api.js';
 
 const LS_KEY = 'push_enabled';
 const SW_PATH = '/sw.js';
@@ -259,7 +259,8 @@ export async function enablePush() {
 
 /**
  * Disable push notifications for the current user.
- * Unsubscribes from the browser's PushManager.
+ * Unregisters the endpoint with the backend (so it stops pushing to it), then
+ * unsubscribes from the browser's PushManager. Call it before logging out.
  */
 export async function disablePush() {
   localStorage.removeItem(LS_KEY);
@@ -267,7 +268,13 @@ export async function disablePush() {
     const sw = await navigator.serviceWorker.getRegistration(SW_PATH);
     if (!sw) return;
     const sub = await sw.pushManager.getSubscription();
-    if (sub) await sub.unsubscribe();
+    if (!sub) return;
+    try {
+      await removeWebPushSubscription(sub.endpoint);
+    } catch (err) {
+      console.warn('[push] Failed to unregister subscription with backend:', err.message ?? err);
+    }
+    await sub.unsubscribe();
     console.debug('[push] Unsubscribed successfully.');
   } catch (err) {
     console.warn('[push] disablePush error:', err.message ?? err, err);

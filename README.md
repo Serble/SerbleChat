@@ -7,6 +7,7 @@ Available as:
 - **Web Application** - Browser-based chat
 - **Progressive Web App (PWA)** - Installable web app
 - **Desktop Application** - Native Windows, Mac, and Linux apps via Electron
+- **Android App** - Native Kotlin app with UnifiedPush notifications, see [SerbleChat.Android](SerbleChat.Android/README.md)
 
 ## Running
 

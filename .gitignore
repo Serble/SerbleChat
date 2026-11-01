@@ -7,6 +7,6 @@ riderModule.iml
 *.user
 node_modules/
 .env*
--.env.example
+!.env.example
 **/dist
 **/dist-electron

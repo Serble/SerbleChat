@@ -10,6 +10,7 @@ using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
 using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.SocketHubs;
+using StackExchange.Redis;
 using Channel = SerbleChat.Backend.Database.Structs.Channel;
 using ThreadingChannel = System.Threading.Channels.Channel;
 
@@ -19,10 +20,30 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
     /// <summary>How many ntfy requests a single message fans out to at once.</summary>
     private const int NtfyParallelism = 16;
 
+    /// <summary>How long we remember that a native device was sent a channel's notifications, so reading it can clear them.</summary>
+    private static readonly TimeSpan PushedTtl = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Returns the last pushed message ID for the channel (-1 if nothing was pushed), and forgets it when the
+    /// read covers it, so later reads don't send more clears.
+    /// </summary>
+    private static readonly LuaScript TakePushedScript = LuaScript.Prepare("""
+        local v = redis.call('GET', @key)
+        if not v then return -1 end
+        if tonumber(v) <= tonumber(@readUpTo) then redis.call('DEL', @key) end
+        return tonumber(v)
+        """);
+
+    private static RedisKey PushedKey(string userId, long channelId) => $"pushed:{userId}:{channelId}";
+
     private readonly Channel<Func<Task>> _work = ThreadingChannel.CreateUnbounded<Func<Task>>();
     
     public void EnqueueMessageProcessing(Channel channel, Message message, IEnumerable<string> userMentions) {
         _work.Writer.TryWrite(() => ProcessMessageAsync(channel, message, userMentions));
+    }
+
+    public void EnqueueReadSync(string userId, long channelId, long messageId) {
+        _work.Writer.TryWrite(() => ProcessReadAsync(userId, channelId, messageId));
     }
 
     public async Task<Func<Task>> DequeueWork(CancellationToken token) {
@@ -77,8 +98,16 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
             message
         };
         // Web Push payloads come in two flavours, depending on the recipient's include-content setting
-        Lazy<PushMessage> pushWithContent = new(() => CreatePushMessage(content, message, includeContent: true));
-        Lazy<PushMessage> pushWithoutContent = new(() => CreatePushMessage(content, message, includeContent: false));
+        // and DMs and mentions go out as high urgency, so push services deliver them straight away even in Doze
+        Dictionary<(bool IncludeContent, bool High), PushMessage> pushMessages = [];
+        PushMessage GetPushMessage(bool includeContent, bool high) {
+            if (!pushMessages.TryGetValue((includeContent, high), out PushMessage? push)) {
+                push = CreatePushMessage(content, message, includeContent, high);
+                pushMessages[(includeContent, high)] = push;
+            }
+            return push;
+        }
+        IDatabase redisDb = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>().GetDatabase();
 
         // ntfy is plaintext and rendered by the ntfy app, so it gets a pre-formatted title and body
         Lazy<Task<(string Title, string Body)>> ntfyText = new(() => BuildNtfyText(scope.ServiceProvider, channel, message, userData));
@@ -165,7 +194,12 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
                 continue;  // no endpoints, skip
             }
 
-            PushMessage notif = user.WebPushIncludeContent ? pushWithContent.Value : pushWithoutContent.Value;
+            bool important = mentionedUsers.Contains(userId) || channel.Type == ChannelType.Dm;
+            PushMessage notif = GetPushMessage(user.WebPushIncludeContent, important);
+            if (hooks.Any(h => h.Kind == PushSubscriptionKind.UnifiedPush)) {
+                // remember it so reading the channel elsewhere can clear the notification on their devices
+                await redisDb.StringSetAsync(PushedKey(userId, channel.Id), message.Id, PushedTtl);
+            }
             foreach (UserWebNotificationHook hook in hooks) {
                 // cool, we need to send a notification to this user, let's do it
                 try {
@@ -196,9 +230,52 @@ public class NotificationService(IServiceProvider serviceProvider) : INotificati
     private static bool IsSubscriptionGone(HttpStatusCode status) => status is
         HttpStatusCode.NotFound or HttpStatusCode.Gone or HttpStatusCode.BadRequest or HttpStatusCode.Forbidden;
 
-    private static PushMessage CreatePushMessage(object content, Message message, bool includeContent) {
-        return new PushMessage(NotificationFormatter.BuildWebPushPayload(content, includeContent)) {
+    /// <summary>
+    /// Tells a user's native devices they read a channel up to a message somewhere, so they can clear its
+    /// notifications. Only sent if one of those devices was pushed a message from that channel since the last read,
+    /// and never to browsers, which have to show a notification for every push.
+    /// </summary>
+    private async Task ProcessReadAsync(string userId, long channelId, long messageId) {
+        using IServiceScope scope = serviceProvider.CreateScope();
+        IConnectionMultiplexer redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        RedisResult pushed = await redis.GetDatabase().ScriptEvaluateAsync(TakePushedScript,
+            new { key = PushedKey(userId, channelId), readUpTo = messageId });
+        if ((long)pushed < 0) return;
+
+        IUserRepo users = scope.ServiceProvider.GetRequiredService<IUserRepo>();
+        UserWebNotificationHook[] hooks = (await users.GetWebNotificationSubscriptions(userId))
+            .Where(h => h.Kind == PushSubscriptionKind.UnifiedPush)
+            .ToArray();
+        if (hooks.Length == 0) return;
+
+        PushServiceClient pushClient = scope.ServiceProvider.GetRequiredService<PushServiceClient>();
+        ILogger<NotificationService> logger = scope.ServiceProvider.GetRequiredService<ILogger<NotificationService>>();
+        PushMessage push = new(NotificationFormatter.BuildReadPayload(channelId, messageId)) {
             Urgency = PushMessageUrgency.Normal,
+            Topic = "read-" + channelId,  // a newer read for the channel replaces one that's still queued
+            TimeToLive = (int)TimeSpan.FromDays(1).TotalSeconds
+        };
+
+        List<long> badEndpoints = [];
+        foreach (UserWebNotificationHook hook in hooks) {
+            try {
+                await pushClient.RequestPushMessageDeliveryAsync(hook.ToPushSubscription(), push);
+            }
+            catch (PushServiceClientException e) when (IsSubscriptionGone(e.StatusCode)) {
+                badEndpoints.Add(hook.Id);
+            }
+            catch (Exception e) {
+                logger.LogWarning(e, "Read sync push to subscription {HookId} failed", hook.Id);
+            }
+        }
+        if (badEndpoints.Count > 0) {
+            await users.DeleteWebNotificationSubscriptions(badEndpoints.ToArray());
+        }
+    }
+
+    private static PushMessage CreatePushMessage(object content, Message message, bool includeContent, bool high) {
+        return new PushMessage(NotificationFormatter.BuildWebPushPayload(content, includeContent)) {
+            Urgency = high ? PushMessageUrgency.High : PushMessageUrgency.Normal,
             Topic = "message-" + message.Id  // topics must be URL-safe base64 characters, so no colon
         };
     }

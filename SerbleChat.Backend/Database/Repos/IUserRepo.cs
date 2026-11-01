@@ -30,7 +30,14 @@ public interface IUserRepo {
     Task<Dictionary<string, UserChannelNotificationPreferences>> GetUsersChannelNotificationPreferences(IEnumerable<string> userIds, long channelId);
     Task<Dictionary<string, UserGuildNotificationPreferences>> GetUsersGuildNotificationPreferences(IEnumerable<string> userIds, long guildId);
     
-    Task CreateWebNotificationSubscription(UserWebNotificationHook subscription);
+    /// <summary>
+    /// Saves a subscription, replacing any existing one with the same endpoint URL. An endpoint belongs to one
+    /// browser or app install, so if another user registered it before (they logged out and someone else logged in)
+    /// it moves to the new user.
+    /// </summary>
+    Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription);
+    /// <returns>Whether a subscription was removed.</returns>
+    Task<bool> DeleteWebNotificationSubscription(string userId, string url);
     Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId);
     Task DeleteWebNotificationSubscriptions(params long[] subscriptionId);
     Task<Dictionary<string, IEnumerable<UserWebNotificationHook>>> GetUsersWebNotificationSubscriptions(IEnumerable<string> userIds);
