@@ -20,7 +20,11 @@ export default function PopupMenu({ x, y, onClose, width, zIndex = 9000, classNa
     function onDown(e) {
       if (ref.current && !ref.current.contains(e.target)) onCloseRef.current();
     }
-    function onKey(e) { if (e.key === 'Escape') onCloseRef.current(); }
+    function onKey(e) {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); // claim it, so a modal underneath stays open
+      onCloseRef.current();
+    }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {

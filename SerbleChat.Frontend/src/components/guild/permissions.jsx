@@ -1,5 +1,7 @@
 // Shared permission definitions + the Allow/Deny/Inherit editor used by the
 // roles, default-permissions and channel-override tabs.
+import { Segmented } from '../ui/index.js';
+import { CheckIcon, CrossIcon, MinusIcon } from '../../icons.jsx';
 
 // PermissionState enum: 0 = Allow, 1 = Deny, 2 = Inherit
 export const ALLOW = 0;
@@ -12,87 +14,111 @@ export function allowed(perms, key) {
   return perms.administrator === ALLOW || perms[key] === ALLOW;
 }
 
-/** Guild-wide permissions (roles and default permissions). */
-export const GUILD_PERMS = [
-  { key: 'administrator',  label: 'Administrator',   desc: 'Grants all permissions (use carefully)' },
-  { key: 'manageGuild',    label: 'Manage Guild',    desc: 'Edit guild name & default perms' },
-  { key: 'manageRoles',    label: 'Manage Roles',    desc: 'Create, edit and delete roles' },
-  { key: 'manageChannels', label: 'Manage Channels', desc: 'Create, rename and delete channels' },
-  { key: 'kickMembers',    label: 'Kick Members',    desc: 'Remove members from the guild' },
-  { key: 'banMembers',     label: 'Ban Members',     desc: 'Permanently ban members' },
-  { key: 'createInvites',  label: 'Create Invites',  desc: 'Generate invite links' },
-  { key: 'viewChannel',    label: 'View Channel',    desc: 'See and read channels' },
-  { key: 'sendMessages',   label: 'Send Messages',   desc: 'Post messages in channels' },
-  { key: 'manageMessages', label: 'Manage Messages', desc: "Delete others' messages" },
-  { key: 'joinVoice',      label: 'Join Voice',      desc: 'Connect to voice channels' },
-  { key: 'speak',          label: 'Speak',           desc: 'Speak in voice channels' },
-  { key: 'muteMembers',    label: 'Mute Members',    desc: 'Server-mute members in voice' },
-  { key: 'deafenMembers',  label: 'Deafen Members',  desc: 'Server-deafen members in voice' },
-  { key: 'moveMembers',    label: 'Move Members',    desc: 'Move members between voice channels' },
-  { key: 'videoStream',    label: 'Video / Stream',  desc: 'Share video or screen' },
-];
-
-/** Same keys, channel-relevant ones first, worded for a single channel. */
-export const CHANNEL_PERMS = [
-  { key: 'viewChannel',    label: 'View Channel',    desc: 'See and read this channel' },
-  { key: 'sendMessages',   label: 'Send Messages',   desc: 'Post messages in this channel' },
-  { key: 'manageMessages', label: 'Manage Messages', desc: "Delete others' messages" },
-  { key: 'manageChannels', label: 'Manage Channel',  desc: 'Rename or delete this channel' },
-  { key: 'createInvites',  label: 'Create Invites',  desc: 'Generate invite links' },
-  { key: 'joinVoice',      label: 'Join Voice',      desc: 'Connect to voice' },
-  { key: 'speak',          label: 'Speak',           desc: 'Speak in voice channels' },
-  { key: 'muteMembers',    label: 'Mute Members',    desc: 'Server-mute members in voice' },
-  { key: 'deafenMembers',  label: 'Deafen Members',  desc: 'Server-deafen members in voice' },
-  { key: 'moveMembers',    label: 'Move Members',    desc: 'Move members between voice channels' },
-  { key: 'videoStream',    label: 'Video / Stream',  desc: 'Share video or screen' },
-  { key: 'administrator',  label: 'Administrator',   desc: 'Grants all permissions (use carefully)' },
-  { key: 'manageGuild',    label: 'Manage Guild',    desc: 'Edit guild name & settings' },
-  { key: 'manageRoles',    label: 'Manage Roles',    desc: 'Create, edit and delete roles' },
-  { key: 'kickMembers',    label: 'Kick Members',    desc: 'Remove members from the guild' },
-  { key: 'banMembers',     label: 'Ban Members',     desc: 'Permanently ban members' },
-];
-
-const STATES = {
-  [ALLOW]:   { label: 'Allow',   color: 'var(--success)' },
-  [DENY]:    { label: 'Deny',    color: 'var(--danger)' },
-  [INHERIT]: { label: 'Inherit', color: 'var(--text-muted)' },
+const PERMS = {
+  administrator:  { label: 'Administrator',   desc: 'Grants every permission and bypasses channel overrides. Use carefully.', warn: true },
+  manageGuild:    { label: 'Manage Guild',    desc: "Edit the guild's name, icon, invites and default permissions" },
+  manageRoles:    { label: 'Manage Roles',    desc: 'Create, edit and delete roles' },
+  manageChannels: { label: 'Manage Channels', desc: 'Create, rename and delete channels', channelLabel: 'Manage Channel', channelDesc: 'Rename or delete this channel' },
+  createInvites:  { label: 'Create Invites',  desc: 'Generate invite links' },
+  kickMembers:    { label: 'Kick Members',    desc: 'Remove members from the guild' },
+  banMembers:     { label: 'Ban Members',     desc: 'Ban members from the guild' },
+  viewChannel:    { label: 'View Channels',   desc: 'See channels and read their messages', channelLabel: 'View Channel', channelDesc: 'See this channel and read its messages' },
+  sendMessages:   { label: 'Send Messages',   desc: 'Post messages in channels', channelDesc: 'Post messages in this channel' },
+  manageMessages: { label: 'Manage Messages', desc: "Delete other members' messages" },
+  joinVoice:      { label: 'Connect',         desc: 'Join voice channels', channelDesc: "Join this channel's voice call" },
+  speak:          { label: 'Speak',           desc: 'Talk in voice channels' },
+  videoStream:    { label: 'Video & Screen',  desc: 'Share a camera or screen in voice' },
+  muteMembers:    { label: 'Mute Members',    desc: 'Server-mute other members in voice' },
+  deafenMembers:  { label: 'Deafen Members',  desc: 'Server-deafen other members in voice' },
+  moveMembers:    { label: 'Move Members',    desc: 'Move members between voice channels' },
 };
 
-// Inherit → Allow → Deny → Inherit
-function nextState(s) { return s === INHERIT ? ALLOW : s === ALLOW ? DENY : INHERIT; }
+const GROUPS = {
+  general: { title: 'General',     keys: ['administrator', 'manageGuild', 'manageRoles', 'manageChannels', 'createInvites'] },
+  members: { title: 'Members',     keys: ['kickMembers', 'banMembers'] },
+  text:    { title: 'Text',        keys: ['viewChannel', 'sendMessages', 'manageMessages'] },
+  voice:   { title: 'Voice',       keys: ['joinVoice', 'speak', 'videoStream', 'muteMembers', 'deafenMembers', 'moveMembers'] },
+};
 
-/** One row per permission with a button that cycles Allow / Deny / Inherit. */
-export function PermissionList({ keys, perms, onChange, disabled }) {
+/** Guild-wide permissions (roles and default permissions). */
+export const GUILD_PERM_GROUPS = [GROUPS.general, GROUPS.members, GROUPS.text, GROUPS.voice];
+
+/** Same keys, channel-relevant ones first, worded for a single channel. */
+export const CHANNEL_PERM_GROUPS = [
+  GROUPS.text,
+  GROUPS.voice,
+  { title: 'Channel', keys: ['manageChannels', 'createInvites'] },
+  { title: 'Guild-wide', keys: ['administrator', 'manageGuild', 'manageRoles', 'kickMembers', 'banMembers'] },
+];
+
+const STATE_OPTIONS = [
+  { value: DENY,    icon: CrossIcon, title: 'Deny',    tone: 'danger' },
+  { value: INHERIT, icon: MinusIcon, title: 'Inherit', tone: 'neutral' },
+  { value: ALLOW,   icon: CheckIcon, title: 'Allow',   tone: 'success' },
+];
+
+/** Every permission set to `state` (used for "reset all"). */
+export function allPerms(groups, state) {
+  return Object.fromEntries(groups.flatMap(g => g.keys).map(k => [k, state]));
+}
+
+/** Number of permissions explicitly set to Allow / Deny. */
+export function countSet(perms) {
+  const values = Object.values(perms ?? {});
+  return { allow: values.filter(v => v === ALLOW).length, deny: values.filter(v => v === DENY).length };
+}
+
+/**
+ * Permission editor: one row per permission with a Deny / Inherit / Allow
+ * switch, grouped under small headings. `channel` picks the per-channel
+ * wording.
+ */
+export function PermissionList({ groups, perms, onChange, disabled, channel = false }) {
   const p = perms ?? {};
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {keys.map(({ key, label, desc }) => {
-        const value = p[key] ?? INHERIT;
-        const state = STATES[value] ?? STATES[INHERIT];
-        return (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{desc}</div>
-            </div>
-            <button
-              type="button"
-              disabled={disabled}
-              title="Click to cycle Allow → Deny → Inherit"
-              onClick={() => onChange({ ...p, [key]: nextState(value) })}
-              style={{
-                background: 'transparent', border: `1px solid ${state.color}`,
-                borderRadius: 5, padding: '0.25rem 0.65rem',
-                color: state.color, fontSize: '0.75rem', fontWeight: 700,
-                cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
-                transition: 'color 0.15s, border-color 0.15s', minWidth: 64, flexShrink: 0,
-              }}
-            >
-              {state.label}
-            </button>
-          </div>
-        );
-      })}
+    <div className="perm-list">
+      {groups.map(group => (
+        <section key={group.title} className="perm-group">
+          <div className="perm-group-title">{group.title}</div>
+          {group.keys.map(key => {
+            const info = PERMS[key];
+            const value = p[key] ?? INHERIT;
+            const label = (channel && info.channelLabel) || info.label;
+            return (
+              <div key={key} className="perm-row" data-state={value}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="perm-label" data-warn={!!info.warn}>{label}</div>
+                  <div className="perm-desc">{(channel && info.channelDesc) || info.desc}</div>
+                </div>
+                <Segmented
+                  size="sm"
+                  options={STATE_OPTIONS}
+                  value={value}
+                  disabled={disabled}
+                  onChange={v => onChange({ ...p, [key]: v })}
+                  aria-label={label}
+                />
+              </div>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** Small legend explaining the three states, shown above a PermissionList. */
+export function PermissionLegend({ inheritText = 'falls back to roles and defaults' }) {
+  const item = (Icon, color, text) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+      <Icon size={12} style={{ color }} /> {text}
+    </span>
+  );
+  return (
+    <div className="ui-hint" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 1rem' }}>
+      {item(CheckIcon, 'var(--success)', 'Allow')}
+      {item(CrossIcon, 'var(--danger)', 'Deny')}
+      {item(MinusIcon, 'var(--text-muted)', `Inherit — ${inheritText}`)}
     </div>
   );
 }

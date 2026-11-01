@@ -1,172 +1,240 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getGuildRoles, createGuildRole, updateGuildRole, deleteGuildRole } from '../../api.js';
-import { Button, TextInput, ErrorBox, Field } from '../ui/index.js';
-import { GUILD_PERMS, PermissionList } from './permissions.jsx';
-import { MutedText } from './common.jsx';
+import { useMobile } from '../../context/MobileContext.jsx';
+import {
+  Button, IconButton, TextInput, ErrorBox, Field, SaveStatus, SectionTitle, Hint,
+  TabBody, SplitPane, SplitItem, EmptyState, useConfirm,
+} from '../ui/index.js';
+import { GUILD_PERM_GROUPS, INHERIT, PermissionList, PermissionLegend, allPerms, countSet } from './permissions.jsx';
+import { MutedText, RoleDot, ColourPicker, HEX_COLOR_RE } from './common.jsx';
+import useAutoSave from './useAutoSave.js';
+import { PlusIcon, TagIcon, TrashIcon, LockIcon } from '../../icons.jsx';
 
-const DEFAULT_ROLE_COLOR = '#99aab5';
+const NEW_ROLE_NAME = 'new role';
+const validColour = c => (HEX_COLOR_RE.test(c) ? c : '');
 
-function RoleDot({ color, style }) {
-  return (
-    <span style={{
-      display: 'inline-block', width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-      background: color || 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)',
-      ...style,
-    }} />
-  );
-}
+// ─── Role editor ──────────────────────────────────────────────────────────────
 
-// ─── Role editor panel ────────────────────────────────────────────────────────
+/**
+ * Edits one role. Every change is pushed to the parent straight away (so the
+ * role list updates as you type) and auto-saved once edits pause. A blank
+ * name or half-typed colour isn't saved, and is reverted when you leave.
+ */
+function RoleEditor({ guildId, role, canManage, autoFocusName, onChange, onDelete }) {
+  const nameRef = useRef(null);
+  const saved = useRef({ name: role.name, color: role.color ?? '' });
+  const latest = useRef(role);
+  latest.current = role;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-function RoleEditor({ guildId, role, onSaved, onDeleted }) {
-  const [name, setName]   = useState(role.name);
-  const [color, setColor] = useState(role.color || DEFAULT_ROLE_COLOR);
-  const [perms, setPerms] = useState(role.permissions ?? {});
-  const [busy, setBusy]   = useState(false);
-  const [err, setErr]     = useState(null);
+  const { status, error, schedule } = useAutoSave(async next => {
+    await updateGuildRole(guildId, role.id, next);
+    saved.current = { name: next.name, color: next.color };
+  }, 700);
 
-  async function save() {
-    setBusy(true); setErr(null);
-    try {
-      await updateGuildRole(guildId, role.id, { name: name.trim(), color, permissions: perms });
-      onSaved({ ...role, name: name.trim(), color, permissions: perms });
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+  useEffect(() => {
+    if (autoFocusName) { nameRef.current?.focus(); nameRef.current?.select(); }
+  }, [autoFocusName]);
+
+  // Put back the last saved name / colour if we're left in an unsaveable state
+  useEffect(() => () => {
+    const r = latest.current;
+    if (!r.name.trim() || (r.color && !HEX_COLOR_RE.test(r.color))) {
+      onChangeRef.current({ ...r, name: r.name.trim() || saved.current.name, color: HEX_COLOR_RE.test(r.color) || !r.color ? r.color : saved.current.color });
+    }
+  }, []);
+
+  function update(patch) {
+    const next = { ...role, ...patch };
+    onChange(next);
+    const name = next.name.trim();
+    const color = next.color ?? '';
+    if (name && (color === '' || HEX_COLOR_RE.test(color))) {
+      schedule({ name, color, permissions: next.permissions ?? {} });
+    }
   }
 
-  async function del() {
-    if (!confirm(`Delete role "${role.name}"?`)) return;
-    setBusy(true);
-    try { await deleteGuildRole(guildId, role.id); onDeleted(role.id); }
-    catch (e) { setErr(e.message); setBusy(false); }
-  }
+  const perms = role.permissions ?? {};
+  const nameEmpty = !role.name.trim();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-      <Field label="Role Name">
-        <TextInput value={name} onChange={e => setName(e.target.value)} maxLength={64} />
-      </Field>
-
-      <Field label="Role Colour">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <input type="color" value={color || DEFAULT_ROLE_COLOR} onChange={e => setColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
-          <TextInput mono value={color} onChange={e => setColor(e.target.value)} maxLength={7} placeholder="none"
-            style={{ width: 100 }} />
-          <Button variant="outline" size="sm" onClick={() => setColor('')}>Clear</Button>
+    <TabBody>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem', minHeight: 30 }}>
+        <RoleDot color={validColour(role.color ?? '')} size={14} />
+        <div style={{ flex: 1, minWidth: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {role.name.trim() || saved.current.name}
         </div>
-      </Field>
-
-      <Field label="Permissions">
-        <PermissionList keys={GUILD_PERMS} perms={perms} onChange={setPerms} disabled={busy} />
-      </Field>
-
-      <ErrorBox>{err}</ErrorBox>
-
-      <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.25rem' }}>
-        <Button variant="primary" onClick={save} disabled={busy || !name.trim()}>
-          {busy ? 'Saving…' : 'Save Role'}
-        </Button>
-        <Button variant="danger" onClick={del} disabled={busy}>Delete</Button>
+        <span title={error ?? undefined}><SaveStatus status={status} /></span>
+        {canManage && (
+          <Button size="sm" variant="danger-outline" onClick={() => onDelete(role)}>
+            <TrashIcon size={13} /> Delete
+          </Button>
+        )}
       </div>
-    </div>
+
+      {!canManage && (
+        <Hint style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', padding: '0.6rem 0.75rem', borderRadius: 6, background: 'var(--bg-secondary)' }}>
+          <LockIcon size={14} /> You need the Manage Roles permission to edit roles.
+        </Hint>
+      )}
+      <ErrorBox style={{ marginBottom: '1rem' }}>{error && `Couldn't save: ${error}`}</ErrorBox>
+
+      <SectionTitle>Display</SectionTitle>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+        <Field label="Role Name" error={nameEmpty && canManage ? "Role name can't be empty" : null}>
+          <TextInput
+            ref={nameRef}
+            value={role.name}
+            onChange={e => update({ name: e.target.value })}
+            maxLength={64}
+            disabled={!canManage}
+            aria-invalid={nameEmpty}
+            style={nameEmpty ? { borderColor: 'var(--danger)' } : undefined}
+          />
+        </Field>
+        <Field label="Colour" hint="Members show up in the colour of their roles.">
+          <ColourPicker value={role.color ?? ''} onChange={color => update({ color })} disabled={!canManage} />
+        </Field>
+      </div>
+
+      <SectionTitle
+        action={canManage && (
+          <Button size="sm" variant="ghost" style={{ padding: '0 0.25rem', fontSize: '0.72rem' }}
+            onClick={() => update({ permissions: allPerms(GUILD_PERM_GROUPS, INHERIT) })}
+            disabled={countSet(perms).allow + countSet(perms).deny === 0}>
+            Reset all
+          </Button>
+        )}
+      >
+        Permissions
+      </SectionTitle>
+      <div style={{ marginBottom: '0.75rem' }}>
+        <PermissionLegend inheritText="leave it to other roles" />
+      </div>
+      <PermissionList groups={GUILD_PERM_GROUPS} perms={perms} onChange={p => update({ permissions: p })} disabled={!canManage} />
+    </TabBody>
   );
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Roles tab ────────────────────────────────────────────────────────────────
 
 export default function RolesTab({ guildId, canManage }) {
-  const [roles, setRoles]       = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName]   = useState('');
+  const { isMobile } = useMobile();
+  const [roles, setRoles]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState(null);
+  const [justCreated, setJustCreated] = useState(null);
+  const [creating, setCreating]   = useState(false);
   const [createErr, setCreateErr] = useState(null);
+  const [confirm, confirmDialog]  = useConfirm();
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     getGuildRoles(guildId)
-      .then(r => { if (!cancelled) setRoles(r ?? []); })
+      .then(r => {
+        if (cancelled) return;
+        const list = r ?? [];
+        setRoles(list);
+        // Open the first role straight away rather than an empty "pick one" pane
+        if (!isMobile && list.length) setSelected(s => s ?? list[0].id);
+      })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [guildId]);
+  }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!newName.trim()) return;
+  async function handleCreate() {
+    if (creating) return;
     setCreating(true); setCreateErr(null);
     try {
-      const role = await createGuildRole(guildId, { name: newName.trim() });
+      const role = await createGuildRole(guildId, { name: NEW_ROLE_NAME });
       setRoles(p => [...p, role]);
-      setNewName('');
       setSelected(role.id);
+      setJustCreated(role.id);
     } catch (err) { setCreateErr(err.message); }
     finally { setCreating(false); }
   }
 
+  function handleDelete(role) {
+    confirm({
+      title: 'Delete Role',
+      message: <>Delete the <strong style={{ color: 'var(--text-primary)' }}>{role.name}</strong> role? Members who have it will lose its permissions. This can't be undone.</>,
+      confirmLabel: 'Delete Role',
+      busyLabel: 'Deleting…',
+      onConfirm: async () => {
+        await deleteGuildRole(guildId, role.id);
+        const rest = roles.filter(r => r.id !== role.id);
+        setRoles(rest);
+        setSelected(isMobile ? null : rest[0]?.id ?? null);
+      },
+    });
+  }
+
   const selectedRole = roles.find(r => r.id === selected);
 
+  const list = (
+    <>
+      {loading && <MutedText style={{ padding: '0.4rem 0.6rem' }}>Loading…</MutedText>}
+      {!loading && roles.length === 0 && <MutedText subtle style={{ padding: '0.4rem 0.6rem' }}>No roles yet</MutedText>}
+      {roles.map(r => (
+        <SplitItem key={r.id} active={selected === r.id} onClick={() => setSelected(r.id)} title={r.name}>
+          <RoleDot color={validColour(r.color ?? '')} />
+          <span className="ui-split-item-label">{r.name.trim() || <em style={{ color: 'var(--text-muted)' }}>unnamed</em>}</span>
+        </SplitItem>
+      ))}
+    </>
+  );
+
+  let detail;
+  if (loading) {
+    detail = null;
+  } else if (selectedRole) {
+    detail = (
+      <RoleEditor
+        key={selectedRole.id}
+        guildId={guildId}
+        role={selectedRole}
+        canManage={canManage}
+        autoFocusName={justCreated === selectedRole.id}
+        onChange={updated => setRoles(p => p.map(r => r.id === updated.id ? updated : r))}
+        onDelete={handleDelete}
+      />
+    );
+  } else {
+    detail = (
+      <EmptyState
+        icon={TagIcon}
+        title={roles.length ? 'Select a role' : 'No roles yet'}
+        action={canManage && !roles.length && (
+          <Button variant="primary" onClick={handleCreate} disabled={creating}><PlusIcon size={14} /> Create Role</Button>
+        )}
+        style={{ flex: 1 }}
+      >
+        Roles group members together and give them permissions and a colour.
+      </EmptyState>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {/* Left: role list */}
-      <div style={{ width: 160, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto', padding: '0.5rem 0.25rem 0.5rem 0' }}>
-        {loading && <MutedText style={{ fontSize: '0.82rem', padding: '0.5rem 0.75rem' }}>Loading…</MutedText>}
-        {roles.map(r => {
-          const active = selected === r.id;
-          return (
-            <button key={r.id} type="button" onClick={() => setSelected(r.id)}
-              className={active ? undefined : 'hov-bg'}
-              style={{
-                width: '100%', textAlign: 'left', background: active ? 'var(--bg-active)' : 'transparent',
-                border: 'none', padding: '0.4rem 0.75rem', borderRadius: 4,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                color: active ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: '0.875rem',
-                transition: 'background 0.1s',
-              }}>
-              <RoleDot color={r.color} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-            </button>
-          );
-        })}
-
-        {canManage && (
-          <form onSubmit={handleCreate} style={{ padding: '0.5rem 0.5rem 0' }}>
-            <TextInput value={newName} onChange={e => setNewName(e.target.value)}
-              placeholder="New role…" maxLength={64} disabled={creating}
-              style={{ fontSize: '0.8rem', padding: '0.35rem 0.5rem' }} />
-            {createErr && <div style={{ color: 'var(--danger)', fontSize: '0.72rem', marginTop: '0.3rem' }}>{createErr}</div>}
-          </form>
+    <>
+      <SplitPane
+        title="Roles"
+        count={loading ? null : roles.length}
+        action={canManage && (
+          <IconButton onClick={handleCreate} disabled={creating} title="Create role" aria-label="Create role">
+            <PlusIcon size={16} />
+          </IconButton>
         )}
-      </div>
-
-      {/* Right: role editor */}
-      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '1rem' }}>
-        {selectedRole ? (
-          canManage ? (
-            <RoleEditor
-              key={selectedRole.id}
-              guildId={guildId}
-              role={selectedRole}
-              onSaved={updated => setRoles(p => p.map(r => r.id === updated.id ? updated : r))}
-              onDeleted={id => { setRoles(p => p.filter(r => r.id !== id)); setSelected(null); }}
-            />
-          ) : (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
-                <RoleDot color={selectedRole.color} />
-                {selectedRole.name}
-              </div>
-              <MutedText style={{ fontSize: '0.82rem' }}>You don't have permission to edit roles.</MutedText>
-            </div>
-          )
-        ) : (
-          <MutedText subtle>
-            {roles.length === 0 && !loading ? (canManage ? 'No roles yet. Type a name on the left and press Enter.' : 'No roles in this guild.') : 'Select a role to edit.'}
-          </MutedText>
-        )}
-      </div>
-    </div>
+        list={list}
+        footer={createErr ? <ErrorBox>{createErr}</ErrorBox> : null}
+        detail={detail}
+        showDetail={!!selectedRole}
+        onBack={() => setSelected(null)}
+        backLabel="All roles"
+      />
+      {confirmDialog}
+    </>
   );
 }

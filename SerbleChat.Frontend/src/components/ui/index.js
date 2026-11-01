@@ -1,6 +1,10 @@
-export { Slider, Toggle, Button, IconButton, TextInput, TextArea, Select, SaveStatus, ErrorBox, Badge } from './controls.jsx';
-export { SectionTitle, Card, Hint, SettingRow, ToggleRow, OptionCard, OptionGroup } from './layout.jsx';
-export { default as Modal } from './Modal.jsx';
+export { Slider, Toggle, Button, IconButton, TextInput, TextArea, Select, SaveStatus, ErrorBox, Badge, Segmented } from './controls.jsx';
+export { SectionTitle, Card, Hint, SettingRow, ToggleRow, OptionCard, OptionGroup, EmptyState, List, ListRow } from './layout.jsx';
+export { default as Modal, ModalBody, ModalFooter } from './Modal.jsx';
+export { default as TabbedModal, TabBody } from './TabbedModal.jsx';
+export { default as ConfirmModal, useConfirm } from './ConfirmModal.jsx';
+export { default as SplitPane, SplitItem } from './SplitPane.jsx';
+export { default as IconUploadField } from './IconUploadField.jsx';
 export { useFlashStatus } from './hooks.js';
-export { FieldLabel, Field } from './fields.jsx';
+export { FieldLabel, Field, PrefixInput } from './fields.jsx';
 export { default as PopupMenu, ContextMenu, MenuItem, MenuDivider, useCopyFlash } from './PopupMenu.jsx';

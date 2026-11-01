@@ -46,6 +46,12 @@ export function SendIcon(p) {
 export function ArrowDownIcon(p) {
   return <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></Svg>;
 }
+export function MinusIcon(p) {
+  return <Svg {...p}><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
+}
+export function ChevronLeftIcon(p) {
+  return <Svg {...p}><polyline points="15 18 9 12 15 6"/></Svg>;
+}
 export function PlusIcon(p) {
   return <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
 }

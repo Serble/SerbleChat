@@ -305,8 +305,9 @@ export default function GuildSidebar({ guildId }) {
           canManage={canManageChannels}
           onClose={() => setChannelSettings(null)}
           onUpdated={updated => {
+            // Settings auto-save, so the modal stays open; keep its copy current
             setChannels(p => p.map(c => c.id === updated.id ? { ...c, ...updated } : c));
-            setChannelSettings(null);
+            setChannelSettings(cs => cs && cs.id === updated.id ? { ...cs, ...updated } : cs);
           }}
           onDeleted={() => {
             setChannels(p => p.filter(c => c.id !== channelSettings.id));

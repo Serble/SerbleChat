@@ -57,7 +57,7 @@ export function Toggle({ checked, onChange, disabled, title, ...rest }) {
   );
 }
 
-/** variant: primary | secondary | outline | ghost | success | danger | danger-outline */
+/** variant: primary | secondary | outline | ghost | success | danger | danger-solid | danger-outline */
 export function Button({ variant = 'secondary', size, className, type = 'button', ...rest }) {
   return (
     <button
@@ -68,9 +68,9 @@ export function Button({ variant = 'secondary', size, className, type = 'button'
   );
 }
 
-export function IconButton({ className, type = 'button', ...rest }) {
-  return <button type={type} className={cx('ui-icon-btn', className)} {...rest} />;
-}
+export const IconButton = forwardRef(function IconButton({ className, type = 'button', ...rest }, ref) {
+  return <button ref={ref} type={type} className={cx('ui-icon-btn', className)} {...rest} />;
+});
 
 export const TextInput = forwardRef(function TextInput({ mono, className, ...rest }, ref) {
   return <input ref={ref} className={cx('ui-input', mono && 'ui-input--mono', className)} {...rest} />;
@@ -99,4 +99,40 @@ export function ErrorBox({ children, style }) {
 
 export function Badge({ children }) {
   return <span className="ui-badge">{children}</span>;
+}
+
+/**
+ * Row of mutually exclusive buttons (a compact radio group).
+ * options: [{ value, label?, icon?, title?, tone? }] — tone colours the
+ * selected segment: 'accent' (default) | 'success' | 'danger' | 'neutral'.
+ * `fill` stretches the control (and its segments) to the full width.
+ */
+export function Segmented({ options, value, onChange, disabled, fill, size, className, style, ...rest }) {
+  return (
+    <div
+      role="radiogroup"
+      className={cx('ui-seg', fill && 'ui-seg--fill', size === 'sm' && 'ui-seg--sm', className)}
+      style={style}
+      {...rest}
+    >
+      {options.map(({ value: v, label, icon: Icon, title, tone = 'accent' }) => (
+        <button
+          key={String(v)}
+          type="button"
+          role="radio"
+          aria-checked={v === value}
+          aria-label={label ? undefined : title}
+          title={title}
+          className="ui-seg-btn"
+          data-active={v === value}
+          data-tone={tone}
+          disabled={disabled}
+          onClick={() => { if (v !== value) onChange(v); }}
+        >
+          {Icon && <Icon size={size === 'sm' ? 13 : 14} />}
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 }

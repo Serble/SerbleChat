@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext.jsx';
-import { TagIcon, PersonIcon, CheckIcon, PlusIcon } from '../../icons.jsx';
+import { useMobile } from '../../context/MobileContext.jsx';
+import { ShieldIcon, PlusIcon, TrashIcon, LockIcon } from '../../icons.jsx';
 import {
   getChannelPermissionOverrides,
   createChannelPermissionOverride,
@@ -9,292 +10,297 @@ import {
   getGuildRoles,
   getAccountByUsername,
 } from '../../api.js';
-import { Button, TextInput, Select, SaveStatus, ErrorBox, FieldLabel } from '../ui/index.js';
-import { CHANNEL_PERMS, PermissionList } from './permissions.jsx';
-import { MutedText } from './common.jsx';
+import {
+  Button, IconButton, TextInput, SaveStatus, ErrorBox, SectionTitle, Hint,
+  TabBody, SplitPane, SplitItem, EmptyState, PopupMenu, MenuDivider, useConfirm,
+} from '../ui/index.js';
+import Avatar from '../Avatar.jsx';
+import { CHANNEL_PERM_GROUPS, PermissionList, PermissionLegend } from './permissions.jsx';
+import { MutedText, RoleDot, HEX_COLOR_RE } from './common.jsx';
 import useAutoSave from './useAutoSave.js';
 
-// ─── Single Override Row ──────────────────────────────────────────────────────
+// ─── Add-override menu ────────────────────────────────────────────────────────
 
-function OverrideRow({ override, roles, canManage, guildId, channelId, onSaved, onDeleted }) {
-  const { resolveUser, loadChannelPermissions } = useApp();
-  const [expanded, setExpanded] = useState(false);
-  const [perms, setPerms]       = useState(override.permissions ?? {});
-  const [delBusy, setDelBusy]   = useState(false);
-  const [delErr, setDelErr]     = useState(null);
-  const [userName, setUserName] = useState(null);
+/** Popup listing roles without an override, plus a username box for members. */
+function AddOverrideMenu({ anchor, roles, existingUserIds, onPick, onClose }) {
+  const [username, setUsername] = useState('');
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState(null);
 
-  // Role overrides are labelled from the roles list; user overrides need a lookup
-  useEffect(() => {
-    if (override.roleId != null || !override.userId) return;
-    let cancelled = false;
-    resolveUser(override.userId).then(u => { if (!cancelled) setUserName(u?.username ?? override.userId); });
-    return () => { cancelled = true; };
-  }, [override.roleId, override.userId, resolveUser]);
+  async function run(action) {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try { await action(); } // the menu closes on success
+    catch (e) { setErr(e.message); setBusy(false); }
+  }
 
-  const isRole = override.roleId != null;
-  const LabelIcon = isRole ? TagIcon : PersonIcon;
-  const labelName = isRole
-    ? (roles.find(r => r.id === override.roleId)?.name ?? `Role #${override.roleId}`)
-    : userName;
+  function addUser(e) {
+    e.preventDefault();
+    const name = username.trim();
+    if (!name) return;
+    run(async () => {
+      let user;
+      try { user = await getAccountByUsername(name); }
+      catch { throw new Error('No user with that username.'); }
+      if (existingUserIds.has(user.id)) throw new Error('That member already has an override.');
+      await onPick({ userId: user.id });
+    });
+  }
+
+  return (
+    <PopupMenu x={anchor.x} y={anchor.y} onClose={onClose} width={250} className="ui-menu">
+      <div className="ui-menu-label">Role</div>
+      {roles.length === 0 && <MutedText subtle style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>Every role already has an override</MutedText>}
+      <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+        {roles.map(r => (
+          <button key={r.id} type="button" role="menuitem" className="ui-menu-item" disabled={busy} onClick={() => run(() => onPick({ roleId: r.id }))}>
+            <span className="ui-menu-icon"><RoleDot color={HEX_COLOR_RE.test(r.color ?? '') ? r.color : ''} /></span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+          </button>
+        ))}
+      </div>
+      <MenuDivider />
+      <div className="ui-menu-label">Member</div>
+      <form onSubmit={addUser} style={{ display: 'flex', gap: '0.35rem', padding: '0.15rem 0.35rem 0.35rem' }}>
+        <TextInput
+          autoFocus
+          value={username}
+          onChange={e => { setUsername(e.target.value); setErr(null); }}
+          placeholder="Username"
+          maxLength={64}
+          style={{ padding: '0.35rem 0.55rem', fontSize: '0.85rem' }}
+        />
+        <Button type="submit" size="sm" variant="primary" disabled={!username.trim() || busy}>Add</Button>
+      </form>
+      {err && <div style={{ padding: '0 0.75rem 0.4rem', fontSize: '0.78rem', color: 'var(--danger)' }}>{err}</div>}
+    </PopupMenu>
+  );
+}
+
+// ─── Override editor ──────────────────────────────────────────────────────────
+
+function OverrideEditor({ guildId, channelId, override, label, leading, kind, canManage, onChange, onDelete }) {
+  const { loadChannelPermissions } = useApp();
 
   const { status, error, schedule } = useAutoSave(async next => {
     await updateChannelPermissionOverride(guildId, channelId, override.id, next);
     await loadChannelPermissions(guildId, channelId);
-    onSaved({ ...override, permissions: next });
   });
 
-  function handleChange(next) {
-    setPerms(next);
-    schedule(next);
-  }
-
-  async function handleDelete() {
-    if (!confirm(`Delete this permission override for ${labelName ?? '…'}?`)) return;
-    setDelBusy(true); setDelErr(null);
-    try {
-      await deleteChannelPermissionOverride(guildId, channelId, override.id);
-      await loadChannelPermissions(guildId, channelId);
-      onDeleted(override.id);
-    } catch (e) { setDelErr(e.message); setDelBusy(false); }
+  function handleChange(perms) {
+    onChange({ ...override, permissions: perms });
+    schedule(perms);
   }
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-      {/* Header row */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded(v => !v)}
-        className={expanded ? undefined : 'hov-bg'}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%',
-          padding: '0.65rem 0.85rem', cursor: 'pointer', border: 'none', textAlign: 'left',
-          background: expanded ? 'var(--bg-hover)' : 'transparent', color: 'var(--text-secondary)',
-          font: 'inherit', transition: 'background 0.1s',
-        }}
-      >
-        <LabelIcon size={16} />
-        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem' }}>
-          {labelName ?? 'Loading…'}
-        </span>
-        <span title={error ?? undefined}><SaveStatus status={status} errorText="Error" /></span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0, marginLeft: '0.25rem' }}>
-          {expanded ? '▲' : '▼'}
-        </span>
-      </button>
-
-      {/* Expanded content */}
-      {expanded && (
-        <div style={{ padding: '0.75rem 0.85rem', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-          <PermissionList keys={CHANNEL_PERMS} perms={perms} onChange={handleChange} disabled={!canManage || delBusy} />
-          <ErrorBox style={{ marginTop: '0.5rem' }}>{delErr || error}</ErrorBox>
-          {canManage && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
-              <Button variant="danger" size="sm" onClick={handleDelete} disabled={delBusy}>Delete Override</Button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Create Override Form ─────────────────────────────────────────────────────
-
-function CreateOverrideForm({ guildId, channelId, roles, existingRoleIds, existingUserIds, onCreated, onCancel }) {
-  const { loadChannelPermissions } = useApp();
-  const [type, setType]         = useState('role');   // 'role' | 'user'
-  const [roleId, setRoleId]     = useState('');
-  const [username, setUsername] = useState('');
-  const [resolvedUser, setResolvedUser] = useState(null);
-  const [lookupErr, setLookupErr]       = useState(null);
-  const [perms, setPerms]       = useState({});
-  const [busy, setBusy]         = useState(false);
-  const [err, setErr]           = useState(null);
-  // Latest typed username, so a slow lookup for an old value is ignored
-  const usernameRef = useRef('');
-
-  const availableRoles = roles.filter(r => !existingRoleIds.has(r.id));
-  const canCreate = type === 'role' ? !!roleId : !!resolvedUser;
-
-  function switchType(t) {
-    setType(t); setRoleId(''); setUsername(''); usernameRef.current = '';
-    setResolvedUser(null); setLookupErr(null);
-  }
-
-  async function lookupUser() {
-    const name = username.trim();
-    if (!name) return;
-    setLookupErr(null); setResolvedUser(null);
-    try {
-      const u = await getAccountByUsername(name);
-      if (usernameRef.current.trim() !== name) return;
-      if (existingUserIds.has(u.id)) setLookupErr('An override for this user already exists.');
-      else setResolvedUser(u);
-    } catch {
-      if (usernameRef.current.trim() === name) setLookupErr('User not found.');
-    }
-  }
-
-  async function handleCreate() {
-    if (!canCreate) return;
-    setBusy(true); setErr(null);
-    try {
-      await createChannelPermissionOverride(guildId, channelId, {
-        roleId: type === 'role' ? Number(roleId) : undefined,
-        userId: type === 'user' ? resolvedUser.id : undefined,
-        permissions: perms,
-      });
-      await loadChannelPermissions(guildId, channelId);
-      onCreated();
-    } catch (e) { setErr(e.message); setBusy(false); }
-  }
-
-  return (
-    <div style={{ border: '1px solid var(--accent)', borderRadius: 8, padding: '1rem', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>New Permission Override</div>
-
-      {/* Type selector */}
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        {[['role', TagIcon, 'Role'], ['user', PersonIcon, 'User']].map(([t, Icon, label]) => (
-          <Button key={t} size="sm" variant={type === t ? 'primary' : 'secondary'} onClick={() => switchType(t)} style={{ flex: 1 }}>
-            <Icon size={14} /> {label}
-          </Button>
-        ))}
-      </div>
-
-      {/* Role selector */}
-      {type === 'role' && (
-        availableRoles.length === 0 ? (
-          <MutedText style={{ fontSize: '0.8rem' }}>All roles already have overrides.</MutedText>
-        ) : (
-          <Select value={roleId} onChange={e => setRoleId(e.target.value)}>
-            <option value="">— Select role —</option>
-            {availableRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </Select>
-        )
-      )}
-
-      {/* User lookup */}
-      {type === 'user' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <TextInput
-              value={username}
-              onChange={e => { setUsername(e.target.value); usernameRef.current = e.target.value; setResolvedUser(null); setLookupErr(null); }}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookupUser(); } }}
-              placeholder="Username…" maxLength={64}
-              style={{ flex: 1 }}
-            />
-            <Button onClick={lookupUser} disabled={!username.trim()}>Look up</Button>
+    <TabBody>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.5rem', minHeight: 30 }}>
+        {leading}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {label}
           </div>
-          {lookupErr && <div style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{lookupErr}</div>}
-          {resolvedUser && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', color: 'var(--success)' }}>
-              <CheckIcon size={12} /> Found: {resolvedUser.username}
-            </div>
-          )}
+          <div className="ui-hint" style={{ fontSize: '0.75rem' }}>{kind === 'role' ? 'Role override' : 'Member override'}</div>
         </div>
+        <span title={error ?? undefined}><SaveStatus status={status} /></span>
+        {canManage && (
+          <Button size="sm" variant="danger-outline" onClick={() => onDelete(override, label)}>
+            <TrashIcon size={13} /> Remove
+          </Button>
+        )}
+      </div>
+
+      {!canManage && (
+        <Hint style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', padding: '0.6rem 0.75rem', borderRadius: 6, background: 'var(--bg-secondary)' }}>
+          <LockIcon size={14} /> You need the Manage Channels permission to change overrides.
+        </Hint>
       )}
+      <ErrorBox style={{ marginBottom: '1rem' }}>{error && `Couldn't save: ${error}`}</ErrorBox>
 
-      {/* Permissions */}
-      <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: '0.25rem' }}>
-        <FieldLabel>Permissions</FieldLabel>
-        <PermissionList keys={CHANNEL_PERMS} perms={perms} onChange={setPerms} disabled={busy} />
+      <SectionTitle>Permissions in this channel</SectionTitle>
+      <div style={{ marginBottom: '1rem' }}>
+        <PermissionLegend inheritText={kind === 'role' ? "use the role's guild setting" : 'use their roles'} />
       </div>
-
-      <ErrorBox>{err}</ErrorBox>
-
-      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-        <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>Cancel</Button>
-        <Button variant="primary" size="sm" onClick={handleCreate} disabled={busy || !canCreate}>
-          {busy ? 'Creating…' : 'Create Override'}
-        </Button>
-      </div>
-    </div>
+      <PermissionList channel groups={CHANNEL_PERM_GROUPS} perms={override.permissions} onChange={handleChange} disabled={!canManage} />
+    </TabBody>
   );
 }
 
-// ─── Main ChannelPermsTab ─────────────────────────────────────────────────────
+// ─── Channel permissions tab ──────────────────────────────────────────────────
 
 export default function ChannelPermsTab({ guildId, channelId, canManage }) {
+  const { resolveUser, loadChannelPermissions } = useApp();
+  const { isMobile } = useMobile();
   const [overrides, setOverrides] = useState([]);
   const [roles, setRoles]         = useState([]);
+  const [userNames, setUserNames] = useState({});
   const [loading, setLoading]     = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
   const [err, setErr]             = useState(null);
+  const [selected, setSelected]   = useState(null);
+  const [menu, setMenu]           = useState(null); // { x, y } while the add menu is open
+  const [confirm, confirmDialog]  = useConfirm();
+  const addBtnRef = useRef(null);
 
-  function loadAll() {
-    setLoading(true); setErr(null);
-    Promise.all([
-      getChannelPermissionOverrides(guildId, channelId),
-      getGuildRoles(guildId),
-    ]).then(([ovs, rs]) => {
-      setOverrides(ovs ?? []);
+  async function loadAll(selectWhere) {
+    setErr(null);
+    try {
+      const [ovs, rs] = await Promise.all([
+        getChannelPermissionOverrides(guildId, channelId),
+        getGuildRoles(guildId),
+      ]);
+      const list = ovs ?? [];
+      setOverrides(list);
       setRoles(rs ?? []);
-    }).catch(e => {
+      const match = selectWhere && list.find(selectWhere);
+      if (match) setSelected(match.id);
+      else if (!isMobile) setSelected(s => (list.some(o => o.id === s) ? s : list[0]?.id ?? null));
+    } catch (e) {
       console.error('ChannelPermsTab load failed:', e);
       setErr(e.message);
-    }).finally(() => setLoading(false));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { loadAll(); }, [guildId, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // User overrides are labelled by username, which needs a lookup
+  const userIdsKey = overrides.filter(o => o.roleId == null && o.userId).map(o => o.userId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    for (const id of userIdsKey ? userIdsKey.split(',') : []) {
+      resolveUser(id).then(u => { if (!cancelled) setUserNames(p => ({ ...p, [id]: u })); });
+    }
+    return () => { cancelled = true; };
+  }, [userIdsKey, resolveUser]);
+
   const existingRoleIds = new Set(overrides.filter(o => o.roleId != null).map(o => o.roleId));
   const existingUserIds = new Set(overrides.filter(o => o.userId != null).map(o => o.userId));
 
+  function describe(ov) {
+    if (ov.roleId != null) {
+      const role = roles.find(r => r.id === ov.roleId);
+      const color = HEX_COLOR_RE.test(role?.color ?? '') ? role.color : '';
+      return { kind: 'role', label: role?.name ?? `Role #${ov.roleId}`, leading: <RoleDot color={color} size={12} style={{ margin: '0 2px' }} />, big: <RoleDot color={color} size={14} /> };
+    }
+    const u = userNames[ov.userId];
+    return {
+      kind: 'user',
+      label: u?.username ?? '…',
+      leading: <Avatar userId={ov.userId} name={u?.username} size={20} color={u?.color} />,
+      big: <Avatar userId={ov.userId} name={u?.username} size={32} color={u?.color} />,
+    };
+  }
+
+  function openMenu() {
+    const r = addBtnRef.current?.getBoundingClientRect();
+    setMenu(r ? { x: r.left, y: r.bottom + 4 } : { x: 100, y: 100 });
+  }
+
+  async function handlePick(target) {
+    await createChannelPermissionOverride(guildId, channelId, { ...target, permissions: {} });
+    await loadChannelPermissions(guildId, channelId);
+    setMenu(null);
+    await loadAll(o => (target.roleId != null ? o.roleId === target.roleId : o.userId === target.userId));
+  }
+
+  function handleDelete(ov, label) {
+    confirm({
+      title: 'Remove Override',
+      message: <>Remove the override for <strong style={{ color: 'var(--text-primary)' }}>{label}</strong>? They'll go back to their guild-wide permissions in this channel.</>,
+      confirmLabel: 'Remove',
+      busyLabel: 'Removing…',
+      onConfirm: async () => {
+        await deleteChannelPermissionOverride(guildId, channelId, ov.id);
+        await loadChannelPermissions(guildId, channelId);
+        const rest = overrides.filter(o => o.id !== ov.id);
+        setOverrides(rest);
+        setSelected(isMobile ? null : rest[0]?.id ?? null);
+      },
+    });
+  }
+
+  const addButton = canManage && (
+    <IconButton ref={addBtnRef} onClick={openMenu} title="Add override" aria-label="Add override">
+      <PlusIcon size={16} />
+    </IconButton>
+  );
+
+  // Roles first, then members
+  const sorted = [...overrides].sort((a, b) => (a.roleId == null) - (b.roleId == null));
+  const selectedOv = overrides.find(o => o.id === selected);
+
+  const list = (
+    <>
+      {loading && <MutedText style={{ padding: '0.4rem 0.6rem' }}>Loading…</MutedText>}
+      {!loading && overrides.length === 0 && <MutedText subtle style={{ padding: '0.4rem 0.6rem' }}>No overrides</MutedText>}
+      {sorted.map(ov => {
+        const d = describe(ov);
+        return (
+          <SplitItem key={ov.id} active={selected === ov.id} onClick={() => setSelected(ov.id)} title={d.label}>
+            {d.leading}
+            <span className="ui-split-item-label">{d.label}</span>
+          </SplitItem>
+        );
+      })}
+    </>
+  );
+
+  let detail = null;
+  if (err) {
+    detail = <div style={{ padding: '1.5rem' }}><ErrorBox>Failed to load overrides: {err}</ErrorBox></div>;
+  } else if (!loading && selectedOv) {
+    const d = describe(selectedOv);
+    detail = (
+      <OverrideEditor
+        key={selectedOv.id}
+        guildId={guildId}
+        channelId={channelId}
+        override={selectedOv}
+        label={d.label}
+        leading={d.big}
+        kind={d.kind}
+        canManage={canManage}
+        onChange={updated => setOverrides(p => p.map(o => o.id === updated.id ? updated : o))}
+        onDelete={handleDelete}
+      />
+    );
+  } else if (!loading) {
+    detail = (
+      <EmptyState
+        icon={ShieldIcon}
+        title={overrides.length ? 'Select an override' : 'No overrides yet'}
+        action={canManage && !overrides.length && <Button variant="primary" onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 4 }); }}><PlusIcon size={14} /> Add Override</Button>}
+        style={{ flex: 1 }}
+      >
+        Overrides change what a specific role or member can do in this channel,
+        on top of their guild-wide permissions.
+      </EmptyState>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Permission overrides let you customise what specific roles or members can do in this channel,
-        overriding guild-wide defaults and role permissions.
-      </div>
-
-      {loading && <MutedText>Loading overrides…</MutedText>}
-      <ErrorBox>{err && `Failed to load: ${err}`}</ErrorBox>
-
-      {!loading && overrides.length === 0 && !showCreate && (
-        <MutedText subtle style={{ padding: '0.5rem 0' }}>No overrides set for this channel yet.</MutedText>
-      )}
-
-      {!loading && overrides.map(ov => (
-        <OverrideRow
-          key={ov.id}
-          override={ov}
-          roles={roles}
-          canManage={canManage}
-          guildId={guildId}
-          channelId={channelId}
-          onSaved={updated => setOverrides(p => p.map(o => o.id === updated.id ? updated : o))}
-          onDeleted={id => setOverrides(p => p.filter(o => o.id !== id))}
-        />
-      ))}
-
-      {showCreate && (
-        <CreateOverrideForm
-          guildId={guildId}
-          channelId={channelId}
-          roles={roles}
-          existingRoleIds={existingRoleIds}
+    <>
+      <SplitPane
+        title="Overrides"
+        count={loading ? null : overrides.length}
+        action={addButton}
+        list={list}
+        detail={detail}
+        showDetail={!!selectedOv}
+        onBack={() => setSelected(null)}
+        backLabel="All overrides"
+      />
+      {menu && (
+        <AddOverrideMenu
+          anchor={menu}
+          roles={roles.filter(r => !existingRoleIds.has(r.id))}
           existingUserIds={existingUserIds}
-          onCreated={() => { setShowCreate(false); loadAll(); }}
-          onCancel={() => setShowCreate(false)}
+          onPick={handlePick}
+          onClose={() => setMenu(null)}
         />
       )}
-
-      {canManage && !showCreate && (
-        <button type="button" onClick={() => setShowCreate(true)}
-          className="hov-border-accent"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.35rem',
-            background: 'transparent', border: '1px dashed var(--border)', borderRadius: 7,
-            padding: '0.55rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600,
-            cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s', alignSelf: 'flex-start',
-          }}>
-          <PlusIcon size={14} /> Add Permission Override
-        </button>
-      )}
-    </div>
+      {confirmDialog}
+    </>
   );
 }

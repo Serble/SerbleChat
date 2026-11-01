@@ -1,22 +1,32 @@
 import { useState } from 'react';
-import { Modal, Button, TextInput, Hint } from './ui/index.js';
-import { FieldLabel } from './ui/index.js';
+import { Modal, ModalBody, ModalFooter, Button, Slider, FieldLabel, OptionGroup, Hint } from './ui/index.js';
+import { ScreenShareIcon, LightningIcon, ImageIcon, GearIcon } from '../icons.jsx';
 
 const BITRATE_MIN = 500_000;
 const BITRATE_MAX = 20_000_000;
+const BITRATE_STEP = 500_000;
 const FPS_MIN = 1;
 const FPS_MAX = 60;
 
-const PRESETS = [
-  // High FPS preset: 60fps, lower bitrate
-  { label: 'High FPS (60fps)', fps: 60, bitrate: 5_000_000 },
-  // Picture quality preset: lower fps, high bitrate
-  { label: 'Picture Quality (15fps)', fps: 15, bitrate: 12_000_000 },
+const PRESETS = {
+  // Smooth motion: 60fps, lower bitrate
+  smooth: { fps: 60, bitrate: 5_000_000 },
+  // Sharp picture: lower fps, high bitrate
+  sharp:  { fps: 15, bitrate: 12_000_000 },
+};
+
+const PRESET_OPTIONS = [
+  { value: 'smooth', icon: LightningIcon, label: 'Smooth motion', badge: '60 fps', description: 'Best for games and video. Fine detail may soften.' },
+  { value: 'sharp',  icon: ImageIcon,     label: 'Sharp picture', badge: '15 fps', description: 'Best for code, documents and slides.' },
+  { value: 'custom', icon: GearIcon,      label: 'Custom',        description: 'Pick your own bitrate and frame rate below.' },
 ];
 
-function clampInt(value, min, max) {
-  const n = parseInt(value);
-  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min;
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function presetFor(bitrate, fps) {
+  return Object.keys(PRESETS).find(k => PRESETS[k].bitrate === bitrate && PRESETS[k].fps === fps) ?? 'custom';
 }
 
 export default function ScreenShareQualityModal({ isOpen, ...props }) {
@@ -27,83 +37,69 @@ export default function ScreenShareQualityModal({ isOpen, ...props }) {
 }
 
 function QualityForm({ onClose, currentSettings, onApply }) {
-  // Kept as the raw input text so typing isn't fought by clamping on every
-  // keystroke; values are clamped on blur and when applied.
-  const [bitrate, setBitrate] = useState(String(currentSettings.bitrate));
-  const [fps, setFps] = useState(String(currentSettings.fps));
+  const [bitrate, setBitrate] = useState(clamp(Number(currentSettings.bitrate) || PRESETS.smooth.bitrate, BITRATE_MIN, BITRATE_MAX));
+  const [fps, setFps]         = useState(clamp(Number(currentSettings.fps) || PRESETS.smooth.fps, FPS_MIN, FPS_MAX));
+  // "Custom" stays selected while the sliders are being dragged even if they
+  // pass through a preset's exact values
+  const [customPicked, setCustomPicked] = useState(false);
+  const preset = customPicked ? 'custom' : presetFor(bitrate, fps);
 
-  const bitrateValue = clampInt(bitrate, BITRATE_MIN, BITRATE_MAX);
-  const fpsValue = clampInt(fps, FPS_MIN, FPS_MAX);
+  function pickPreset(p) {
+    if (p === 'custom') { setCustomPicked(true); return; }
+    setCustomPicked(false);
+    setBitrate(PRESETS[p].bitrate);
+    setFps(PRESETS[p].fps);
+  }
 
-  const handleApply = () => {
-    onApply({ bitrate: bitrateValue, fps: fpsValue });
+  function handleApply() {
+    onApply({ bitrate, fps });
     onClose();
-  };
+  }
+
+  const valueStyle = { fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' };
 
   return (
-    <Modal onClose={onClose} title="Screen Share Quality Settings" width={450} style={{ maxHeight: '80vh' }}>
-      <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1, minHeight: 0 }}>
-        {/* Presets */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <FieldLabel>Presets</FieldLabel>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {PRESETS.map(p => (
-              <Button
-                key={p.label}
-                variant="secondary"
-                style={{ flex: 1, whiteSpace: 'normal' }}
-                onClick={() => { setFps(String(p.fps)); setBitrate(String(p.bitrate)); }}
-              >
-                {p.label}
-              </Button>
-            ))}
+    <Modal onClose={onClose} title="Screen Share Quality" icon={ScreenShareIcon} width={480} onSubmit={handleApply}>
+      <ModalBody>
+        <div>
+          <FieldLabel>Preset</FieldLabel>
+          <OptionGroup options={PRESET_OPTIONS} value={preset} onChange={pickPreset} />
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <FieldLabel htmlFor="ss-bitrate">Bitrate</FieldLabel>
+            <span style={valueStyle}>{(bitrate / 1_000_000).toFixed(1)} Mbps</span>
           </div>
-        </div>
-
-        {/* Bitrate */}
-        <div style={{ marginBottom: '1rem' }}>
-          <FieldLabel htmlFor="ss-bitrate">
-            Bitrate: {(bitrateValue / 1_000_000).toFixed(1)} Mbps
-          </FieldLabel>
-          <TextInput
+          <Slider
             id="ss-bitrate"
-            type="number"
+            min={BITRATE_MIN} max={BITRATE_MAX} step={BITRATE_STEP}
             value={bitrate}
-            onChange={e => setBitrate(e.target.value)}
-            onBlur={() => setBitrate(String(bitrateValue))}
-            min={BITRATE_MIN}
-            max={BITRATE_MAX}
-            step={500_000}
+            onChange={v => { setCustomPicked(true); setBitrate(v); }}
+            scale={['0.5 Mbps', '20 Mbps']}
           />
-          <Hint style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-            Range: 0.5 - 20 Mbps (500,000 - 20,000,000 bps)
-          </Hint>
         </div>
 
-        {/* FPS */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <FieldLabel htmlFor="ss-fps">Frame Rate: {fpsValue} fps</FieldLabel>
-          <TextInput
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <FieldLabel htmlFor="ss-fps">Frame Rate</FieldLabel>
+            <span style={valueStyle}>{fps} fps</span>
+          </div>
+          <Slider
             id="ss-fps"
-            type="number"
+            min={FPS_MIN} max={FPS_MAX} step={1}
             value={fps}
-            onChange={e => setFps(e.target.value)}
-            onBlur={() => setFps(String(fpsValue))}
-            min={FPS_MIN}
-            max={FPS_MAX}
-            step={1}
+            onChange={v => { setCustomPicked(true); setFps(v); }}
+            scale={['1 fps', '60 fps']}
           />
-          <Hint style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-            Range: 1 - 60 fps. Resolution automatically matches your shared content.
-          </Hint>
         </div>
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleApply}>Apply</Button>
-        </div>
-      </div>
+        <Hint>Resolution automatically matches what you're sharing. Higher bitrates look better but need a faster connection.</Hint>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary">Apply</Button>
+      </ModalFooter>
     </Modal>
   );
 }

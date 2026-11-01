@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { createGroupChat } from '../api.js';
-import { Modal, Button, TextInput, ErrorBox, Hint } from './ui/index.js';
-import { FieldLabel } from './ui/index.js';
+import { Modal, ModalBody, ModalFooter, Button, TextInput, ErrorBox, Hint, Field } from './ui/index.js';
 import FriendPicker, { friendIdOf } from './FriendPicker.jsx';
 
 export default function CreateGroupModal({ onClose }) {
@@ -28,8 +27,7 @@ export default function CreateGroupModal({ onClose }) {
     });
   }
 
-  async function handleCreate(e) {
-    e.preventDefault();
+  async function handleCreate() {
     if (busy) return;
     if (!name.trim()) { setError('Please enter a group name.'); return; }
     if (picked.length === 0) { setError('Select at least one friend.'); return; }
@@ -47,13 +45,11 @@ export default function CreateGroupModal({ onClose }) {
   }
 
   return (
-    <Modal onClose={onClose} title="Create a Group Chat" width={460}>
-      <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: '1 1 auto', minHeight: 0 }}>
-        <Hint>Give it a name and pick your friends.</Hint>
+    <Modal onClose={onClose} title="Create a Group Chat" width={460} onSubmit={handleCreate}>
+      <ModalBody>
+        <Hint>Give it a name and pick the friends you want in it.</Hint>
 
-        {/* Group name */}
-        <div>
-          <FieldLabel htmlFor="create-group-name">Group Name</FieldLabel>
+        <Field label="Group Name" htmlFor="create-group-name">
           <TextInput
             id="create-group-name"
             autoFocus
@@ -62,27 +58,25 @@ export default function CreateGroupModal({ onClose }) {
             onChange={e => setName(e.target.value)}
             maxLength={64}
           />
-        </div>
+        </Field>
 
-        {/* Friend picker */}
         <FriendPicker
-          label="Add Friends"
+          label="Friends"
           userIds={friendIds}
           selected={selected}
           onToggle={toggle}
           emptyText="You have no friends to add yet."
+          listStyle={{ maxHeight: 280 }}
         />
 
         <ErrorBox>{error}</ErrorBox>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem', flexShrink: 0 }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" disabled={busy || !name.trim() || picked.length === 0}>
-            {busy ? 'Creating…' : 'Create Group'}
-          </Button>
-        </div>
-      </form>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" type="submit" disabled={busy || !name.trim() || picked.length === 0}>
+          {busy ? 'Creating…' : 'Create Group'}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

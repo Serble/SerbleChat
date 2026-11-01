@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createGuildInvite, FRONTEND_URL } from '../../api.js';
 import { copyToClipboard } from '../../electron-utils.js';
-import { Modal, Button, ErrorBox, useFlashStatus } from '../ui/index.js';
+import { Modal, ModalBody, ModalFooter, Button, ErrorBox, Hint, useFlashStatus } from '../ui/index.js';
 import { MutedText } from './common.jsx';
-import { LinkIcon, CheckIcon } from '../../icons.jsx';
+import { LinkIcon, CheckIcon, ClipboardIcon } from '../../icons.jsx';
 
 /** Quick "Invite People" dialog: creates a fresh invite on open. */
 export default function InvitePopup({ guildId, onClose }) {
@@ -32,22 +32,25 @@ export default function InvitePopup({ guildId, onClose }) {
   }
 
   return (
-    <Modal onClose={onClose} title="Invite People" icon={LinkIcon} width={400}>
-      <div style={{ padding: '1.25rem 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <Modal onClose={onClose} title="Invite People" icon={LinkIcon} width={440}>
+      <ModalBody>
+        <Hint>Share this link with people you want to invite. Manage or revoke links under Guild Settings → Invites.</Hint>
         {busy && <MutedText>Creating invite link…</MutedText>}
         <ErrorBox>{error}</ErrorBox>
         {!busy && invite && (
-          <>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Share this link with people you want to invite:</div>
-            <div style={{ background: 'var(--bg-secondary)', borderRadius: 6, padding: '0.65rem 0.75rem', fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-secondary)', wordBreak: 'break-all', userSelect: 'all' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.3rem 0.3rem 0.75rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-input)' }}>
+            <span style={{ flex: 1, minWidth: 0, fontFamily: 'ui-monospace, monospace', fontSize: '0.83rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'all' }}>
               {link}
-            </div>
-            <Button variant={copied ? 'success' : 'primary'} onClick={copyLink} style={{ padding: '0.65rem' }}>
-              {copied ? <><CheckIcon size={12} /> Copied to Clipboard!</> : 'Copy Invite Link'}
+            </span>
+            <Button size="sm" variant={copied ? 'success' : 'primary'} onClick={copyLink} style={{ minWidth: 84 }}>
+              {copied ? <><CheckIcon size={12} /> Copied</> : <><ClipboardIcon size={12} /> Copy</>}
             </Button>
-          </>
+          </div>
         )}
-      </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>Done</Button>
+      </ModalFooter>
     </Modal>
   );
 }

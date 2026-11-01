@@ -102,3 +102,34 @@ export function OptionGroup({ options, value, onChange, gap = '0.5rem' }) {
     </div>
   );
 }
+
+/** Centred placeholder for an empty list / pane. */
+export function EmptyState({ icon: Icon, title, children, action, style }) {
+  return (
+    <div className="ui-empty" style={style}>
+      {Icon && <div className="ui-empty-icon"><Icon size={22} /></div>}
+      {title && <div className="ui-empty-title">{title}</div>}
+      {children && <div className="ui-hint" style={{ maxWidth: 320 }}>{children}</div>}
+      {action && <div style={{ marginTop: '0.5rem' }}>{action}</div>}
+    </div>
+  );
+}
+
+/** A bordered list of rows (invites, bans, …). Children are usually <ListRow>s. */
+export function List({ children, style }) {
+  return <div className="ui-list" style={style}>{children}</div>;
+}
+
+/** One row of a <List>: optional leading visual, a title/subtitle block, and trailing actions. */
+export function ListRow({ leading, title, subtitle, actions, style }) {
+  return (
+    <div className="ui-list-row" style={style}>
+      {leading}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="ui-list-row-title">{title}</div>
+        {subtitle && <div className="ui-list-row-sub">{subtitle}</div>}
+      </div>
+      {actions && <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>{actions}</div>}
+    </div>
+  );
+}

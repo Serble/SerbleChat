@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { addGroupChatMembers, getChannelMembers } from '../api.js';
-import { Modal, Button, ErrorBox, Hint } from './ui/index.js';
+import { Modal, ModalBody, ModalFooter, Button, ErrorBox, Hint } from './ui/index.js';
 import FriendPicker, { friendIdOf } from './FriendPicker.jsx';
 
 /**
@@ -42,8 +42,7 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
     });
   }
 
-  async function handleAdd(e) {
-    e.preventDefault();
+  async function handleAdd() {
     if (busy) return;
     if (picked.length === 0) { setError('Select at least one friend.'); return; }
     setBusy(true); setError(null);
@@ -57,8 +56,8 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
   }
 
   return (
-    <Modal onClose={onClose} title="Add Members" width={440}>
-      <form onSubmit={handleAdd} style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', flex: '1 1 auto', minHeight: 0 }}>
+    <Modal onClose={onClose} title="Add Members" width={460} onSubmit={handleAdd}>
+      <ModalBody>
         <Hint>Pick friends to add to this group.</Hint>
 
         <FriendPicker
@@ -68,18 +67,17 @@ export default function AddMembersModal({ groupId, existingMemberIds, onClose })
           onToggle={toggle}
           loading={memberIds === null}
           emptyText="All your friends are already in this group."
-          listStyle={{ maxHeight: 240 }}
+          listStyle={{ maxHeight: 280 }}
         />
 
         <ErrorBox>{error}</ErrorBox>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', flexShrink: 0 }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" disabled={busy || picked.length === 0}>
-            {busy ? 'Adding…' : 'Add Members'}
-          </Button>
-        </div>
-      </form>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" type="submit" disabled={busy || picked.length === 0}>
+          {busy ? 'Adding…' : picked.length ? `Add ${picked.length} Member${picked.length > 1 ? 's' : ''}` : 'Add Members'}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

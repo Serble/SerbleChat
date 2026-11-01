@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
-import { Button, ErrorBox, Card, SettingRow, Toggle, FieldLabel, Field } from '../ui/index.js';
-import { UploadIcon } from '../../icons.jsx';
+import { TextInput } from '../ui/index.js';
+import { CheckIcon, CrossIcon, PlusIcon } from '../../icons.jsx';
 
 // Small building blocks shared by the guild / channel modals.
+
+export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /** Muted single-line text for loading / empty states. */
 export function MutedText({ children, subtle, style }) {
@@ -13,110 +14,90 @@ export function MutedText({ children, subtle, style }) {
   );
 }
 
-/** Horizontal tab strip shown under a modal header. tabs: [{ id, label }] */
-export function TabBar({ tabs, active, onChange }) {
-  return (
-    <div role="tablist" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-      {tabs.map(t => (
-        <button
-          key={t.id}
-          role="tab"
-          aria-selected={t.id === active}
-          className="ui-tab"
-          data-active={t.id === active}
-          onClick={() => onChange(t.id)}
-          style={{ width: 'auto', padding: '0.4rem 0.75rem' }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Scrollable padded body for a modal / modal tab. */
-export function ModalBody({ children, style }) {
-  return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', ...style }}>
-      {children}
-    </div>
-  );
-}
-
+/** Red-bordered box of destructive actions, each a <DangerRow>. */
 export function DangerZone({ children }) {
+  return <div className="danger-zone">{children}</div>;
+}
+
+export function DangerRow({ title, description, action }) {
   return (
-    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
-      <FieldLabel style={{ color: 'var(--danger)', marginBottom: 0 }}>Danger Zone</FieldLabel>
-      {children}
+    <div className="danger-row">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</div>
+        {description && <div className="ui-hint" style={{ marginTop: '0.15rem' }}>{description}</div>}
+      </div>
+      {action}
     </div>
   );
 }
 
-export function VoiceCapableToggle({ checked, onChange, disabled }) {
+export function RoleDot({ color, size = 10, style }) {
   return (
-    <Card style={{ padding: '0.65rem 0.85rem' }}>
-      <SettingRow
-        style={{ marginBottom: 0 }}
-        title="Voice Channel"
-        description="Enable voice & video capabilities"
-        control={<Toggle checked={checked} onChange={onChange} disabled={disabled} title="Voice Channel" />}
-      />
-    </Card>
+    <span style={{
+      display: 'inline-block', width: size, height: size, borderRadius: '50%', flexShrink: 0,
+      background: color || 'var(--text-muted)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.12)',
+      ...style,
+    }} />
   );
 }
+
+const SWATCHES = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63'];
 
 /**
- * Square icon preview with Upload / Remove buttons.
- * `src` is the current icon URL or null (then `fallback` is shown instead).
- * `onUpload(file)` / `onRemove()` are async; busy and error state is handled
- * here. The preview itself refreshes via the server's *Updated signal.
+ * Colour chooser: "no colour", a row of preset swatches, a custom colour
+ * picker and a hex box. `value` is '' (no colour) or '#rrggbb'; `onChange`
+ * receives the raw hex-box text too, so validate with HEX_COLOR_RE.
  */
-export function IconUploadField({ label, src, fallback, alt, onUpload, onRemove, onImageError }) {
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+export function ColourPicker({ value, onChange, disabled }) {
+  const valid = value === '' || HEX_COLOR_RE.test(value);
+  const isCustom = HEX_COLOR_RE.test(value) && !SWATCHES.includes(value.toLowerCase());
 
-  async function run(action) {
-    setBusy(true);
-    setError(null);
-    try { await action(); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
   return (
-    <Field label={label}>
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
-          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '2rem', color: 'var(--text-secondary)',
-        }}>
-          {src
-            ? <img src={src} alt={alt} onError={onImageError} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : fallback}
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+      <div className="swatches" role="radiogroup" aria-label="Colour">
+        <button
+          type="button" role="radio" aria-checked={value === ''} title="No colour"
+          className="swatch swatch--none" data-active={value === ''} disabled={disabled}
+          onClick={() => onChange('')}
+        >
+          {value === '' ? <CheckIcon size={12} strokeWidth={3} /> : <CrossIcon size={12} />}
+        </button>
+        {SWATCHES.map(c => {
+          const active = value.toLowerCase() === c;
+          return (
+            <button
+              key={c} type="button" role="radio" aria-checked={active} title={c}
+              className="swatch" data-active={active} disabled={disabled}
+              style={{ background: c }}
+              onClick={() => onChange(c)}
+            >
+              {active && <CheckIcon size={12} strokeWidth={3} />}
+            </button>
+          );
+        })}
+        <label
+          className="swatch swatch--custom" data-active={isCustom} title="Custom colour"
+          style={isCustom ? { background: value } : undefined}
+          data-disabled={!!disabled}
+        >
+          {isCustom ? <CheckIcon size={12} strokeWidth={3} /> : <PlusIcon size={12} />}
           <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={e => {
-              const file = e.target.files?.[0];
-              e.target.value = ''; // allow re-selecting the same file
-              if (file) run(() => onUpload(file));
-            }}
+            type="color" disabled={disabled}
+            value={HEX_COLOR_RE.test(value) ? value : '#99aab5'}
+            onChange={e => onChange(e.target.value)}
           />
-          <Button onClick={() => fileRef.current?.click()} disabled={busy}>
-            <UploadIcon size={14} /> {busy ? 'Uploading…' : 'Upload Image'}
-          </Button>
-          {src && (
-            <Button variant="danger" onClick={() => run(onRemove)} disabled={busy}>Remove Icon</Button>
-          )}
-        </div>
+        </label>
       </div>
-      <ErrorBox style={{ marginTop: '0.5rem' }}>{error}</ErrorBox>
-    </Field>
+      <TextInput
+        mono
+        value={value}
+        onChange={e => onChange(e.target.value.trim())}
+        maxLength={7}
+        placeholder="#rrggbb"
+        disabled={disabled}
+        aria-invalid={!valid}
+        style={{ width: 92, padding: '0.25rem 0.5rem', fontSize: '0.83rem', borderColor: valid ? undefined : 'var(--danger)' }}
+      />
+    </div>
   );
 }

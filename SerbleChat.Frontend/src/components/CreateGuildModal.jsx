@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createGuild } from '../api.js';
 import { useApp } from '../context/AppContext.jsx';
-import { Modal, Button, TextInput, ErrorBox, Hint } from './ui/index.js';
-import { FieldLabel } from './ui/index.js';
+import { Modal, ModalBody, ModalFooter, Button, TextInput, ErrorBox, Hint, Field } from './ui/index.js';
 
 export default function CreateGuildModal({ onClose, onCreated }) {
   const { reconnectHub, setActiveGuildId } = useApp();
@@ -12,8 +11,7 @@ export default function CreateGuildModal({ onClose, onCreated }) {
   const [error, setError] = useState(null);
   const nav = useNavigate();
 
-  async function handleCreate(e) {
-    e.preventDefault();
+  async function handleCreate() {
     if (busy || !name.trim()) return;
     setBusy(true);
     setError(null);
@@ -30,13 +28,30 @@ export default function CreateGuildModal({ onClose, onCreated }) {
     }
   }
 
-  return (
-    <Modal onClose={onClose} title="Create a Guild" width={460}>
-      <form onSubmit={handleCreate} style={{ padding: '1.25rem 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
-        <Hint>Your guild is where you and your friends hang out. Give it a name and start chatting.</Hint>
+  const initial = name.trim()[0]?.toUpperCase();
 
-        <div>
-          <FieldLabel htmlFor="create-guild-name">Guild Name</FieldLabel>
+  return (
+    <Modal onClose={onClose} title="Create a Guild" width={460} onSubmit={handleCreate}>
+      <ModalBody>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {/* Live preview of how the guild will look in the server strip */}
+          <div aria-hidden="true" style={{
+            width: 56, height: 56, borderRadius: 16, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: initial ? 'var(--accent)' : 'var(--bg-secondary)',
+            border: initial ? 'none' : '1px dashed var(--border)',
+            color: initial ? '#fff' : 'var(--text-subtle)',
+            fontSize: '1.5rem', fontWeight: 600, transition: 'background 0.15s',
+          }}>
+            {initial ?? '?'}
+          </div>
+          <Hint>
+            Your guild is where you and your friends hang out. Give it a name to get started —
+            you can add an icon, channels and roles afterwards.
+          </Hint>
+        </div>
+
+        <Field label="Guild Name" htmlFor="create-guild-name">
           <TextInput
             id="create-guild-name"
             autoFocus
@@ -45,17 +60,16 @@ export default function CreateGuildModal({ onClose, onCreated }) {
             placeholder="My Awesome Guild"
             maxLength={64}
           />
-        </div>
+        </Field>
 
         <ErrorBox>{error}</ErrorBox>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" disabled={busy || !name.trim()}>
-            {busy ? 'Creating…' : 'Create Guild'}
-          </Button>
-        </div>
-      </form>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" type="submit" disabled={busy || !name.trim()}>
+          {busy ? 'Creating…' : 'Create Guild'}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

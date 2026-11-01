@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import Avatar from './Avatar.jsx';
-import { FieldLabel } from './ui/index.js';
+import { FieldLabel, TextInput } from './ui/index.js';
 import { CheckIcon } from '../icons.jsx';
 
 /** The id of the other user in a friendship row. */
@@ -19,6 +19,8 @@ export function friendIdOf(friendship, myId) {
  *  emptyText  string         shown when userIds is empty
  *  loading    bool           show a loading line instead of the list
  *  listStyle  object         extra style for the scrolling list (e.g. maxHeight)
+ *
+ * A search box appears once there are enough users to need one.
  */
 export default function FriendPicker({ userIds, selected, onToggle, label, emptyText, loading, listStyle }) {
   const { resolveUser } = useApp();
@@ -33,7 +35,12 @@ export default function FriendPicker({ userIds, selected, onToggle, label, empty
     return () => { cancelled = true; };
   }, [idsKey, resolveUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [query, setQuery] = useState('');
   const selectedCount = userIds.filter(id => selected.has(id)).length;
+  const showSearch = userIds.length > 6;
+  const q = query.trim().toLowerCase();
+  // Selected users stay visible while filtering so they can be un-ticked
+  const shown = q ? userIds.filter(id => selected.has(id) || userMap[id]?.username?.toLowerCase().includes(q)) : userIds;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
@@ -45,12 +52,27 @@ export default function FriendPicker({ userIds, selected, onToggle, label, empty
         flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
         ...listStyle,
       }}>
+        {showSearch && !loading && (
+          <div style={{ position: 'sticky', top: 0, zIndex: 1, padding: '0.5rem', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)' }}>
+            <TextInput
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} // don't submit the surrounding form
+              placeholder="Search friends"
+              aria-label="Search friends"
+              style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
+            />
+          </div>
+        )}
+        {!loading && userIds.length > 0 && shown.length === 0 && (
+          <div style={{ padding: '1rem', color: 'var(--text-subtle)', fontSize: '0.85rem', textAlign: 'center' }}>No friends match "{query.trim()}"</div>
+        )}
         {(loading || userIds.length === 0) && (
           <div style={{ padding: '1rem', color: 'var(--text-subtle)', fontSize: '0.85rem', textAlign: 'center' }}>
             {loading ? 'Loading…' : emptyText}
           </div>
         )}
-        {!loading && userIds.map(id => {
+        {!loading && shown.map(id => {
           const u = userMap[id];
           const isSelected = selected.has(id);
           return (

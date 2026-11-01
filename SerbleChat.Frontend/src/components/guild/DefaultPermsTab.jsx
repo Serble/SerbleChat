@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { updateGuild } from '../../api.js';
-import { SaveStatus } from '../ui/index.js';
-import { GUILD_PERMS, PermissionList } from './permissions.jsx';
+import { SaveStatus, SectionTitle, Hint, ErrorBox, TabBody } from '../ui/index.js';
+import { GUILD_PERM_GROUPS, PermissionList, PermissionLegend } from './permissions.jsx';
 import useAutoSave from './useAutoSave.js';
 
 export default function DefaultPermsTab({ guild, onSaved }) {
@@ -20,17 +20,20 @@ export default function DefaultPermsTab({ guild, onSaved }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>
-          Default permissions apply to all members that don't have a role overriding them.
-        </div>
-        <span title={error ?? undefined} style={{ flexShrink: 0 }}>
-          <SaveStatus status={status} errorText="Error" />
-        </span>
+    <TabBody>
+      <SectionTitle action={<span title={error ?? undefined}><SaveStatus status={status} /></span>}>
+        Default Permissions
+      </SectionTitle>
+      <Hint style={{ marginBottom: '0.75rem' }}>
+        What every member can do before roles are taken into account. Roles and
+        channel overrides can grant or take away permissions on top of these.
+      </Hint>
+      <div style={{ marginBottom: '1.25rem' }}>
+        <PermissionLegend inheritText="not granted" />
       </div>
+      <ErrorBox style={{ marginBottom: '1rem' }}>{error && `Couldn't save: ${error}`}</ErrorBox>
 
-      <PermissionList keys={GUILD_PERMS} perms={perms} onChange={handleChange} />
-    </div>
+      <PermissionList groups={GUILD_PERM_GROUPS} perms={perms} onChange={handleChange} />
+    </TabBody>
   );
 }

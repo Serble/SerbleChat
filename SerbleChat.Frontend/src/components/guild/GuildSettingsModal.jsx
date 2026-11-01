@@ -6,113 +6,161 @@ import {
   getGuildBans, unbanGuildMember, getAccountById,
 } from '../../api.js';
 import { copyToClipboard } from '../../electron-utils.js';
-import { Modal, Button, IconButton, TextInput, ErrorBox, Field, useFlashStatus } from '../ui/index.js';
+import {
+  TabbedModal, TabBody, Button, IconButton, TextInput, ErrorBox, Field, SectionTitle, Hint,
+  SaveStatus, IconUploadField, EmptyState, List, ListRow, useFlashStatus, useConfirm,
+} from '../ui/index.js';
 import Avatar from '../Avatar.jsx';
 import RolesTab from './RolesTab.jsx';
 import DefaultPermsTab from './DefaultPermsTab.jsx';
 import { allowed, ALLOW } from './permissions.jsx';
 import useIconProbe from './useIconProbe.js';
-import { MutedText, TabBar, ModalBody, DangerZone, IconUploadField } from './common.jsx';
-import { GearIcon, CheckIcon, TrashIcon, PlusIcon } from '../../icons.jsx';
+import useAutoSave from './useAutoSave.js';
+import { MutedText, DangerZone, DangerRow } from './common.jsx';
+import {
+  GearIcon, CheckIcon, TrashIcon, PlusIcon, TagIcon, ShieldIcon, LinkIcon, HammerIcon, ClipboardIcon,
+} from '../../icons.jsx';
 
 const inviteLink = id => `${FRONTEND_URL}/invite/${id}`;
 
+/** Loads a list once per `key`; returns [items, setItems, loading]. */
+function useLoadedList(load, key) {
+  const [items, setItems]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    load()
+      .then(list => { if (!cancelled) setItems(list ?? []); })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [items, setItems, loading];
+}
+
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
-// `name` lives in the modal so an unsaved edit survives switching tabs
-function OverviewTab({ guild, name, setName, isOwner, isAdmin, currentUser, guildUpdatedEvent, onClose, onSaved, onDeleted }) {
-  const [busy, setBusy]   = useState(false);
-  const [error, setError] = useState(null);
+function OverviewTab({ guild, isOwner, isAdmin, currentUser, guildUpdatedEvent, onClose, onSaved, onDeleted }) {
+  const [name, setName] = useState(guild.name);
   const [iconSrc, markIconMissing] = useIconProbe(getGuildIconUrl(guild.id), guildUpdatedEvent, 'guildId', guild.id);
+  const [confirm, confirmDialog] = useConfirm();
 
-  async function handleSave(e) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed || trimmed === guild.name) { onClose(); return; }
-    setBusy(true); setError(null);
-    try { await updateGuild(guild.id, { name: trimmed }); onSaved(trimmed); onClose(); }
-    catch (err) { setError(err.message); setBusy(false); }
+  // The name saves itself once typing pauses (and when the tab/modal closes)
+  const { status, error, schedule } = useAutoSave(async next => {
+    await updateGuild(guild.id, { name: next });
+    onSaved(next);
+  }, 800);
+
+  function handleName(value) {
+    setName(value);
+    if (value.trim()) schedule(value.trim());
   }
 
-  async function handleDelete() {
-    if (!confirm(`Delete "${guild.name}"? This cannot be undone.`)) return;
-    setBusy(true);
-    try { await deleteGuild(guild.id); onDeleted(); onClose(); }
-    catch (err) { setError(err.message); setBusy(false); }
+  const guildName = <strong style={{ color: 'var(--text-primary)' }}>{guild.name}</strong>;
+
+  function handleLeave() {
+    confirm({
+      title: 'Leave Guild',
+      message: <>Leave {guildName}? You'll need a new invite to rejoin.</>,
+      confirmLabel: 'Leave Guild',
+      busyLabel: 'Leaving…',
+      onConfirm: async () => {
+        await leaveGuild(guild.id, currentUser.id);
+        // LeftGuild signal handles the cleanup, just close the modal
+        onClose();
+      },
+    });
   }
 
-  async function handleLeave() {
-    if (!confirm(`Leave "${guild.name}"? You can rejoin with an invite.`)) return;
-    setBusy(true);
-    try {
-      await leaveGuild(guild.id, currentUser.id);
-      // LeftGuild signal will handle cleanup, just close the modal
-      onClose();
-    } catch (err) {
-      setError(err.message);
-      setBusy(false);
-    }
+  function handleDelete() {
+    confirm({
+      title: 'Delete Guild',
+      message: <>Permanently delete {guildName}, along with all of its channels and messages? This can't be undone.</>,
+      confirmLabel: 'Delete Guild',
+      busyLabel: 'Deleting…',
+      onConfirm: async () => {
+        await deleteGuild(guild.id);
+        onDeleted();
+        onClose();
+      },
+    });
   }
 
   return (
-    <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <Field label="Guild Name">
-        <TextInput autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={64} />
-      </Field>
+    <TabBody>
+      <SectionTitle action={<span title={error ?? undefined}><SaveStatus status={status} /></span>}>
+        Guild Profile
+      </SectionTitle>
 
-      {/* GuildUpdated signal refreshes the icon across all clients */}
-      <IconUploadField
-        label="Guild Icon"
-        src={iconSrc}
-        fallback={guild.name?.[0]?.toUpperCase() ?? '?'}
-        alt="Guild icon"
-        onImageError={markIconMissing}
-        onUpload={file => uploadGuildIcon(guild.id, file)}
-        onRemove={() => deleteGuildIcon(guild.id)}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.4rem' }}>
+        <Field label="Guild Name" error={!name.trim() ? "Guild name can't be empty" : error && `Couldn't save: ${error}`}>
+          <TextInput value={name} onChange={e => handleName(e.target.value)} maxLength={64} aria-invalid={!name.trim()} />
+        </Field>
 
-      <ErrorBox>{error}</ErrorBox>
-      <Button type="submit" variant="primary" disabled={busy || !name.trim()}>Save Changes</Button>
+        {/* GuildUpdated signal refreshes the icon across all clients */}
+        <Field label="Guild Icon">
+          <IconUploadField
+            src={iconSrc}
+            fallback={(name.trim() || guild.name)?.[0]?.toUpperCase() ?? '?'}
+            alt="Guild icon"
+            hint="Square images work best."
+            onImageError={markIconMissing}
+            onUpload={file => uploadGuildIcon(guild.id, file)}
+            onRemove={() => deleteGuildIcon(guild.id)}
+          />
+        </Field>
+      </div>
 
       {(!isOwner || isAdmin) && (
-        <DangerZone>
-          {/* The owner can't leave their own guild — they can only delete it */}
-          {!isOwner && <Button variant="danger" onClick={handleLeave} disabled={busy}>Leave Guild</Button>}
-          {isAdmin && <Button variant="danger" onClick={handleDelete} disabled={busy}>Delete Guild</Button>}
-        </DangerZone>
+        <>
+          <SectionTitle>Danger Zone</SectionTitle>
+          <DangerZone>
+            {/* The owner can't leave their own guild — they can only delete it */}
+            {!isOwner && (
+              <DangerRow
+                title="Leave guild"
+                description="You'll lose access to its channels until you're invited back."
+                action={<Button variant="danger" onClick={handleLeave}>Leave Guild</Button>}
+              />
+            )}
+            {isAdmin && (
+              <DangerRow
+                title="Delete guild"
+                description="Permanently delete this guild and everything in it. This can't be undone."
+                action={<Button variant="danger" onClick={handleDelete}>Delete Guild</Button>}
+              />
+            )}
+          </DangerZone>
+        </>
       )}
-    </form>
+      {confirmDialog}
+    </TabBody>
   );
 }
 
 // ─── Invites ──────────────────────────────────────────────────────────────────
 
 function InvitesTab({ guildId }) {
-  const [invites, setInvites]   = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [invites, setInvites, loading] = useLoadedList(() => getGuildInvites(guildId), guildId);
   const [creating, setCreating] = useState(false);
+  const [error, setError]       = useState(null);
   const [copied, flashCopied]   = useFlashStatus(); // id of the invite just copied
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    getGuildInvites(guildId)
-      .then(list => { if (!cancelled) setInvites(list ?? []); })
-      .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [guildId]);
-
   async function handleCreate() {
-    setCreating(true);
-    try { const inv = await createGuildInvite(guildId); setInvites(p => [...p, inv]); }
-    catch (err) { console.error(err); }
+    setCreating(true); setError(null);
+    try {
+      const inv = await createGuildInvite(guildId);
+      setInvites(p => [...p, inv]);
+      copyLink(inv);
+    } catch (err) { setError(err.message); }
     finally { setCreating(false); }
   }
 
   async function handleDelete(inviteId) {
+    setError(null);
     try { await deleteGuildInvite(inviteId); setInvites(p => p.filter(i => i.id !== inviteId)); }
-    catch (err) { console.error(err); }
+    catch (err) { setError(err.message); }
   }
 
   function copyLink(inv) {
@@ -120,109 +168,114 @@ function InvitesTab({ guildId }) {
     flashCopied(inv.id, 2000);
   }
 
+  const createButton = (
+    <Button variant="primary" size="sm" onClick={handleCreate} disabled={creating}>
+      <PlusIcon size={13} /> {creating ? 'Creating…' : 'Create Invite'}
+    </Button>
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <Button variant="primary" onClick={handleCreate} disabled={creating} style={{ alignSelf: 'flex-start' }}>
-        {creating ? 'Creating…' : <><PlusIcon size={14} /> Create Invite</>}
-      </Button>
-      {loading && <MutedText>Loading…</MutedText>}
-      {!loading && invites.length === 0 && <MutedText subtle>No active invites. Create one above.</MutedText>}
-      {invites.map(inv => (
-        <div key={inv.id} style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Invite #{inv.id}</div>
-            <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {inviteLink(inv.id)}
-            </div>
-          </div>
-          <Button size="sm" variant={copied === inv.id ? 'success' : 'secondary'} onClick={() => copyLink(inv)}>
-            {copied === inv.id ? <><CheckIcon size={12} /> Copied</> : 'Copy'}
-          </Button>
-          <IconButton onClick={() => handleDelete(inv.id)} title="Delete invite" className="hov-color-danger">
-            <TrashIcon size={16} />
-          </IconButton>
-        </div>
-      ))}
-    </div>
+    <TabBody>
+      <SectionTitle action={invites.length > 0 && createButton}>Invite Links</SectionTitle>
+      <Hint style={{ marginBottom: '1rem' }}>
+        Anyone with one of these links can join the guild. Delete a link to stop it working.
+      </Hint>
+      <ErrorBox style={{ marginBottom: '1rem' }}>{error}</ErrorBox>
+
+      {loading ? <MutedText>Loading…</MutedText> : invites.length === 0 ? (
+        <EmptyState icon={LinkIcon} title="No active invites" action={createButton}>
+          Create an invite link to bring people into this guild.
+        </EmptyState>
+      ) : (
+        <List>
+          {invites.map(inv => (
+            <ListRow
+              key={inv.id}
+              leading={<span className="ui-leading-icon"><LinkIcon size={16} /></span>}
+              title={<span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 500, fontSize: '0.83rem' }}>{inviteLink(inv.id)}</span>}
+              subtitle={`Code ${inv.id}`}
+              actions={<>
+                <Button size="sm" variant={copied === inv.id ? 'success' : 'secondary'} onClick={() => copyLink(inv)} style={{ minWidth: 84 }}>
+                  {copied === inv.id ? <><CheckIcon size={12} /> Copied</> : <><ClipboardIcon size={12} /> Copy</>}
+                </Button>
+                <IconButton onClick={() => handleDelete(inv.id)} title="Delete invite" aria-label="Delete invite" className="hov-color-danger">
+                  <TrashIcon size={15} />
+                </IconButton>
+              </>}
+            />
+          ))}
+        </List>
+      )}
+    </TabBody>
   );
 }
 
 // ─── Bans ─────────────────────────────────────────────────────────────────────
 
-function BanCard({ ban, onUnban, unbanning }) {
-  const [userInfo, setUserInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
+function BanRow({ ban, onUnban, unbanning }) {
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     getAccountById(ban.userId)
-      .then(u => { if (!cancelled) setUserInfo(u); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then(u => { if (!cancelled) setUser(u ?? false); })
+      .catch(() => { if (!cancelled) setUser(false); });
     return () => { cancelled = true; };
   }, [ban.userId]);
 
   const isPermanent = !ban.until || new Date(ban.until).getFullYear() >= 9999;
-  const expiresDate = isPermanent ? null : new Date(ban.until);
-  const isExpired = expiresDate && expiresDate < new Date();
+  const expires = isPermanent ? null : new Date(ban.until);
+  const expiry = isPermanent
+    ? 'Permanent'
+    : expires < new Date() ? `Expired ${expires.toLocaleDateString()}` : `Until ${expires.toLocaleDateString()}`;
 
   return (
-    <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-      <Avatar userId={ban.userId} name={userInfo?.username ?? 'Unknown'} size={40} color={userInfo?.color} />
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {loading ? 'Loading…' : (userInfo?.username ?? 'Unknown User')}
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-          {isPermanent ? 'Permanent ban' : isExpired ? `Expired ${expiresDate.toLocaleDateString()}` : `Until ${expiresDate.toLocaleDateString()}`}
-        </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '0.05rem' }}>
-          User ID: {ban.userId}
-        </div>
-      </div>
-      <Button size="sm" variant="success" onClick={() => onUnban(ban.userId)} disabled={unbanning}>
-        {unbanning ? '…' : 'Unban'}
-      </Button>
-    </div>
+    <ListRow
+      leading={<Avatar userId={ban.userId} name={user?.username ?? '?'} size={36} color={user?.color} />}
+      title={user === null ? 'Loading…' : (user?.username ?? 'Unknown user')}
+      subtitle={<span title={`User ID: ${ban.userId}`}>{expiry}</span>}
+      actions={
+        <Button size="sm" onClick={() => onUnban(ban.userId)} disabled={unbanning}>
+          {unbanning ? 'Unbanning…' : 'Unban'}
+        </Button>
+      }
+    />
   );
 }
 
 function BansTab({ guildId }) {
-  const [bans, setBans]         = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [bans, setBans, loading]  = useLoadedList(() => getGuildBans(guildId), guildId);
   const [unbanning, setUnbanning] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    getGuildBans(guildId)
-      .then(list => { if (!cancelled) setBans(list ?? []); })
-      .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [guildId]);
+  const [error, setError]         = useState(null);
 
   async function handleUnban(userId) {
-    setUnbanning(userId);
+    setUnbanning(userId); setError(null);
     try {
       await unbanGuildMember(guildId, userId);
       setBans(p => p.filter(b => b.userId !== userId));
     } catch (err) {
-      console.error(err);
-      alert('Failed to unban user: ' + err.message);
+      setError(`Failed to unban: ${err.message}`);
     } finally {
       setUnbanning(null);
     }
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      {loading && <MutedText>Loading bans…</MutedText>}
-      {!loading && bans.length === 0 && <MutedText subtle>No banned users.</MutedText>}
-      {bans.map(ban => (
-        <BanCard key={ban.id} ban={ban} onUnban={handleUnban} unbanning={unbanning === ban.userId} />
-      ))}
-    </div>
+    <TabBody>
+      <SectionTitle>Bans{!loading && bans.length > 0 && ` — ${bans.length}`}</SectionTitle>
+      <ErrorBox style={{ marginBottom: '1rem' }}>{error}</ErrorBox>
+      {loading ? <MutedText>Loading…</MutedText> : bans.length === 0 ? (
+        <EmptyState icon={HammerIcon} title="No banned users">
+          Members you ban from the guild will show up here, where you can unban them.
+        </EmptyState>
+      ) : (
+        <List>
+          {bans.map(ban => (
+            <BanRow key={ban.id} ban={ban} onUnban={handleUnban} unbanning={unbanning === ban.userId} />
+          ))}
+        </List>
+      )}
+    </TabBody>
   );
 }
 
@@ -236,54 +289,44 @@ export default function GuildSettingsModal({ guild, onClose, onSaved, onDeleted,
   const canManageBans  = allowed(perms, 'banMembers');
 
   const tabs = [
-    canManageGuild && { id: 'overview',     label: 'Overview' },
-    canManageGuild && { id: 'invites',      label: 'Invites' },
-    canManageGuild && { id: 'defaultPerms', label: 'Default Perms' },
-    { id: 'roles', label: 'Roles' }, // always visible (read-only without manageRoles)
-    canManageBans  && { id: 'bans',         label: 'Bans' },
+    canManageGuild && { id: 'overview',     label: 'Overview',            icon: GearIcon,   section: 'Guild' },
+    // Always visible (read-only without manageRoles)
+    { id: 'roles', label: 'Roles', icon: TagIcon, section: 'Guild' },
+    canManageGuild && { id: 'defaultPerms', label: 'Default Perms',       icon: ShieldIcon, section: 'Guild' },
+    canManageGuild && { id: 'invites',      label: 'Invites',             icon: LinkIcon,   section: 'Members' },
+    canManageBans  && { id: 'bans',         label: 'Bans',                icon: HammerIcon, section: 'Members' },
   ].filter(Boolean);
 
   const [selectedTab, setTab] = useState(tabs[0].id);
-  const [name, setName] = useState(guild.name);
   // Fall back to the first tab if permissions change and hide the selected one
   const tab = tabs.some(t => t.id === selectedTab) ? selectedTab : tabs[0].id;
 
   return (
-    <Modal
+    <TabbedModal
       onClose={onClose}
       title="Guild Settings"
+      subtitle={guild.name}
       icon={GearIcon}
-      // Roles tab is a two-pane layout and needs more width
-      width={tab === 'roles' ? 680 : 460}
-      style={{ transition: 'max-width 0.15s' }}
+      tabs={tabs}
+      active={tab}
+      onChange={setTab}
     >
-      <TabBar tabs={tabs} active={tab} onChange={setTab} />
-
-      {tab === 'roles' ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '0.75rem 1rem 1rem' }}>
-          <RolesTab guildId={guild.id} canManage={canManageRoles} />
-        </div>
-      ) : (
-        <ModalBody>
-          {tab === 'overview' && (
-            <OverviewTab
-              guild={guild}
-              name={name}
-              setName={setName}
-              isOwner={isOwner}
-              isAdmin={isAdmin}
-              currentUser={currentUser}
-              guildUpdatedEvent={guildUpdatedEvent}
-              onClose={onClose}
-              onSaved={onSaved}
-              onDeleted={onDeleted}
-            />
-          )}
-          {tab === 'invites'      && <InvitesTab guildId={guild.id} />}
-          {tab === 'defaultPerms' && <DefaultPermsTab guild={guild} />}
-          {tab === 'bans'         && <BansTab guildId={guild.id} />}
-        </ModalBody>
+      {tab === 'overview' && (
+        <OverviewTab
+          guild={guild}
+          isOwner={isOwner}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+          guildUpdatedEvent={guildUpdatedEvent}
+          onClose={onClose}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
       )}
-    </Modal>
+      {tab === 'roles'        && <RolesTab guildId={guild.id} canManage={canManageRoles} />}
+      {tab === 'defaultPerms' && <DefaultPermsTab guild={guild} onSaved={onSaved} />}
+      {tab === 'invites'      && <InvitesTab guildId={guild.id} />}
+      {tab === 'bans'         && <BansTab guildId={guild.id} />}
+    </TabbedModal>
   );
 }

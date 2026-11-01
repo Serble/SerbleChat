@@ -15,11 +15,26 @@ export function FieldLabel({ children, htmlFor, style }) {
   );
 }
 
-/** A FieldLabel with its control underneath. */
-export function Field({ label, children, style }) {
+/** A FieldLabel with its control underneath, plus an optional hint or error line. */
+export function Field({ label, htmlFor, hint, error, children, style }) {
   return (
     <div style={style}>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+      {children}
+      {(error || hint) && (
+        <div className="ui-hint" style={{ marginTop: '0.35rem', color: error ? 'var(--danger)' : undefined }}>
+          {error || hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Text input with a fixed prefix glyph inside it (e.g. "#" for channel names). */
+export function PrefixInput({ prefix, children }) {
+  return (
+    <div className="ui-prefix-input">
+      <span className="ui-prefix-input-glyph" aria-hidden="true">{prefix}</span>
       {children}
     </div>
   );
