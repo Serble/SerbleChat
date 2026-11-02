@@ -36,10 +36,19 @@ public interface IUserRepo {
     /// it moves to the new user.
     /// </summary>
     Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription);
+    /// <summary>Upserts, then deletes the user's least recently registered endpoints beyond <paramref name="maxPerUser"/>.</summary>
+    Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription, int maxPerUser);
     /// <returns>Whether a subscription was removed.</returns>
     Task<bool> DeleteWebNotificationSubscription(string userId, string url);
     Task<IEnumerable<UserWebNotificationHook>> GetWebNotificationSubscriptions(string userId);
     Task DeleteWebNotificationSubscriptions(params long[] subscriptionId);
+    Task<UserWebNotificationHook?> GetWebNotificationSubscriptionByUrl(string url);
+    /// <summary>Moves a subscription to the endpoint its browser rotated it to. False if the old one isn't registered.</summary>
+    Task<bool> ReplaceWebNotificationSubscriptionUrl(string oldUrl, string newUrl, string p256dh, string auth);
+    Task RecordWebPushSuccess(long hookId);
+    /// <summary>Counts a failed delivery. Returns true if that made the endpoint hopeless, so it was deleted.</summary>
+    Task<bool> RecordWebPushFailure(long hookId, string error, int deleteAfterFailures, TimeSpan deleteIfNoSuccessFor);
+    Task<int> DeleteStaleWebNotificationSubscriptions(DateTime notSeenSince);
     Task<Dictionary<string, IEnumerable<UserWebNotificationHook>>> GetUsersWebNotificationSubscriptions(IEnumerable<string> userIds);
 
     // ntfy

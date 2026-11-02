@@ -484,6 +484,96 @@ namespace SerbleChat.Backend.Migrations
                     b.ToTable("MessageMentions");
                 });
 
+            modelBuilder.Entity("SerbleChat.Backend.Database.Structs.NotificationDelivery", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("AcceptedMs")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("ChannelId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DeviceAckAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("DeviceAckMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DeviceShownMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("FirstAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("HighPriority")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("MessageCreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long?>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PushServiceMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("QueueMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("SubscriptionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Transport")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Host", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("NotificationDeliveries");
+                });
+
             modelBuilder.Entity("SerbleChat.Backend.Database.Structs.Poll", b =>
                 {
                     b.Property<long>("Id")
@@ -802,11 +892,27 @@ namespace SerbleChat.Backend.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("Kind")
                         .HasColumnType("int");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("LastFailureAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastSuccessAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("P256dh")
                         .IsRequired()
@@ -817,6 +923,11 @@ namespace SerbleChat.Backend.Migrations
                         .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("varchar(1024)");
+
+                    b.Property<string>("UrlHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("UserAgent")
                         .IsRequired()
@@ -829,6 +940,11 @@ namespace SerbleChat.Backend.Migrations
                         .HasColumnType("varchar(64)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LastSeenAt");
+
+                    b.HasIndex("UrlHash")
+                        .IsUnique();
 
                     b.HasIndex("UserId");
 

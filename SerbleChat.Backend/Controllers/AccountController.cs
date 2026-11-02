@@ -5,6 +5,9 @@ using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Structs;
 using SerbleChat.Backend.Schemas;
 using SerbleChat.Backend.Services;
+using SerbleChat.Backend.Services.Net;
+using Microsoft.Extensions.Options;
+using SerbleChat.Backend.Config;
 
 namespace SerbleChat.Backend.Controllers;
 
@@ -12,7 +15,8 @@ namespace SerbleChat.Backend.Controllers;
 [ApiController]
 [Authorize]
 public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRepo channels, 
-    IPresenceService presence, IImagesService images) : ControllerBase {
+    IPresenceService presence, IImagesService images, IOptions<PushNotificationsSettings> pushSettings,
+    IOptions<NotificationSettings> notificationSettings) : ControllerBase {
     
     [HttpGet]
     public async Task<ActionResult<UserAccountResponse>> Get() {
@@ -323,6 +327,16 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return BadRequest("kind must be 'browser' or 'unifiedpush'");
         }
 
+        if (!ValidPushKeys(request.P256dh, request.Auth)) {
+            return BadRequest("p256dh must be an uncompressed P-256 public key and auth 16 bytes, both base64url.");
+        }
+
+        // We'll be sending requests to this URL, so it has to be a real push service on the public internet
+        string? urlError = await SafeHttp.CheckUrl(request.Url, pushSettings.Value.AllowPrivateEndpoints, 1024, HttpContext.RequestAborted);
+        if (urlError != null) {
+            return BadRequest(urlError);
+        }
+
         string userAgent = Request.Headers.UserAgent.FirstOrDefault("") ?? "";
         UserWebNotificationHook subscription = new() {
             UserId = userId,
@@ -333,8 +347,44 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             Kind = kind.Value,
             CreatedAt = DateTime.UtcNow
         };
-        await users.UpsertWebNotificationSubscription(subscription);
+        await users.UpsertWebNotificationSubscription(subscription, notificationSettings.Value.MaxEndpointsPerUser);
         return Ok();
+    }
+
+    /// <summary>
+    /// A browser replaced its push subscription (the service worker's <c>pushsubscriptionchange</c>). The service
+    /// worker has no login token, so the old endpoint URL is the proof: only the push service, that browser and we
+    /// know it.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("web-push-subscription/rotate")]
+    public async Task<ActionResult> RotateWebPushSubscription([FromBody] WebNotificationHookRotateRequest request) {
+        if (!ValidPushKeys(request.P256dh, request.Auth)) {
+            return BadRequest("p256dh must be an uncompressed P-256 public key and auth 16 bytes, both base64url.");
+        }
+        string? urlError = await SafeHttp.CheckUrl(request.Url, pushSettings.Value.AllowPrivateEndpoints, 1024, HttpContext.RequestAborted);
+        if (urlError != null) {
+            return BadRequest(urlError);
+        }
+        return await users.ReplaceWebNotificationSubscriptionUrl(request.OldUrl, request.Url, request.P256dh, request.Auth)
+            ? Ok()
+            : NotFound();
+    }
+
+    /// <summary>Keys we couldn't encrypt to would fail every delivery, so turn them away at the door.</summary>
+    private static bool ValidPushKeys(string p256dh, string auth) {
+        static byte[]? FromBase64Url(string s) {
+            try {
+                string b64 = s.Trim().TrimEnd('=').Replace('-', '+').Replace('_', '/');
+                return Convert.FromBase64String(b64.PadRight(b64.Length + (4 - b64.Length % 4) % 4, '='));
+            }
+            catch (FormatException) {
+                return null;
+            }
+        }
+        byte[]? key = FromBase64Url(p256dh);
+        byte[]? secret = FromBase64Url(auth);
+        return key is { Length: 65 } && key[0] == 0x04 && secret is { Length: 16 };
     }
 
     /// <summary>Unregisters a Web Push endpoint, e.g. when the user turns notifications off or logs out.</summary>

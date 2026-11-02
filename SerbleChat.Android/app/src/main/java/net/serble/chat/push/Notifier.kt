@@ -62,7 +62,9 @@ data class IncomingNotification(
 class Notifier(private val context: Context, private val http: OkHttpClient, private val avatarUrl: (String) -> String) {
     private val manager = NotificationManagerCompat.from(context)
     private val avatars = ConcurrentHashMap<String, IconCompat>()
-    private val avatarClient = http.newBuilder().callTimeout(4, TimeUnit.SECONDS).build()
+    private val avatarFetches = ConcurrentHashMap.newKeySet<String>()
+    private val avatarClient = http.newBuilder().callTimeout(10, TimeUnit.SECONDS).build()
+    private val avatarDir = java.io.File(context.cacheDir, "notification-avatars")
 
     fun createChannels() {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -87,7 +89,7 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /** One line of a conversation's notification; replies of ours have no message ID (-1). */
-    private class Line(val id: Long, val text: CharSequence, val time: Long, val person: Person)
+    private class Line(val id: Long, val text: CharSequence, val time: Long, var person: Person)
 
     private class Conversation(val channelId: Long, val me: Person) {
         var title: String? = null
@@ -124,15 +126,15 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
         return conv
     }
 
-    /** Must not be called on the main thread: it may fetch the author's avatar. */
+    /**
+     * Shows a message straight away. The author's avatar comes from memory or disk; if we don't have it yet the
+     * notification goes up with their initials and is quietly updated once the avatar has downloaded. Waiting for the
+     * download first cost up to a second on every push that started the app.
+     */
     fun showMessage(n: IncomingNotification, me: Person) {
         if (!canPost()) return
-        // The avatar (a network fetch the first time) before taking the lock
-        val author = Person.Builder()
-            .setKey(n.authorId)
-            .setName(n.authorName)
-            .setIcon(avatar(n.authorId, n.authorName))
-            .build()
+        val cached = cachedAvatar(n.authorId)
+        val author = person(n.authorId, n.authorName, cached ?: initialsIcon(n.authorName))
         synchronized(this) {
             val conv = conversations.getOrPut(n.channelId) { restore(n.channelId, me) ?: Conversation(n.channelId, me) }
             if (conv.lines.any { it.id == n.messageId }) return  // the same message from push and from the socket
@@ -146,7 +148,11 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
             conv.alert = true
             schedule(conv)
         }
+        if (cached == null && n.authorId != WEBHOOK_AUTHOR) fetchAvatar(n.authorId, n.authorName)
     }
+
+    private fun person(key: String, name: String, icon: IconCompat): Person =
+        Person.Builder().setKey(key).setName(name).setIcon(icon).build()
 
     /** Adds the user's own reply to a conversation's notification, which also ends the reply spinner. */
     @Synchronized
@@ -292,9 +298,11 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
         return PendingIntent.getBroadcast(context, (action.hashCode() * 31 + channelId).toInt(), intent, flags)
     }
 
-    private fun pushShortcut(n: IncomingNotification, author: Person): String {
-        val id = "channel_${n.channelId}"
-        val label = n.conversationTitle ?: n.authorName
+    private fun pushShortcut(n: IncomingNotification, author: Person): String =
+        pushShortcut(n.channelId, n.channelType, n.conversationTitle ?: n.authorName, author)
+
+    private fun pushShortcut(channelId: Long, channelType: Int, label: String, author: Person): String {
+        val id = "channel_$channelId"
         val shortcut = ShortcutInfoCompat.Builder(context, id)
             .setShortLabel(label.take(24))
             .setLongLabel(label)
@@ -302,10 +310,10 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
             .setCategories(setOf("net.serble.chat.CONVERSATION"))
             .setIntent(Intent(context, MainActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
-                data = Uri.parse("serblechat://channel/${n.channelId}")
+                data = Uri.parse("serblechat://channel/${channelId}")
             })
             .apply {
-                if (n.channelType == ChannelType.DM) {
+                if (channelType == ChannelType.DM) {
                     setPerson(author)
                     author.icon?.let { setIcon(it) }
                 } else {
@@ -317,16 +325,75 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
         return id
     }
 
-    private fun avatar(userId: String, name: String): IconCompat {
+    /** The avatar from memory or the disk cache, without touching the network. Null if we've never fetched it. */
+    private fun cachedAvatar(userId: String): IconCompat? {
+        if (userId == WEBHOOK_AUTHOR) return null
         avatars[userId]?.let { return it }
-        val bitmap = runCatching {
-            avatarClient.newCall(Request.Builder().url(avatarUrl(userId)).build()).execute().use { r ->
-                if (!r.isSuccessful) null else BitmapFactory.decodeStream(r.body.byteStream())
-            }
-        }.getOrNull()
-        val icon = IconCompat.createWithBitmap(circle(bitmap ?: initials(name)))
+        val file = avatarFile(userId)
+        val bitmap = runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() ?: return null
+        val icon = IconCompat.createWithBitmap(bitmap)
         avatars[userId] = icon
+        // Still good enough to show; refresh it in the background now and then in case it changed
+        if (System.currentTimeMillis() - file.lastModified() > AVATAR_MAX_AGE_MS) fetchAvatar(userId, null)
         return icon
+    }
+
+    private fun initialsIcon(name: String): IconCompat = IconCompat.createWithBitmap(circle(initials(name)))
+
+    private fun avatarFile(userId: String) = java.io.File(avatarDir, userId.filter { it.isLetterOrDigit() || it == '-' } + ".png")
+
+    /**
+     * Downloads an avatar (or settles on initials when they don't have one), keeps it on disk, and updates any
+     * notification showing that author.
+     */
+    private fun fetchAvatar(userId: String, name: String?) {
+        if (!avatarFetches.add(userId)) return
+        postScope.launch(Dispatchers.IO) {
+            try {
+                val downloaded = runCatching {
+                    avatarClient.newCall(Request.Builder().url(avatarUrl(userId)).build()).execute().use { r ->
+                        when {
+                            r.isSuccessful -> BitmapFactory.decodeStream(r.body.byteStream())?.let(::circle)
+                            r.code == 404 -> NO_AVATAR
+                            else -> null
+                        }
+                    }
+                }.getOrNull() ?: return@launch  // offline or a server error: try again next time
+                val authorName = name ?: return@launch  // a refresh that found no avatar keeps the cached one
+                val bitmap = if (downloaded === NO_AVATAR) circle(initials(authorName)) else downloaded
+                runCatching {
+                    avatarDir.mkdirs()
+                    avatarFile(userId).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                }
+                val icon = IconCompat.createWithBitmap(bitmap)
+                avatars[userId] = icon
+                if (downloaded !== NO_AVATAR) refreshAuthor(userId, icon)
+            } finally {
+                avatarFetches.remove(userId)
+            }
+        }
+    }
+
+    /** Swaps in an author's avatar on the notifications showing them, without alerting again. */
+    @Synchronized
+    private fun refreshAuthor(userId: String, icon: IconCompat) {
+        for (conv in conversations.values) {
+            var changed = false
+            for (line in conv.lines) {
+                val p = line.person
+                if (p.key == userId) {
+                    line.person = person(userId, p.name?.toString() ?: "", icon)
+                    changed = true
+                }
+            }
+            if (!changed) continue
+            if (conv.type == ChannelType.DM) {
+                conv.lines.lastOrNull { it.person.key == userId }?.let { line ->
+                    conv.shortcutId = pushShortcut(conv.channelId, conv.type, conv.title ?: line.person.name?.toString() ?: "", line.person)
+                }
+            }
+            schedule(conv)
+        }
     }
 
     private fun initials(name: String): Bitmap {
@@ -374,6 +441,10 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
         const val CALL_NOTIFICATION_ID = 1
         private const val MAX_MESSAGES = 12
         private const val MIN_GAP_MS = 250L
+        private const val AVATAR_MAX_AGE_MS = 24 * 60 * 60 * 1000L
+        private const val WEBHOOK_AUTHOR = "webhook"
+        /** Marks "they have no avatar" apart from "couldn't fetch it". */
+        private val NO_AVATAR: Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
 
         fun notificationId(channelId: Long): Int = (channelId xor (channelId ushr 32)).toInt().let { if (it == CALL_NOTIFICATION_ID) -1 else it }
     }

@@ -31,6 +31,7 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
     public DbSet<PollOption> PollOptions { get; set; } = null!;
     public DbSet<PollVote> PollVotes { get; set; } = null!;
     public DbSet<Webhook> Webhooks { get; set; } = null!;
+    public DbSet<NotificationDelivery> NotificationDeliveries { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         modelBuilder.Entity<Message>()
@@ -42,6 +43,14 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
         modelBuilder.Entity<GroupChatMember>()
             .HasIndex(e => new { e.GroupChatId, e.UserId })
             .IsUnique();
+
+        // one row per endpoint, even when a client registers it twice at once
+        modelBuilder.Entity<UserWebNotificationHook>()
+            .HasIndex(e => e.UrlHash)
+            .IsUnique();
+
+        modelBuilder.Entity<UserWebNotificationHook>()
+            .HasIndex(e => e.LastSeenAt);
         
         modelBuilder.Entity<UserRoleAssignment>()
             .HasIndex(e => new { e.UserId, e.RoleId })

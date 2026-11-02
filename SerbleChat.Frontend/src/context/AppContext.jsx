@@ -715,6 +715,8 @@ export function AppProvider({ children }) {
     });
 
     conn.on('ReceiveNotification', async (content) => {
+      // Acknowledge straight away: without it the server decides this connection is dead and sends a push instead
+      if (content?.ackId) conn.send('AckNotification', content.ackId).catch(() => {});
       // The server doesn't send these in Do Not Disturb; this covers the moment after switching
       if (isDndNow()) return;
       playSound('notification').catch(e => console.warn('[AppContext] Failed to play notification sound:', e));

@@ -252,6 +252,8 @@ data class PushPayload(
     val message: PushMessageBody? = null,
     @kotlinx.serialization.SerialName("channel_id") val channelId: Long? = null,
     @kotlinx.serialization.SerialName("message_id") val messageId: Long? = null,
+    /** The delivery's ID, sent back once the notification is showing so the server can measure delivery time. */
+    val ack: String? = null,
 )
 
 @Serializable

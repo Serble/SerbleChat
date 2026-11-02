@@ -6,6 +6,7 @@ export const OAUTH_URL = 'https://serble.net/oauth/authorize';
 
 // Backend base URL – set VITE_API_BASE_URL in your .env file
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://100.115.82.61:5210';
+export const API_BASE_URL = BASE;
 
 function authHeaders() {
   const jwt = localStorage.getItem('jwt');

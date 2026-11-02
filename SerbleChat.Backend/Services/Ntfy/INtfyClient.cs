@@ -22,7 +22,8 @@ public enum NtfyPublishOutcome {
     Rejected
 }
 
-public record NtfyPublishResult(NtfyPublishOutcome Outcome, string? Error = null) {
+/// <param name="RetryAfter">How long the server asked us to wait before trying again, if it said.</param>
+public record NtfyPublishResult(NtfyPublishOutcome Outcome, string? Error = null, TimeSpan? RetryAfter = null) {
     public bool Success => Outcome == NtfyPublishOutcome.Success;
 }
 

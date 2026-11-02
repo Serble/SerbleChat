@@ -137,6 +137,9 @@ class Api(
         put("kind", "unifiedpush")
     })
 
+    /** Tells the server a pushed notification went up at [shownAt] (this phone's clock). Only used for delivery statistics. */
+    suspend fun ackDelivery(id: String, shownAt: Long) = raw("POST", "/notifications/ack/${q(id)}?shownAt=$shownAt", auth = false)
+
     suspend fun unregisterPush(url: String) {
         try {
             send("DELETE", "/account/web-push-subscription", buildJsonObject { put("url", url) })

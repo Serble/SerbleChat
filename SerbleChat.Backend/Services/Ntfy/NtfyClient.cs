@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using SerbleChat.Backend.Config;
 using SerbleChat.Backend.Database.Structs;
+using SerbleChat.Backend.Services.Net;
 
 namespace SerbleChat.Backend.Services.Ntfy;
 
@@ -15,51 +16,14 @@ public class NtfyClient(HttpClient http, IOptions<NtfySettings> settings, ILogge
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    /// <summary>
-    /// Handler for the ntfy HttpClient. Every connection goes through <see cref="ConnectToAllowedAddress"/>, so the
-    /// address check happens on the address actually connected to (no DNS-rebinding window). Redirects and proxies
-    /// are off, because either would bypass that check.
-    /// </summary>
-    public static SocketsHttpHandler CreateHandler(NtfySettings settings) {
-        return new SocketsHttpHandler {
-            AllowAutoRedirect = false,
-            UseProxy = false,
-            ConnectTimeout = TimeSpan.FromSeconds(settings.TimeoutSeconds),
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            ConnectCallback = (context, token) => ConnectToAllowedAddress(context.DnsEndPoint, settings.AllowPrivateAddresses, token)
-        };
-    }
+    /// <summary>Handler for the ntfy HttpClient: see <see cref="SafeHttp.CreateHandler"/>.</summary>
+    public static SocketsHttpHandler CreateHandler(NtfySettings settings) =>
+        SafeHttp.CreateHandler(settings.AllowPrivateAddresses, TimeSpan.FromSeconds(settings.TimeoutSeconds));
 
-    private static async ValueTask<Stream> ConnectToAllowedAddress(DnsEndPoint endPoint, bool allowPrivate, CancellationToken token) {
-        IPAddress[] addresses = await ResolveAllowed(endPoint.Host, allowPrivate, token);
-        if (addresses.Length == 0) {
-            throw new BlockedAddressException(BlockedAddressMessage);
-        }
+    private const string BlockedAddressMessage = SafeHttp.BlockedAddressMessage;
 
-        Exception? last = null;
-        foreach (IPAddress address in addresses) {
-            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-            try {
-                await socket.ConnectAsync(new IPEndPoint(address, endPoint.Port), token);
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-            catch (Exception e) {
-                socket.Dispose();
-                last = e;
-            }
-        }
-        throw last!;
-    }
-
-    private const string BlockedAddressMessage = "The server's address isn't on the public internet, so it can't be used.";
-
-    private static async Task<IPAddress[]> ResolveAllowed(string host, bool allowPrivate, CancellationToken token) {
-        host = host.Trim('[', ']');
-        IPAddress[] addresses = IPAddress.TryParse(host, out IPAddress? literal)
-            ? [literal]
-            : await Dns.GetHostAddressesAsync(host, token);
-        return allowPrivate ? addresses : addresses.Where(PublicAddressGuard.IsPublic).ToArray();
-    }
+    private static Task<IPAddress[]> ResolveAllowed(string host, bool allowPrivate, CancellationToken token) =>
+        SafeHttp.ResolveAllowed(host, allowPrivate, token);
 
     public async Task<string?> CheckServerAddress(Uri serverUrl, CancellationToken token = default) {
         try {
@@ -106,7 +70,7 @@ public class NtfyClient(HttpClient http, IOptions<NtfySettings> settings, ILogge
                 >= HttpStatusCode.MultipleChoices and < HttpStatusCode.BadRequest => NtfyPublishOutcome.Rejected,
                 _ => NtfyPublishOutcome.Failed
             };
-            return new NtfyPublishResult(outcome, error);
+            return new NtfyPublishResult(outcome, error, SafeHttp.RetryAfter(response.Headers));
         }
         catch (HttpRequestException e) when (e.InnerException is BlockedAddressException) {
             return new NtfyPublishResult(NtfyPublishOutcome.Rejected, BlockedAddressMessage);
@@ -139,4 +103,3 @@ public class NtfyClient(HttpClient http, IOptions<NtfySettings> settings, ILogge
     }
 }
 
-internal class BlockedAddressException(string message) : IOException(message);

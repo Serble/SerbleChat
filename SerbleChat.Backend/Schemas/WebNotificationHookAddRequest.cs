@@ -20,3 +20,17 @@ public class WebNotificationHookRemoveRequest {
     [Required, MaxLength(1024)]
     public string Url { get; set; } = null!;
 }
+
+public class WebNotificationHookRotateRequest {
+    [Required, MaxLength(1024)]
+    public string OldUrl { get; set; } = null!;
+
+    [Required, MaxLength(1024)]
+    public string Url { get; set; } = null!;
+
+    [Required, MaxLength(128)]
+    public string P256dh { get; set; } = null!;
+
+    [Required, MaxLength(64)]
+    public string Auth { get; set; } = null!;
+}

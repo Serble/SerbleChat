@@ -138,25 +138,106 @@ public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : 
             .ToDictionaryAsync(p => p.UserId);
     }
 
-    public async Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription) {
-        UserWebNotificationHook[] existing = await context.UserWebNotificationHooks
-            .Where(h => h.Url == subscription.Url)
+    public async Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription, int maxPerUser) {
+        await UpsertWebNotificationSubscription(subscription);
+        // Keep the newest few: an endpoint a client stopped registering is the likeliest to be dead
+        long[] excess = await context.UserWebNotificationHooks
+            .Where(h => h.UserId == subscription.UserId)
+            .OrderByDescending(h => h.LastSeenAt).ThenByDescending(h => h.Id)
+            .Skip(maxPerUser)
+            .Select(h => h.Id)
             .ToArrayAsync();
-        if (existing.Length == 0) {
-            context.UserWebNotificationHooks.Add(subscription);
+        if (excess.Length > 0) {
+            await DeleteWebNotificationSubscriptions(excess);
+        }
+    }
+
+    public async Task UpsertWebNotificationSubscription(UserWebNotificationHook subscription) {
+        subscription.UrlHash = UserWebNotificationHook.HashUrl(subscription.Url);
+        subscription.LastSeenAt = DateTime.UtcNow;
+        // Two registrations at once both miss the lookup; the unique index makes the loser update instead.
+        for (int attempt = 0; ; attempt++) {
+            UserWebNotificationHook? hook = await context.UserWebNotificationHooks
+                .FirstOrDefaultAsync(h => h.UrlHash == subscription.UrlHash);
+            if (hook == null) {
+                context.UserWebNotificationHooks.Add(subscription);
+                try {
+                    await context.SaveChangesAsync();
+                    return;
+                }
+                catch (DbUpdateException) when (attempt == 0) {
+                    context.Entry(subscription).State = EntityState.Detached;
+                    continue;
+                }
+            }
+
+            bool keysChanged = hook.P256dh != subscription.P256dh || hook.Auth != subscription.Auth;
+            hook.UserId = subscription.UserId;
+            hook.P256dh = subscription.P256dh;
+            hook.Auth = subscription.Auth;
+            hook.UserAgent = subscription.UserAgent;
+            hook.Kind = subscription.Kind;
+            hook.LastSeenAt = subscription.LastSeenAt;
+            if (keysChanged) {
+                hook.ConsecutiveFailures = 0;  // new keys are a fresh start
+            }
             await context.SaveChangesAsync();
             return;
         }
+    }
 
-        UserWebNotificationHook hook = existing[0];
-        hook.UserId = subscription.UserId;
-        hook.P256dh = subscription.P256dh;
-        hook.Auth = subscription.Auth;
-        hook.UserAgent = subscription.UserAgent;
-        hook.Kind = subscription.Kind;
-        // older clients re-registered on every launch, so there may be duplicates to clean up
-        context.UserWebNotificationHooks.RemoveRange(existing.Skip(1));
+    public Task<UserWebNotificationHook?> GetWebNotificationSubscriptionByUrl(string url) {
+        string hash = UserWebNotificationHook.HashUrl(url);
+        return context.UserWebNotificationHooks.FirstOrDefaultAsync(h => h.UrlHash == hash);
+    }
+
+    public async Task<bool> ReplaceWebNotificationSubscriptionUrl(string oldUrl, string newUrl, string p256dh, string auth) {
+        UserWebNotificationHook? hook = await GetWebNotificationSubscriptionByUrl(oldUrl);
+        if (hook == null) return false;
+        string newHash = UserWebNotificationHook.HashUrl(newUrl);
+        // the new endpoint may already be registered (the page got there first)
+        await context.UserWebNotificationHooks
+            .Where(h => h.UrlHash == newHash && h.Id != hook.Id)
+            .ExecuteDeleteAsync();
+        hook.Url = newUrl;
+        hook.UrlHash = newHash;
+        hook.P256dh = p256dh;
+        hook.Auth = auth;
+        hook.LastSeenAt = DateTime.UtcNow;
+        hook.ConsecutiveFailures = 0;
         await context.SaveChangesAsync();
+        return true;
+    }
+
+    public Task RecordWebPushSuccess(long hookId) {
+        return context.UserWebNotificationHooks
+            .Where(h => h.Id == hookId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(h => h.LastSuccessAt, DateTime.UtcNow)
+                .SetProperty(h => h.ConsecutiveFailures, 0));
+    }
+
+    public async Task<bool> RecordWebPushFailure(long hookId, string error, int deleteAfterFailures, TimeSpan deleteIfNoSuccessFor) {
+        DateTime now = DateTime.UtcNow;
+        if (error.Length > 255) error = error[..255];
+        await context.UserWebNotificationHooks
+            .Where(h => h.Id == hookId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(h => h.LastFailureAt, now)
+                .SetProperty(h => h.LastError, error)
+                .SetProperty(h => h.ConsecutiveFailures, h => h.ConsecutiveFailures + 1));
+        // Only give up on an endpoint that keeps failing and hasn't worked in a while: one bad day isn't enough.
+        DateTime cutoff = now - deleteIfNoSuccessFor;
+        return await context.UserWebNotificationHooks
+            .Where(h => h.Id == hookId && h.ConsecutiveFailures >= deleteAfterFailures
+                        && (h.LastSuccessAt == null ? h.CreatedAt < cutoff : h.LastSuccessAt < cutoff))
+            .ExecuteDeleteAsync() > 0;
+    }
+
+    public Task<int> DeleteStaleWebNotificationSubscriptions(DateTime notSeenSince) {
+        return context.UserWebNotificationHooks
+            .Where(h => h.LastSeenAt < notSeenSince)
+            .ExecuteDeleteAsync();
     }
 
     public async Task<bool> DeleteWebNotificationSubscription(string userId, string url) {
@@ -237,16 +318,16 @@ public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : 
         foreach (NtfyDeliveryFailure failure in failed) {
             string error = failure.Error.Length > 255 ? failure.Error[..255] : failure.Error;
             // Rate limiting is usually the shared server IP being throttled (ntfy.sh without a token), not this
-            // subscription's fault, so it doesn't count. Rejections won't fix themselves, so they disable straight away.
+            // subscription's fault, so it doesn't count. Rejections count like any other failure: a 401 or 404 can be
+            // a server mid-deploy or a proxy hiccup, and switching notifications off over one would be worse.
             int increment = failure.Outcome == NtfyPublishOutcome.RateLimited ? 0 : 1;
-            bool disableNow = failure.Outcome == NtfyPublishOutcome.Rejected;
             await context.UserNtfySubscriptions
                 .Where(s => s.Id == failure.SubscriptionId)
                 .ExecuteUpdateAsync(u => u
                     .SetProperty(s => s.LastFailureAt, now)
                     .SetProperty(s => s.LastError, error)
                     .SetProperty(s => s.ConsecutiveFailures, s => s.ConsecutiveFailures + increment)
-                    .SetProperty(s => s.Enabled, s => s.Enabled && !disableNow && s.ConsecutiveFailures + increment < disableAfterFailures));
+                    .SetProperty(s => s.Enabled, s => s.Enabled && s.ConsecutiveFailures + increment < disableAfterFailures));
         }
     }
 

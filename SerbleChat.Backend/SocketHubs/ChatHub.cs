@@ -7,7 +7,8 @@ using SerbleChat.Backend.Services;
 namespace SerbleChat.Backend.SocketHubs;
 
 [Authorize]
-public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IPresenceService presence, IVoiceManager voice) : Hub {
+public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IPresenceService presence, IVoiceManager voice,
+    INotificationService notifications) : Hub {
     
     public async Task SayHello(string name) {
         await Clients.All.SendAsync("ReceiveMessage", $"Hello, {name}!");
@@ -19,6 +20,12 @@ public class ChatHub(IChannelRepo channels, IGuildRepo guilds, IPresenceService 
         await presence.Heartbeat(userId, Context.ConnectionId);
     }
     
+    /// <summary>
+    /// The client got a ReceiveNotification. Without this within a few seconds the server assumes the connection is
+    /// dead and pushes the notification instead.
+    /// </summary>
+    public Task AckNotification(string ackId) => notifications.AckSocketNotification(ackId);
+
     public async Task NotifyTyping(long channelId) {
         string userId = Context.UserIdentifier ?? throw new Exception("User identifier is null");
 

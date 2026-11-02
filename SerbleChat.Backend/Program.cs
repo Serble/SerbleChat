@@ -10,6 +10,8 @@ using SerbleChat.Backend.Database.Repos;
 using SerbleChat.Backend.Database.Repos.Impl;
 using SerbleChat.Backend.Services;
 using SerbleChat.Backend.Services.Impl;
+using SerbleChat.Backend.Services.Net;
+using SerbleChat.Backend.Services.Notifications;
 using SerbleChat.Backend.Services.Ntfy;
 using SerbleChat.Backend.SocketHubs;
 using StackExchange.Redis;
@@ -23,6 +25,7 @@ builder.Services.AddOptions<LiveKitSettings>().Bind(builder.Configuration.GetSec
 builder.Services.AddOptions<PushNotificationsSettings>().Bind(builder.Configuration.GetSection("PushNotifications"));
 builder.Services.AddOptions<S3Settings>().Bind(builder.Configuration.GetSection("S3"));
 builder.Services.AddOptions<NtfySettings>().Bind(builder.Configuration.GetSection("Ntfy"));
+builder.Services.AddOptions<NotificationSettings>().Bind(builder.Configuration.GetSection("Notifications"));
 
 JwtSettings jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>() ?? throw new Exception("JWT settings not found");
 ApiSettings apiSettings = builder.Configuration.GetSection("Api").Get<ApiSettings>() ?? throw new Exception("API settings not found");
@@ -110,9 +113,15 @@ builder.Services.AddScoped<IPollRepo, PollRepo>();
 
 // generic services
 builder.Services.AddScoped<IJwtManager, JwtManager>();
-builder.Services.AddSingleton<INotificationService, NotificationService>();
 builder.Services.AddSingleton<IPresenceService, PresenceService>();
-builder.Services.AddHostedService<NotificationBackgroundService>();
+builder.Services.AddSingleton<NotificationQueue>();
+builder.Services.AddSingleton<NotificationAudienceLoader>();
+builder.Services.AddSingleton<WebPushSender>();
+builder.Services.AddSingleton<DeliveryRecorder>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DeliveryRecorder>());
+builder.Services.AddSingleton<NotificationService>();
+builder.Services.AddSingleton<INotificationService>(sp => sp.GetRequiredService<NotificationService>());
+builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 builder.Services.AddScoped<IVoiceManager, VoiceManager>();
 builder.Services.AddScoped<IImagesService, ImagesService>();
@@ -125,16 +134,22 @@ builder.Services.AddHttpClient<INtfyClient, NtfyClient>(client => {
         client.MaxResponseContentBufferSize = 64 * 1024;
         client.DefaultRequestHeaders.UserAgent.ParseAdd("SerbleChat");
     })
-    .ConfigurePrimaryHttpMessageHandler(() => NtfyClient.CreateHandler(ntfySettings));
+    .ConfigurePrimaryHttpMessageHandler(() => NtfyClient.CreateHandler(ntfySettings))
+    .AddHttpMessageHandler(() => new PreferHttp2Handler());
 
 // push notifications
 builder.Services.AddMemoryCache();
 builder.Services.AddMemoryVapidTokenCache();
-builder.Services.AddPushServiceClient(options => {
-    options.PublicKey = pushSettings.VapidPublicKey;
-    options.PrivateKey = pushSettings.VapidPrivateKey;
-    options.Subject = pushSettings.Subject;
-});
+// push services: endpoints come from clients, so the same public-addresses-only handler as ntfy
+builder.Services.AddHttpClient(WebPushSender.HttpClientName, client => {
+        client.Timeout = TimeSpan.FromSeconds(pushSettings.TimeoutSeconds);
+        client.MaxResponseContentBufferSize = 64 * 1024;
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => SafeHttp.CreateHandler(pushSettings.AllowPrivateEndpoints, TimeSpan.FromSeconds(pushSettings.TimeoutSeconds)))
+    .AddHttpMessageHandler(() => new PreferHttp2Handler());
+
+// in-flight deliveries finish (they time out quickly) rather than run again after the restart
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(Math.Max(15, pushSettings.TimeoutSeconds + 5)));
 
 WebApplication app = builder.Build();
 

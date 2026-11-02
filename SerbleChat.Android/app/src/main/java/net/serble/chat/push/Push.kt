@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.serble.chat.data.Api
 import net.serble.chat.data.SettingsStore
 import org.unifiedpush.android.connector.FailedReason
@@ -43,6 +45,9 @@ class Push(
 
     private val ownPackage = context.packageName
 
+    // Signing in and starting up both ask to register; one at a time, so the server doesn't get it twice at once
+    private val registering = Mutex()
+
     fun distributors(): List<Distributor> = UnifiedPush.getDistributors(context).map { pkg ->
         Distributor(pkg, labelOf(pkg), builtIn = pkg == ownPackage)
     }.sortedBy { it.builtIn }
@@ -64,34 +69,40 @@ class Push(
 
     /** Registers for push with the saved distributor, picking one first if needed. */
     fun ensureRegistered() {
-        scope.launch {
-            val local = settings.current()
-            if (!local.pushEnabled || !signedIn()) {
-                _status.update { it.copy(enabled = local.pushEnabled) }
-                return@launch
+        scope.launch { registering.withLock { register() } }
+    }
+
+    private suspend fun register() {
+        val local = settings.current()
+        if (!local.pushEnabled || !signedIn()) {
+            _status.update { it.copy(enabled = local.pushEnabled) }
+            return
+        }
+        var saved = UnifiedPush.getAckDistributor(context) ?: UnifiedPush.getSavedDistributor(context)
+        val available = distributors()
+        if (saved != null && available.none { it.packageName == saved }) saved = null
+        if (saved == null) {
+            // Prefer a real distributor the user installed; else Google's, if the phone has it
+            val pick = available.firstOrNull { !it.builtIn }
+                ?: available.firstOrNull { it.builtIn && hasPlayServices() }
+            if (pick == null) {
+                _status.value = PushStatus(enabled = true, problem = "No way to receive notifications: install a UnifiedPush app such as ntfy.")
+                return
             }
-            var saved = UnifiedPush.getAckDistributor(context) ?: UnifiedPush.getSavedDistributor(context)
-            val available = distributors()
-            if (saved != null && available.none { it.packageName == saved }) saved = null
-            if (saved == null) {
-                // Prefer a real distributor the user installed; else Google's, if the phone has it
-                val pick = available.firstOrNull { !it.builtIn }
-                    ?: available.firstOrNull { it.builtIn && hasPlayServices() }
-                if (pick == null) {
-                    _status.value = PushStatus(enabled = true, problem = "No way to receive notifications: install a UnifiedPush app such as ntfy.")
-                    return@launch
-                }
-                UnifiedPush.saveDistributor(context, pick.packageName)
-                saved = pick.packageName
-            }
-            _status.update { it.copy(enabled = true, distributor = available.firstOrNull { d -> d.packageName == saved }, problem = null) }
-            try {
-                val vapid = api.vapidPublicKey()
-                UnifiedPush.register(context, INSTANCE, null, vapid)
-            } catch (e: Exception) {
-                Log.w(TAG, "Push registration failed", e)
-                _status.update { it.copy(problem = "Couldn't set up notifications: ${e.message}") }
-            }
+            UnifiedPush.saveDistributor(context, pick.packageName)
+            saved = pick.packageName
+        }
+        _status.update { it.copy(enabled = true, distributor = available.firstOrNull { d -> d.packageName == saved }, problem = null) }
+        try {
+            // A push that wakes the app shouldn't cost a request: the key only changes if the server's does, so
+            // use the cached one and refetch it with the daily re-registration
+            val fresh = System.currentTimeMillis() - settings.pushRegistration().registeredAt < REFRESH_MS
+            val vapid = settings.vapidKey()?.takeIf { fresh }
+                ?: api.vapidPublicKey().also { settings.setVapidKey(it) }
+            UnifiedPush.register(context, INSTANCE, null, vapid)
+        } catch (e: Exception) {
+            Log.w(TAG, "Push registration failed", e)
+            _status.update { it.copy(problem = "Couldn't set up notifications: ${e.message}") }
         }
     }
 
@@ -139,10 +150,18 @@ class Push(
                 return@launch
             }
             try {
-                val previous = settings.pushEndpoint()
+                val saved = settings.pushRegistration()
+                val keyId = keys.pubKey + ":" + keys.auth
+                val now = System.currentTimeMillis()
+                // The distributor hands the endpoint back on every register(), which happens on every start. Only
+                // tell the server when something changed, or once a day so it knows the endpoint is still in use.
+                if (saved.endpoint == endpoint.url && saved.keys == keyId && now - saved.registeredAt < REFRESH_MS) {
+                    _status.update { it.copy(registered = true, problem = null) }
+                    return@launch
+                }
                 api.registerPush(endpoint.url, keys.pubKey, keys.auth)
-                if (previous != null && previous != endpoint.url) runCatching { api.unregisterPush(previous) }
-                settings.setPushEndpoint(endpoint.url)
+                if (saved.endpoint != null && saved.endpoint != endpoint.url) runCatching { api.unregisterPush(saved.endpoint) }
+                settings.setPushRegistration(endpoint.url, keyId, now)
                 _status.update { it.copy(registered = true, problem = null) }
                 Log.i(TAG, "Push endpoint registered")
             } catch (e: Exception) {
@@ -173,6 +192,7 @@ class Push(
 
     companion object {
         const val INSTANCE = "default"
+        private const val REFRESH_MS = 24 * 60 * 60 * 1000L
         private const val TAG = "Push"
     }
 }

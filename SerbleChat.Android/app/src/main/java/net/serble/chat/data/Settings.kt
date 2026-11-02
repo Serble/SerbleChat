@@ -37,6 +37,9 @@ class SettingsStore(private val context: Context) {
         val userId = stringPreferencesKey("user_id")
         val oauthState = stringPreferencesKey("oauth_state")
         val pushEndpoint = stringPreferencesKey("push_endpoint")
+        val pushKeys = stringPreferencesKey("push_keys")
+        val pushRegisteredAt = stringPreferencesKey("push_registered_at")
+        val vapidKey = stringPreferencesKey("vapid_key")
         val lastChannel = stringPreferencesKey("last_channel")
         val noise = stringPreferencesKey("noise")
         val echo = stringPreferencesKey("echo")
@@ -95,6 +98,9 @@ class SettingsStore(private val context: Context) {
             it.remove(K.userId)
             it.remove(K.oauthState)
             it.remove(K.pushEndpoint)
+            it.remove(K.pushKeys)
+            it.remove(K.pushRegisteredAt)
+            it.remove(K.vapidKey)
             it.remove(K.lastChannel)
             it.remove(K.filesToken)
             it.remove(K.filesConsentState)
@@ -126,7 +132,37 @@ class SettingsStore(private val context: Context) {
     /** The push endpoint last registered with the backend, so it can be unregistered when it changes. */
     suspend fun pushEndpoint(): String? = context.sessionStore.data.first()[K.pushEndpoint]
     suspend fun setPushEndpoint(url: String?) {
-        context.sessionStore.edit { if (url == null) it.remove(K.pushEndpoint) else it[K.pushEndpoint] = url }
+        context.sessionStore.edit {
+            if (url == null) {
+                it.remove(K.pushEndpoint)
+                it.remove(K.pushKeys)
+                it.remove(K.pushRegisteredAt)
+            } else {
+                it[K.pushEndpoint] = url
+            }
+        }
+    }
+
+    /** What was last registered with the backend and when, so a push waking the app doesn't register again. */
+    data class PushRegistration(val endpoint: String?, val keys: String?, val registeredAt: Long)
+
+    suspend fun pushRegistration(): PushRegistration {
+        val p = context.sessionStore.data.first()
+        return PushRegistration(p[K.pushEndpoint], p[K.pushKeys], p[K.pushRegisteredAt]?.toLongOrNull() ?: 0L)
+    }
+
+    suspend fun setPushRegistration(endpoint: String, keys: String, registeredAt: Long) {
+        context.sessionStore.edit {
+            it[K.pushEndpoint] = endpoint
+            it[K.pushKeys] = keys
+            it[K.pushRegisteredAt] = registeredAt.toString()
+        }
+    }
+
+    /** The server's VAPID public key, cached so registering doesn't need a request every time. */
+    suspend fun vapidKey(): String? = context.sessionStore.data.first()[K.vapidKey]
+    suspend fun setVapidKey(key: String) {
+        context.sessionStore.edit { it[K.vapidKey] = key }
     }
 }
 

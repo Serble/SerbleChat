@@ -14,10 +14,33 @@
  * so callers can surface the exact failure reason in the UI.
  */
 
-import { getVapidPublicKey, addWebPushSubscription, removeWebPushSubscription } from './api.js';
+import { getVapidPublicKey, addWebPushSubscription, removeWebPushSubscription, API_BASE_URL } from './api.js';
 
 const LS_KEY = 'push_enabled';
 const SW_PATH = '/sw.js';
+
+// What the service worker needs to know without the page: where the API is, the current endpoint (to replace it if
+// the browser rotates the subscription) and the VAPID key (to make the new one). Keep in sync with sw.js.
+const META_CACHE = 'serble-push-meta';
+const META_URL = '/__push-meta';
+
+async function savePushMeta(meta) {
+  try {
+    const cache = await caches.open(META_CACHE);
+    await cache.put(META_URL, new Response(JSON.stringify({ apiBase: API_BASE_URL, ...meta }), {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (err) {
+    console.warn('[push] Could not save push metadata for the service worker:', err);
+  }
+}
+
+async function clearPushMeta() {
+  try {
+    const cache = await caches.open(META_CACHE);
+    await cache.delete(META_URL);
+  } catch { /* nothing to clear */ }
+}
 
 /** Returns true if the current browser supports push notifications. */
 export function isPushSupported() {
@@ -246,6 +269,7 @@ export async function enablePush() {
 
     // 7. Persist opt-in flag
     localStorage.setItem(LS_KEY, 'true');
+    await savePushMeta({ endpoint: url, vapidKey: vapidPublicKey });
     console.debug('[push] Push notifications enabled successfully.');
     return { outcome: 'granted', message: 'Push notifications enabled.' };
 
@@ -264,6 +288,7 @@ export async function enablePush() {
  */
 export async function disablePush() {
   localStorage.removeItem(LS_KEY);
+  await clearPushMeta();
   try {
     const sw = await navigator.serviceWorker.getRegistration(SW_PATH);
     if (!sw) return;
@@ -284,8 +309,8 @@ export async function disablePush() {
 /**
  * Re-subscribe silently (called on app start when the user has previously
  * opted in). Refreshes the subscription in case it expired and re-registers
- * it with the backend. If anything goes wrong the opt-in flag is cleared so
- * the user is not silently stuck.
+ * it with the backend. Failures leave the opt-in alone so the next load
+ * retries; only revoked permission clears it.
  */
 export async function resubscribeIfEnabled() {
   if (!isPushSupported()) return;
@@ -357,9 +382,12 @@ export async function resubscribeIfEnabled() {
       throw new Error(`Failed to register subscription with backend: ${err.message ?? err}`);
     }
 
+    await savePushMeta({ endpoint: sub.endpoint, vapidKey: vapidPublicKey });
     console.debug('[push] resubscribeIfEnabled: done.');
   } catch (err) {
-    console.warn('[push] resubscribeIfEnabled failed — clearing push flag.\n' + (err.message ?? err), err);
-    localStorage.removeItem(LS_KEY);
+    // Keep the opt-in: this is usually the network or the server being briefly unavailable, and clearing it would
+    // silently switch notifications off for good. The next page load tries again. (Revoked permission is handled
+    // above, and is the one case that should clear it.)
+    console.warn('[push] resubscribeIfEnabled failed, will retry on next load.\n' + (err.message ?? err), err);
   }
 }

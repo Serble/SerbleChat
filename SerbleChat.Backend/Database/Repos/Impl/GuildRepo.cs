@@ -174,6 +174,17 @@ public class GuildRepo(ChatDatabaseContext context, IPresenceService presence, I
             .Where(o => o.ChannelId == channelId)
             .ToArrayAsync();
 
+        return ComputeVisibleMembers(guildInfo.OwnerId, guildInfo.DefaultPermissions, allMembers,
+            roleAssignments.Select(x => (x.UserId, x.Role)), channelOverrides);
+    }
+
+    /// <summary>
+    /// Which guild members can see a channel, with their roles (highest priority first). Pure, so callers can load
+    /// the inputs however suits them (the notification pipeline loads them in parallel).
+    /// </summary>
+    public static List<(ChatUser User, List<Role> Roles)> ComputeVisibleMembers(string ownerId, GuildPermissions defaultPermissions,
+        IEnumerable<ChatUser> allMembers, IEnumerable<(string UserId, Role Role)> roleAssignments,
+        ChannelPermissionOverride[] channelOverrides) {
         // Build per-user role lookup (priority descending — same order as GetUserPermissions)
         Dictionary<string, List<Role>> rolesByUser = roleAssignments
             .GroupBy(x => x.UserId)
@@ -181,11 +192,11 @@ public class GuildRepo(ChatDatabaseContext context, IPresenceService presence, I
                 g => g.Key,
                 g => g.Select(x => x.Role).OrderByDescending(r => r.Priority).ToList());
 
-        List<(ChatUser, List<Role>)> visible = new(allMembers.Length);
+        List<(ChatUser, List<Role>)> visible = new();
 
         foreach (ChatUser user in allMembers) {
             // Guild owner bypasses all permission checks
-            if (user.Id == guildInfo.OwnerId) {
+            if (user.Id == ownerId) {
                 rolesByUser.TryGetValue(user.Id, out List<Role>? ownerRoles);
                 visible.Add((user, ownerRoles ?? []));
                 continue;
@@ -209,7 +220,7 @@ public class GuildRepo(ChatDatabaseContext context, IPresenceService presence, I
                 }
             }
 
-            GuildPermissions effective = guildInfo.DefaultPermissions;
+            GuildPermissions effective = defaultPermissions;
             for (int i = permissions.Count - 1; i >= 0; i--) {
                 effective = effective.ApplyOverrides(permissions[i]);
             }

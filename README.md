@@ -48,6 +48,26 @@ You need to generate a public private key pair to use for signing notifications,
 if you have `npx` you can run `npx web-push generate-vapid-keys` and it'll give you
 ready to use keys.
 
+Notifications go through a queue in Redis, so they survive restarts, and failed
+deliveries are retried with backoff. The `Notifications` section of `appsettings.json`
+sets the worker counts, retries, and how long delivery statistics are kept. Every
+delivery gets a row in `NotificationDeliveries` (timings, outcome, push service), and
+[`Database/notification-stats.sql`](SerbleChat.Backend/Database/notification-stats.sql)
+has ready-made queries for failure rates, latency percentiles and the busiest push services.
+
+Push endpoints must be https on a public address. To test against a ntfy server on
+your LAN, set `PushNotifications:AllowPrivateEndpoints` (and `Ntfy:AllowPrivateAddresses`
+for plain ntfy topics) to `true`.
+
+**Running a ntfy server for UnifiedPush**  
+Serble Chat publishes to every user's UnifiedPush topics from one IP address, so ntfy's
+default rate limit (a burst of 60, then one request every 5 seconds per visitor) throttles
+it quickly. Set `visitor-subscriber-rate-limiting: true` to charge UnifiedPush topics to
+their subscriber instead, or exempt the backend with `visitor-request-limit-exempt-hosts`.
+If access control is on, give everyone write access to `up*` topics. Set `cache-file` so
+messages for phones that are offline survive a restart. On the phone, turn battery
+optimisation off for the ntfy app.
+
 ### Frontend
 To run the frontend, you'll need to configure the URLs it'll use to communicate
 with the server. Duplicate the `.env.example` file, call it `.env` and change the URLs

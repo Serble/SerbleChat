@@ -1,6 +1,9 @@
 /* SerbleChat PWA Service Worker */
 
 const CACHE_NAME = 'serble-chat-v1';
+// Written by src/push.js: { apiBase, endpoint, vapidKey }
+const PUSH_META_CACHE = 'serble-push-meta';
+const PUSH_META_URL = '/__push-meta';
 const STATIC_CACHE = 'serble-static-v1';
 const DYNAMIC_CACHE = 'serble-dynamic-v1';
 
@@ -28,7 +31,7 @@ self.addEventListener('activate', event => {
       .then(cacheNames => {
         return Promise.all(
           cacheNames
-            .filter(name => name !== STATIC_CACHE && name !== DYNAMIC_CACHE && name !== CACHE_NAME)
+            .filter(name => name !== STATIC_CACHE && name !== DYNAMIC_CACHE && name !== CACHE_NAME && name !== PUSH_META_CACHE)
             .map(name => caches.delete(name))
         );
       })
@@ -127,7 +130,67 @@ self.addEventListener('push', event => {
 
   event.waitUntil(
     self.registration.showNotification(title, options)
+      .then(() => payload.ack && ackDelivery(payload.ack, Date.now()))
   );
+});
+
+async function readPushMeta() {
+  try {
+    const cache = await caches.open(PUSH_META_CACHE);
+    const res = await cache.match(PUSH_META_URL);
+    return res ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePushMeta(meta) {
+  const cache = await caches.open(PUSH_META_CACHE);
+  await cache.put(PUSH_META_URL, new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
+}
+
+/** Tells the server the notification is showing, so it can measure delivery time. Best effort. */
+async function ackDelivery(id, shownAt) {
+  const meta = await readPushMeta();
+  if (!meta?.apiBase) return;
+  try {
+    await fetch(`${meta.apiBase}/notifications/ack/${encodeURIComponent(id)}?shownAt=${shownAt}`, { method: 'POST', keepalive: true });
+  } catch { /* statistics only */ }
+}
+
+function base64UrlToUint8Array(base64Url) {
+  const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
+  const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+// The browser replaced our subscription (expired, or the push service rotated it). Until the page next loads the
+// server would keep pushing to the dead endpoint, so move it over now. The old endpoint is the proof of ownership.
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil((async () => {
+    const meta = await readPushMeta();
+    if (!meta?.apiBase) return;
+    const oldEndpoint = event.oldSubscription?.endpoint ?? meta.endpoint;
+    if (!oldEndpoint) return;
+
+    let sub = event.newSubscription;
+    if (!sub) {
+      const applicationServerKey = event.oldSubscription?.options?.applicationServerKey
+        ?? (meta.vapidKey ? base64UrlToUint8Array(meta.vapidKey) : null);
+      if (!applicationServerKey) return;
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    }
+    if (sub.endpoint === oldEndpoint) return;
+
+    const json = sub.toJSON();
+    const res = await fetch(`${meta.apiBase}/account/web-push-subscription/rotate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldUrl: oldEndpoint, url: sub.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth }),
+    });
+    if (res.ok) await writePushMeta({ ...meta, endpoint: sub.endpoint });
+  })());
 });
 
 self.addEventListener('notificationclick', event => {

@@ -172,7 +172,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
         
         await unreads.MarkRead(userId, channelId, messageId);
-        notifications.EnqueueReadSync(userId, channelId, messageId);
+        await notifications.EnqueueReadSync(userId, channelId, messageId);
         return Ok();
     }
 

@@ -38,6 +38,9 @@ class MessageNotifications(
                     content = if (m.contentHidden) null else m.content,
                     sentAt = parseInstant(m.createdAt)?.toEpochMilli() ?: System.currentTimeMillis(),
                 )
+                // Lets the server measure end-to-end delivery time; never worth failing over
+                val shownAt = System.currentTimeMillis()
+                payload.ack?.let { runCatching { api.ackDelivery(it, shownAt) } }
             }
             "read" -> {
                 val channelId = payload.channelId ?: return

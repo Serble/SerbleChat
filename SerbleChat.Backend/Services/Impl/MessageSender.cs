@@ -32,7 +32,7 @@ public partial class MessageSender(IMessageRepo msgs, IUnreadsRepo unreads, IHub
             await unreads.AddUserMentions(channel.Id, message.Id, mentionedUserIds);
         }
 
-        notifications.EnqueueMessageProcessing(channel, message, mentionedUserIds);
+        await notifications.EnqueueMessageProcessing(channel, message, mentionedUserIds);
     }
 
     [GeneratedRegex("<@user:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})>")]

@@ -601,6 +601,8 @@ class ChatStore(
                 }
             }
             "ReceiveNotification" -> {
+                // Acknowledge first: without it the server decides this connection is dead and pushes instead
+                p.string("ackId")?.let { hub.send("AckNotification", it) }
                 val message = p["message"] as? JsonObject ?: return
                 val msg = AppJson.decodeFromJsonElement(Message.serializer(), message)
                 if (msg.channelId != activeChannel || !foreground) _notices.tryEmit(StoreNotice.IncomingMessage(msg))
