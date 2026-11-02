@@ -2,7 +2,7 @@ import { useVoice } from '../../context/VoiceContext.jsx';
 import { useMobile } from '../../context/MobileContext.jsx';
 import { getChannelIconUrl, getGroupChatIconUrl } from '../../api.js';
 import { IconButton } from '../ui/index.js';
-import { PersonIcon, PeopleIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon } from '../../icons.jsx';
+import { PersonIcon, PeopleIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon, SearchIcon } from '../../icons.jsx';
 import './chat.css';
 import { withQuery } from '../../imageVersions.js';
 
@@ -37,7 +37,7 @@ export default function ChatHeader({
   channel, channelId, displayName, otherUser,
   hasChannelIcon, onIconError, iconVersion,
   isOwner, onAddMembers, onLeave, leaveBusy,
-  showMembers, onToggleMembers,
+  showMembers, onToggleMembers, showSearch, onToggleSearch,
 }) {
   const { voiceChannelId, voiceStatus, voiceBusy, joinVoice, leaveVoice } = useVoice();
   const { isMobile, openSidebar } = useMobile() ?? { isMobile: false, openSidebar: () => {} };
@@ -120,7 +120,8 @@ export default function ChatHeader({
         </div>
       )}
 
-      <HeaderBtn title="Member List" active={showMembers} onClick={onToggleMembers}><PeopleIcon size={16} /></HeaderBtn>
+      <HeaderBtn title={isMobile ? 'Search' : 'Search (Ctrl+F)'} active={showSearch} onClick={onToggleSearch}><SearchIcon size={16} /></HeaderBtn>
+      <HeaderBtn title="Member List" active={showMembers && !(showSearch && !isMobile)} onClick={onToggleMembers}><PeopleIcon size={16} /></HeaderBtn>
     </div>
   );
 }

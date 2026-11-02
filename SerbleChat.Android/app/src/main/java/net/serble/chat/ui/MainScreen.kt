@@ -68,6 +68,9 @@ import kotlin.math.roundToInt
 /** Which panel is in front: the navigation on the left, the chat, or the members on the right. */
 enum class Pane { Nav, Chat, Members }
 
+/** A request to scroll the open chat to a message. Each one is new, so asking for the same message twice works. */
+data class Jump(val messageId: Long, val serial: Long = System.nanoTime())
+
 /** A request from outside (a notification, a link) to show a channel. */
 data class ChannelRequest(val channelId: Long, val messageId: Long?, val serial: Long = System.nanoTime())
 
@@ -83,12 +86,13 @@ fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenVoice: () -> Unit,
     onOpenGuildSettings: (Long) -> Unit,
+    onOpenSearch: (Long) -> Unit,
 ) {
     val app = LocalApp.current
     val store = app.store
     val scope = rememberCoroutineScope()
     var channelId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var jumpTo by remember { mutableStateOf<Long?>(null) }
+    var jumpTo by remember { mutableStateOf<Jump?>(null) }
     var guild by rememberSaveable { mutableStateOf(HOME) }
     var you by remember { mutableStateOf(false) }
     var restored by rememberSaveable { mutableStateOf(false) }
@@ -108,7 +112,7 @@ fun MainScreen(
 
     fun open(id: Long, message: Long? = null) {
         channelId = id
-        jumpTo = message
+        jumpTo = message?.let { Jump(it) }
         // Keep the left panel on the guild the channel is in
         val c = store.channel(id)
         guild = if (c?.type == ChannelType.GUILD) c.guildId ?: HOME else HOME
@@ -205,6 +209,7 @@ fun MainScreen(
             onOpenSettings = onOpenSettings,
             onOpenVoice = onOpenVoice,
             onOpenGuildSettings = onOpenGuildSettings,
+            inFront = pane == Pane.Nav,
             modifier = Modifier.width(sideWidth).fillMaxHeight().align(Alignment.CenterStart).zIndex(if (offset >= 0) 1f else 0f),
         )
         MembersPanel(
@@ -236,6 +241,7 @@ fun MainScreen(
                         },
                         onOpenChannel = { open(it) },
                         onOpenVoice = onOpenVoice,
+                        onOpenSearch = { onOpenSearch(id) },
                     )
                 }
             } else {

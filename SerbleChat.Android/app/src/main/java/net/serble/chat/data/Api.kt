@@ -180,13 +180,24 @@ class Api(
     suspend fun leaveGroup(groupId: Long) = send("DELETE", "/channel/group/$groupId")
 
     /** Newest first. */
-    suspend fun messages(channelId: Long, limit: Int = 50, before: Long? = null, after: Long? = null): List<Message> {
+    /** Newest first. [around] gives that message with up to half of [limit] on each side of it. */
+    suspend fun messages(channelId: Long, limit: Int = 50, before: Long? = null, after: Long? = null, around: Long? = null): List<Message> {
         val query = buildString {
             append("?limit=$limit")
             before?.let { append("&before=$it") }
             after?.let { append("&after=$it") }
+            around?.let { append("&around=$it") }
         }
         return get("/channel/$channelId/messages$query")
+    }
+
+    /** Messages containing every term of [query], newest first; page on with [before] set to the last one's ID. */
+    suspend fun searchMessages(channelId: Long, query: String, before: Long? = null, limit: Int = 25): SearchResults {
+        val params = buildString {
+            append("?q=${q(query)}&limit=$limit")
+            before?.let { append("&before=$it") }
+        }
+        return get("/channel/$channelId/messages/search$params")
     }
 
     suspend fun message(channelId: Long, id: Long): Message = get("/channel/$channelId/messages/$id")

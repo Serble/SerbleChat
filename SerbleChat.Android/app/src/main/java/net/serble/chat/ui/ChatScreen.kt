@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Poll
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -61,6 +62,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,13 +76,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -97,7 +107,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import net.serble.chat.BuildConfig
 import net.serble.chat.data.Channel
@@ -144,7 +154,7 @@ private fun buildRows(messages: List<Message>, pending: List<PendingMessage>): L
 @Composable
 fun ChatScreen(
     channelId: Long,
-    jumpTo: Long?,
+    jumpTo: Jump?,
     /** Whether the chat is the panel in front. Only then do new messages count as read. */
     visible: Boolean,
     onOpenNav: () -> Unit,
@@ -152,6 +162,7 @@ fun ChatScreen(
     onLeft: () -> Unit,
     onOpenChannel: (Long) -> Unit,
     onOpenVoice: () -> Unit,
+    onOpenSearch: () -> Unit,
 ) {
     val app = LocalApp.current
     val store = app.store
@@ -233,54 +244,121 @@ fun ChatScreen(
         launch { runCatching { store.loadMembers(c) } }
     }
 
-    val rows = remember(state?.messages, state?.pending) { buildRows(state?.messages ?: emptyList(), state?.pending ?: emptyList()) }
+    // Unsent messages belong at the present, so they only show while the window reaches it
+    val detached = state?.hasNewer == true
+    val rows = remember(state?.messages, state?.pending, detached) {
+        buildRows(state?.messages ?: emptyList(), if (detached) emptyList() else state?.pending ?: emptyList())
+    }
     val listState = rememberLazyListState()
+    val latestState by rememberUpdatedState(state)
+    val latestRows by rememberUpdatedState(rows)
 
     // Mark read as messages arrive while we're at the bottom
     LaunchedEffect(state?.messages?.lastOrNull()?.id) {
-        if (active && listState.firstVisibleItemIndex <= 1) store.markLatestRead(channelId)
+        if (active && !detached && listState.firstVisibleItemIndex <= 1) store.markLatestRead(channelId)
     }
 
-    // The list keeps its place when items are added below it, so follow the newest message
-    // ourselves when we were already at (or next to) the bottom
+    // The list keeps its place when items are added below it, so follow the newest message ourselves when we were
+    // already at (or next to) the bottom. Only for live messages: a page loaded at the newer end of an old stretch
+    // (tailVersion changes) mustn't scroll the reader through it.
+    var followedTail by remember { mutableIntStateOf(state?.tailVersion ?: 0) }
     LaunchedEffect(rows.firstOrNull()?.key) {
-        if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
+        val s = latestState ?: return@LaunchedEffect
+        val live = s.tailVersion == followedTail
+        followedTail = s.tailVersion
+        if (live && !s.hasNewer && listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
     }
 
-    // Load older messages when near the top
+    // Page in either direction as the reader nears an end of the window. A failed load waits a moment, then
+    // retryTick lets the same position ask again.
+    var retryTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(listState, channelId) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .distinctUntilChanged()
-            .filter { it >= rows.size - 10 }
-            .collect { runCatching { store.loadOlder(channelId) } }
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val s = latestState
+            val last = info.visibleItemsInfo.lastOrNull()?.index
+            val direction = when {
+                s == null || !s.loaded || last == null -> 0
+                !s.reachedStart && !s.loadingOlder && last >= info.totalItemsCount - 10 -> -1
+                s.hasNewer && !s.loadingNewer && listState.firstVisibleItemIndex <= 10 -> 1
+                else -> 0
+            }
+            direction to retryTick
+        }.distinctUntilChanged().collect { (direction, _) ->
+            val result = when (direction) {
+                -1 -> runCatching { store.loadOlder(channelId) }
+                1 -> runCatching { store.loadNewer(channelId) }
+                else -> return@collect
+            }
+            if (result.isFailure) {
+                kotlinx.coroutines.delay(3000)
+                retryTick++
+            }
+        }
     }
 
-    // Jump to a linked message, loading back to it if needed
-    LaunchedEffect(jumpTo, state?.loaded) {
-        val target = jumpTo ?: return@LaunchedEffect
+    // Jumps come from outside (links, notifications, search) and from links in this chat
+    var jump by remember { mutableStateOf<Jump?>(null) }
+    LaunchedEffect(jumpTo) { if (jumpTo != null) jump = jumpTo }
+    LaunchedEffect(highlight) {
+        if (highlight == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(2500)
+        highlight = null
+    }
+    /** [messageId]'s item in the list. A window short of the present has the "newer" slot as its first item. */
+    fun itemIndexOf(messageId: Long, rows: List<ChatRow>, hasNewer: Boolean): Int =
+        rows.indexOfFirst { it is ChatRow.Sent && it.message.id == messageId } + if (hasNewer) 1 else 0
+    // Scrolled to, a message sits a third of the way up the screen, with what came after it below
+    val lift = { -(listState.layoutInfo.viewportSize.height / 3).coerceAtLeast(0) }
+    LaunchedEffect(jump, state?.loaded) {
+        val target = jump ?: return@LaunchedEffect
         if (state?.loaded != true) return@LaunchedEffect
-        fun have() = store.messages.value[channelId]?.messages?.any { it.id == target } == true
-        // Newer than anything we have (it arrived while the app was closed): fetch forward first
-        val newest = store.messages.value[channelId]?.messages?.lastOrNull()?.id ?: 0
-        if (!have() && target > newest) runCatching { store.catchUp(channelId) }
-        // Otherwise it's further back: page back to it
-        var tries = 0
-        while (!have() && tries < 20) {
-            val s = store.messages.value[channelId] ?: break
-            if (s.reachedStart || (s.messages.firstOrNull()?.id ?: 0) < target) break
-            runCatching { store.loadOlder(channelId) }.onFailure { return@LaunchedEffect }
-            tries++
+        val messageId = target.messageId
+        val current = store.messages.value[channelId]
+        if (current?.messages?.any { it.id == messageId } != true) {
+            // Not in the window: fetch the stretch around it and show that instead
+            val window = try {
+                store.fetchAround(channelId, messageId)
+            } catch (e: net.serble.chat.data.ApiException) {
+                messagesUi.show(e.message ?: "Couldn't load that message.")
+                jump = null
+                return@LaunchedEffect
+            }
+            if (window == null) {
+                messagesUi.show("That message couldn't be found.")
+                jump = null
+                return@LaunchedEffect
+            }
+            // Told before the rows change, so the list lays the new ones out at the target straight away
+            val pending = if (window.hasNewer) emptyList() else current?.pending ?: emptyList()
+            listState.requestScrollToItem(itemIndexOf(messageId, buildRows(window.messages, pending), window.hasNewer), lift())
+            store.showWindow(channelId, window)
+        } else {
+            snapshotFlow { latestRows }.first { rows -> rows.any { it is ChatRow.Sent && it.message.id == messageId } }
+            listState.scrollToItem(itemIndexOf(messageId, latestRows, latestState?.hasNewer == true), lift())
         }
-        val current = store.messages.value[channelId] ?: return@LaunchedEffect
-        val index = buildRows(current.messages, current.pending).indexOfFirst { it is ChatRow.Sent && it.message.id == target }
-        if (index >= 0) {
-            // A third of the way up the screen rather than on its bottom edge, with what came after it below
-            val lift = (listState.layoutInfo.viewportSize.height / 3).coerceAtLeast(0)
-            listState.scrollToItem(index, -lift)
-            highlight = target
-            kotlinx.coroutines.delay(2500)
-            highlight = null
-        } else messagesUi.show("That message couldn't be found.")
+        highlight = messageId
+        jump = null
+    }
+
+    /** Back to the newest messages: a scroll when they're loaded, otherwise the newest page in place of what's shown. */
+    fun jumpToPresent() {
+        scope.launch {
+            val s = store.messages.value[channelId] ?: return@launch
+            if (!s.hasNewer) {
+                // Animating through hundreds of rows is slow: get close first
+                if (listState.firstVisibleItemIndex > 30) listState.scrollToItem(30)
+                listState.animateScrollToItem(0)
+                return@launch
+            }
+            val window = try { store.fetchLatest(channelId) } catch (e: net.serble.chat.data.ApiException) {
+                messagesUi.show(e.message ?: "Couldn't load the newest messages.")
+                return@launch
+            }
+            listState.requestScrollToItem(0)
+            store.showWindow(channelId, window)
+            store.markLatestRead(channelId)
+        }
     }
 
     val title = channel?.let { store.channelTitle(it) } ?: "…"
@@ -301,7 +379,10 @@ fun ChatScreen(
     }
 
     Surface(color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().imePadding()) {
+        // Ctrl+F on a hardware keyboard searches, as on the desktop app
+        Column(Modifier.fillMaxSize().imePadding().onPreviewKeyEvent {
+            if (it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key == Key.F) { onOpenSearch(); true } else false
+        }) {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 navigationIcon = { IconButton(onClick = onOpenNav) { Icon(Icons.Default.Menu, "Channels") } },
@@ -325,6 +406,7 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenSearch) { Icon(Icons.Default.Search, "Search messages") }
                     if (channel?.voiceCapable == true && perms?.canJoinVoice != false) {
                         IconButton(onClick = { if (inThisCall) onOpenVoice() else joinCall() }) {
                             Icon(Icons.Default.Call, if (inThisCall) "Open call" else "Join call",
@@ -359,6 +441,9 @@ fun ChatScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
                     ) {
+                        // Below the newest message of an old stretch. Always there while there's more, so starting
+                        // to load doesn't add a row under the reader.
+                        if (state.hasNewer) item(key = "newer", contentType = "loading") { LoadingSlot(state.loadingNewer) }
                         items(rows, key = { it.key }, contentType = { it::class }) { row ->
                             when (row) {
                                 is ChatRow.Day -> DayDivider(row.label)
@@ -379,7 +464,7 @@ fun ChatScreen(
                                                 val parsed = net.serble.chat.MainActivity.parse(android.net.Uri.parse(link.url))
                                                 when {
                                                     parsed is net.serble.chat.Incoming.OpenChannel && link.url.contains("/app/channel/") ->
-                                                        if (parsed.channelId == channelId && parsed.messageId != null) highlight = parsed.messageId
+                                                        if (parsed.channelId == channelId && parsed.messageId != null) jump = Jump(parsed.messageId)
                                                         else onOpenChannel(parsed.channelId)
                                                     else -> openUrl(context, link.url)
                                                 }
@@ -392,14 +477,21 @@ fun ChatScreen(
                                 )
                             }
                         }
-                        if (state.loadingOlder) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) } }
-                        if (state.reachedStart) item { ChannelStart(channel, title) }
+                        if (!state.reachedStart) item(key = "older", contentType = "loading") { LoadingSlot(state.loadingOlder) }
+                        else item(key = "start", contentType = "start") { ChannelStart(channel, title) }
                     }
                 }
-                val showJump by remember { derivedStateOf { listState.firstVisibleItemIndex > 8 } }
-                if (showJump) {
-                    SmallFloatingActionButton(onClick = { scope.launch { listState.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-                        Icon(Icons.Default.KeyboardArrowDown, "Jump to newest")
+                val scrolledUp by remember { derivedStateOf { listState.firstVisibleItemIndex > 8 } }
+                if (detached) {
+                    // Reading an old stretch: say so, since the newest messages aren't just a scroll away
+                    ExtendedFloatingActionButton(onClick = ::jumpToPresent, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+                        Icon(Icons.Default.KeyboardArrowDown, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Jump to present")
+                    }
+                } else if (scrolledUp) {
+                    SmallFloatingActionButton(onClick = ::jumpToPresent, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Jump to present")
                     }
                 }
             }
@@ -413,6 +505,7 @@ fun ChatScreen(
                 editing = editing,
                 onCancelEdit = { editing = null },
                 onNewPoll = { newPoll = true },
+                onSend = ::jumpToPresent,
                 placeholder = "Message " + title,
             )
         }
@@ -450,6 +543,14 @@ fun ChatScreen(
             store.refresh()
             onLeft()
         }
+    }
+}
+
+/** Room for a spinner at an end of the list, the same size whether or not it's loading. */
+@Composable
+private fun LoadingSlot(loading: Boolean) {
+    Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
+        if (loading) CircularProgressIndicator(Modifier.size(24.dp))
     }
 }
 
@@ -578,6 +679,8 @@ private fun Composer(
     members: List<User>,
     editing: Message?,
     onCancelEdit: () -> Unit,
+    /** Called as a new message (not an edit) goes out, to show the bottom of the chat where it will appear. */
+    onSend: () -> Unit,
     onNewPoll: () -> Unit,
     placeholder: String,
 ) {
@@ -640,6 +743,7 @@ private fun Composer(
                 }
             }
         } else store.sendMessage(channelId, text)
+        if (target == null) onSend()
         value = TextFieldValue("")
         drafts.remove(channelId)
         if (!hasFiles) mentions.clear()

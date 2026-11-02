@@ -83,3 +83,49 @@ fun formatUntil(instant: Instant, now: Instant = Instant.now()): String {
         else -> (minutes / (60 * 24)).let { "in $it day${if (it == 1L) "" else "s"}" }
     }
 }
+
+/**
+ * A search box query as the server reads it: words separated by whitespace, with "double quotes" keeping a phrase
+ * together. Every term has to appear (ignoring case). Keep in step with the backend's SearchQueryParser.
+ */
+fun searchTerms(query: String): List<String> {
+    val terms = ArrayList<String>()
+    val current = StringBuilder()
+    var quoted = false
+    fun flush() {
+        val term = current.toString().trim()
+        current.clear()
+        if (term.isNotEmpty() && terms.none { it.equals(term, ignoreCase = true) }) terms += term
+    }
+    for (c in query) {
+        when {
+            c == '"' -> { flush(); quoted = !quoted }
+            !quoted && c.isWhitespace() -> flush()
+            else -> current.append(c)
+        }
+    }
+    flush()
+    return terms.take(10)
+}
+
+/** Where [terms] appear in [text] (ignoring case), as merged, sorted ranges. */
+fun matchRanges(text: String, terms: List<String>): List<IntRange> {
+    val found = ArrayList<IntRange>()
+    for (term in terms) {
+        var from = 0
+        while (true) {
+            val at = text.indexOf(term, from, ignoreCase = true)
+            if (at < 0) break
+            found += at until at + term.length
+            from = at + term.length
+        }
+    }
+    found.sortBy { it.first }
+    val merged = ArrayList<IntRange>()
+    for (r in found) {
+        val last = merged.lastOrNull()
+        if (last != null && r.first <= last.last + 1) merged[merged.size - 1] = last.first..maxOf(last.last, r.last)
+        else merged += r
+    }
+    return merged
+}

@@ -91,6 +91,8 @@ object Routes {
     const val FILES = "files"
     const val GUILD_SETTINGS = "guild/{guildId}"
     fun guildSettings(guildId: Long) = "guild/$guildId"
+    const val SEARCH = "search/{channelId}"
+    fun search(channelId: Long) = "search/$channelId"
 }
 
 @Composable
@@ -231,7 +233,12 @@ private fun MainNav(nav: NavHostController, channelRequest: ChannelRequest?, ope
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                 onOpenVoice = { nav.navigate(Routes.VOICE) },
                 onOpenGuildSettings = { nav.navigate(Routes.guildSettings(it)) },
+                onOpenSearch = { nav.navigate(Routes.search(it)) },
             )
+        }
+        composable(Routes.SEARCH, arguments = listOf(navArgument("channelId") { type = NavType.LongType })) { entry ->
+            val channelId = entry.arguments?.getLong("channelId") ?: return@composable
+            SearchScreen(channelId = channelId, onBack = { nav.popBackStack() }, onOpenMessage = { openChannel(channelId, it) })
         }
         composable(Routes.FRIENDS, arguments = listOf(navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { entry ->
             FriendsScreen(onBack = { nav.popBackStack() }, onOpenChannel = { openChannel(it, null) }, initialTab = entry.arguments?.getInt("tab") ?: 0)

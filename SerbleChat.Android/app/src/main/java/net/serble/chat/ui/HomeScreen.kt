@@ -1,5 +1,11 @@
 package net.serble.chat.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -81,6 +87,8 @@ fun NavPanel(
     onOpenVoice: () -> Unit,
     onOpenGuildSettings: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Whether this panel is the one in front, so the back gesture is its to handle. */
+    inFront: Boolean = true,
 ) {
     val app = LocalApp.current
     val store = app.store
@@ -103,7 +111,7 @@ fun NavPanel(
                     homeUnread = unreads.filterKeys { id -> store.channel(id)?.type != ChannelType.GUILD }.values.sum(),
                 )
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    if (selected == HOME) ConversationList(currentChannel, onOpenChannel, onOpenFriends)
+                    if (selected == HOME) ConversationList(currentChannel, onOpenChannel, onOpenFriends, inFront)
                     else ChannelList(selected, currentChannel, onOpenChannel, onOpenGuildSettings)
                 }
             }
@@ -238,7 +246,7 @@ private fun PanelHeader(title: String, onTitleClick: (() -> Unit)? = null, actio
 }
 
 @Composable
-private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Unit, onOpenFriends: () -> Unit) {
+private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Unit, onOpenFriends: () -> Unit, inFront: Boolean) {
     val app = LocalApp.current
     val store = app.store
     val dms by store.dms.collectAsStateWithLifecycle()
@@ -264,8 +272,34 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
             .sortedByDescending { it.activity }
     }
 
+    // Typing in the header narrows the list to matching conversations, plus friends with no DM yet
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf("") }
+    val needle = filter.trim()
+    val filtering = searching && needle.isNotEmpty()
+    val shown = if (filtering) rows.filter { it.name.contains(needle, ignoreCase = true) } else rows
+    val friendIds = remember(friends, me) { friends.filter { !it.pending }.map { it.other(me) } }
+    LaunchedEffect(friendIds) { store.ensureUsers(friendIds) }
+    val newConversations = if (!filtering) emptyList() else {
+        val withDm = dms.map { it.otherUser(me) }.toSet()
+        friendIds.filter { it !in withDm }.mapNotNull { users[it] }
+            .filter { it.username.contains(needle, ignoreCase = true) }.sortedBy { it.username.lowercase() }
+    }
+    fun stopSearching() {
+        searching = false
+        filter = ""
+    }
+    // Only while the list is in front: with the chat over it, back belongs to the chat
+    BackHandler(enabled = searching && inFront) { stopSearching() }
+    val openFiltered: (Long) -> Unit = { id ->
+        stopSearching()
+        onOpenChannel(id)
+    }
+
     Column(Modifier.fillMaxSize()) {
-        PanelHeader("Messages") {
+        if (searching) ConversationSearchBar(filter, onChange = { filter = it }, onClose = ::stopSearching)
+        else PanelHeader("Messages") {
+            IconButton(onClick = { searching = true }) { Icon(Icons.Default.Search, "Find a conversation") }
             IconButton(onClick = { newGroup = true }) { Icon(Icons.Default.GroupAdd, "New group") }
             IconButton(onClick = onOpenFriends) {
                 BadgedBox(badge = { if (incoming > 0) Badge { Text("$incoming") } }) { Icon(Icons.Default.People, "Friends") }
@@ -283,7 +317,7 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
             modifier = Modifier.fillMaxSize(),
         ) {
             LazyColumn(Modifier.fillMaxSize()) {
-                item {
+                if (!filtering) item {
                     ListRow(selected = false, onClick = onOpenFriends) {
                         Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.People, null)
@@ -293,14 +327,17 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
                         UnreadBadge(incoming)
                     }
                 }
-                if (rows.isEmpty()) item {
+                if (rows.isEmpty() && !filtering) item {
                     EmptyState("No conversations yet", "Message a friend, or start a group, and it'll show up here.")
                 }
-                items(rows, key = { it.channel.id }) { row ->
+                if (filtering && shown.isEmpty() && newConversations.isEmpty()) item {
+                    EmptyState("No matches", "No conversations or friends match \"$needle\".")
+                }
+                items(shown, key = { it.channel.id }) { row ->
                     val unread = unreads[row.channel.id] ?: 0
                     val user = row.userId?.let { users[it] }
                     val inCall = (voice[row.channel.id]?.size ?: 0) > 0
-                    ListRow(selected = row.channel.id == currentChannel, onClick = { onOpenChannel(row.channel.id) }) {
+                    ListRow(selected = row.channel.id == currentChannel, onClick = { openFiltered(row.channel.id) }) {
                         if (row.userId != null) Avatar(row.userId, row.name, 40.dp, status = user?.status ?: "offline")
                         else RemoteImage(app.groupIconUrl(row.channel), row.name, 40.dp)
                         RowSpacer()
@@ -319,6 +356,21 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
                         UnreadBadge(unread)
                     }
                 }
+                if (newConversations.isNotEmpty()) {
+                    item(key = "new-header") {
+                        Text("Start a conversation", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
+                    }
+                    items(newConversations, key = { "friend-" + it.id }) { user ->
+                        ListRow(selected = false, onClick = {
+                            messages.run(scope) { openFiltered(store.openDm(user.id).id) }
+                        }) {
+                            Avatar(user.id, user.username, 40.dp, status = user.status)
+                            RowSpacer()
+                            NameLine(user.username, sub = "Friend", modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             }
         }
     }
@@ -327,6 +379,35 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
         newGroup = false
         onOpenChannel(id)
     })
+}
+
+/** The "Messages" header turned into a search field. */
+@Composable
+private fun ConversationSearchBar(value: String, onChange: (String) -> Unit, onClose: () -> Unit) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Stop searching") }
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.weight(1f).focusRequester(focus),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text("Find a conversation", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    inner()
+                }
+            },
+        )
+        if (value.isNotEmpty()) IconButton(onClick = { onChange(""); focus.requestFocus() }) { Icon(Icons.Default.Close, "Clear") }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerLowest)
 }
 
 @OptIn(ExperimentalFoundationApi::class)

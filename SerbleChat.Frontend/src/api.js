@@ -375,6 +375,30 @@ export async function getMessages(channelId, limit = 50, offset = 0) {
   return handle(res);
 }
 
+/**
+ * GET /channel/:channelId/messages with a cursor, newest first.
+ * `cursor` is one of { before: id } (the page just older than it), { after: id } (the page just newer)
+ * or { around: id } (that message with up to limit/2 on each side).
+ */
+export async function getMessagesAt(channelId, cursor, limit = 50) {
+  const params = new URLSearchParams({ limit });
+  for (const k of ['before', 'after', 'around']) if (cursor[k] != null) params.set(k, cursor[k]);
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages?${params}`, { headers: authHeaders() });
+  return handle(res);
+}
+
+/**
+ * GET /channel/:channelId/messages/search – messages containing every term of `q`, newest first.
+ * Returns { messages, hasMore, totalCount }; totalCount only comes with the first page (no `before`).
+ */
+export async function searchMessages(channelId, { q, authorId, before, limit = 25 }, signal) {
+  const params = new URLSearchParams({ q, limit });
+  if (authorId) params.set('authorId', authorId);
+  if (before != null) params.set('before', before);
+  const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages/search?${params}`, { headers: authHeaders(), signal });
+  return handle(res);
+}
+
 /** GET /channel/:channelId/messages/:messageId  – get a single message */
 export async function getMessage(channelId, messageId) {
   const res = await fetch(`${BASE}/channel/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, { headers: authHeaders() });

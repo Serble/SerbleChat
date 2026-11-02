@@ -19,6 +19,8 @@ import { navigateToRoot } from '../electron-utils.js';
 const Ctx = createContext(null);
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5210';
+// Live messages held for a channel whose view is away from the present; past this the view refetches anyway
+const MAX_HELD_MESSAGES = 500;
 
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser]   = useState(null);
@@ -33,6 +35,20 @@ export function AppProvider({ children }) {
   const [isConnected, setIsConnected]   = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false); // Track when guilds/channels are loaded
   const [messages,    setMessages]      = useState({});   // channelId (string) -> msg[]
+  // channelId (string) -> NewMessage events held back while that channel's loaded messages don't reach the present
+  const heldMessagesRef = useRef(new Map());
+  /** Start holding live messages for a channel instead of appending them (its view is in older history). */
+  const holdLiveMessages = useCallback((channelId) => {
+    const key = String(channelId);
+    if (!heldMessagesRef.current.has(key)) heldMessagesRef.current.set(key, []);
+  }, []);
+  /** Stop holding live messages for a channel; returns the ones held meanwhile, oldest first. */
+  const releaseLiveMessages = useCallback((channelId) => {
+    const key = String(channelId);
+    const held = heldMessagesRef.current.get(key) ?? [];
+    heldMessagesRef.current.delete(key);
+    return held;
+  }, []);
   // pollId (string) -> poll: the latest copy of every poll we've seen. Poll cards and the
   // voice-panel strip read from here, so a PollUpdated event refreshes them all at once.
   const [polls, setPolls] = useState({});
@@ -730,7 +746,12 @@ export function AppProvider({ children }) {
     conn.on('NewMessage', msg => {
       const key = String(msg.channelId);
       if (msg.poll) upsertPolls([msg.poll]);
-      setMessages(p => {
+      // The open channel is showing older history that doesn't reach the present: appending would leave a gap,
+      // so hold the message until the view catches up (see holdLiveMessages)
+      const held = heldMessagesRef.current.get(key);
+      if (held) {
+        if (held.length < MAX_HELD_MESSAGES) held.push(msg);
+      } else setMessages(p => {
         const existing = p[key] ?? [];
         const pendingIdx = existing.findIndex(
           m => m._pending && m.authorId === msg.authorId && m.content === msg.content
@@ -790,6 +811,11 @@ export function AppProvider({ children }) {
     });
 
     conn.on('DeleteMessage', ({ id }) => {
+      // A held message deleted before the view caught up must not reappear when it's released
+      for (const held of heldMessagesRef.current.values()) {
+        const i = held.findIndex(m => m.id === id);
+        if (i !== -1) held.splice(i, 1);
+      }
       // A deleted message takes its poll with it
       setPolls(p => {
         const gone = Object.keys(p).filter(k => String(p[k].messageId) === String(id));
@@ -812,6 +838,9 @@ export function AppProvider({ children }) {
 
     conn.on('MessageEdited', ({ id, channelId, message }) => {
       const key = String(channelId);
+      const held = heldMessagesRef.current.get(key);
+      const heldIdx = held?.findIndex(m => String(m.id) === String(id)) ?? -1;
+      if (heldIdx !== -1) held[heldIdx] = message;
       setMessages(p => {
         const existing = p[key];
         if (!existing) return p;
@@ -1075,7 +1104,7 @@ export function AppProvider({ children }) {
       blockedUsers, isBlocked, blockUser: blockUserFn, unblockUser: unblockUserFn, refreshBlockedUsers,
       isConnected,
       initialDataLoaded,
-      messages,  setMessages,
+      messages,  setMessages, holdLiveMessages, releaseLiveMessages,
       polls, upsertPolls, rememberMessagePolls, loadActivePolls,
       channelLastActive,
       toasts, addToast, removeToast,

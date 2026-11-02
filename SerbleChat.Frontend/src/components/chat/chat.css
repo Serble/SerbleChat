@@ -557,3 +557,179 @@
   0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-2px); }
 }
+
+/* ── Message search ─────────────────────────────────────────────────────── */
+.msg-search-hit {
+  border-radius: 3px;
+  padding: 0 1px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text-primary);
+}
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  width: clamp(280px, 30vw, 400px);
+  flex-shrink: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.search-panel--mobile {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  width: auto;
+  height: var(--app-height, 100dvh);
+  border-left: none;
+}
+.search-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 0.5rem 0 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.search-panel--mobile .search-panel-head { padding-left: 0.25rem; }
+.search-box {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+.search-box:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+}
+.search-box input::placeholder { color: var(--text-muted); }
+.search-box-clear {
+  display: flex;
+  padding: 0.15rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.search-box-clear:hover { color: var(--text-primary); background: var(--bg-hover); }
+.search-panel-count {
+  flex-shrink: 0;
+  padding: 0.6rem 1rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.search-panel-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0.5rem 0.75rem;
+}
+.search-panel-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.search-panel-hint p { margin: 0.6rem 0 0; }
+.search-panel-tip { font-size: 0.8rem; color: var(--text-subtle); }
+.search-panel-tip code { padding: 0 0.25em; border-radius: 3px; background: var(--bg-tertiary); }
+.search-panel-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.25rem 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.search-panel-status strong { color: var(--text-secondary); }
+.search-result {
+  margin-top: 0.4rem;
+  padding: 0.55rem 0.7rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+.search-result:hover,
+.search-result[data-selected='true'] { border-color: var(--accent); }
+.search-result[data-selected='true'] { background: var(--bg-hover); }
+.search-result-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  margin-bottom: 0.25rem;
+}
+.search-result-name {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result-time { flex-shrink: 0; font-size: 0.7rem; color: var(--text-muted); }
+.search-result-jump {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.search-result:hover .search-result-jump,
+.search-result[data-selected='true'] .search-result-jump { opacity: 1; }
+/* Long messages are clipped: the result only needs to show enough to recognise it */
+.search-result-body {
+  max-height: 9.5rem;
+  overflow: hidden;
+  font-size: 0.875rem;
+  -webkit-mask-image: linear-gradient(to bottom, #000 7.5rem, transparent 9.5rem);
+  mask-image: linear-gradient(to bottom, #000 7.5rem, transparent 9.5rem);
+}
+.search-result-body .msg-show-more { display: none; }
+.search-result-body .msg-md--collapsed { max-height: none !important; }
+.search-result-poll { margin-top: 0.25rem; font-size: 0.8rem; color: var(--text-muted); }
+.search-result-blocked {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+@media (hover: none) {
+  .search-result-jump { opacity: 1; }
+}
+/* The sidebar's "Find a conversation" filter */
+.search-box--sidebar { gap: 0.4rem; border-radius: 4px; cursor: text; }
+.search-box--sidebar input { padding: 0.35rem 0; font-size: 0.82rem; }

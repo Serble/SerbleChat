@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
-import { getMessages, sendMessage, getChannel, deleteMessage, editMessage, leaveOrDeleteGroupChat,
+import { getMessages, getMessagesAt, sendMessage, getChannel, deleteMessage, editMessage, leaveOrDeleteGroupChat,
          getGuildMembers, getGuildRoles, getGuildChannels, getChannelMembers,
          getChannelIconUrl, getGroupChatIconUrl, getGuild } from '../api.js';
 import UserPopout from './UserPopout.jsx';
@@ -13,17 +13,18 @@ import VoiceParticipantPreview from './VoiceParticipantPreview.jsx';
 import PollCreateModal from './poll/PollCreateModal.jsx';
 import ChatHeader from './chat/ChatHeader.jsx';
 import Composer, { BlockedInputBanner, NoPermissionNotice } from './chat/Composer.jsx';
-import MessageList, { MessageListSkeleton } from './chat/MessageList.jsx';
+import MessageList, { MessageListSkeleton, captureScrollAnchor } from './chat/MessageList.jsx';
+import { PAGE_SIZE, MAX_WINDOW, realMessages, prependOlder, appendNewer, reinsert, aroundFlags } from './chat/messageWindow.js';
 import { MessageContextMenu, ImageContextMenu } from './chat/MessageMenus.jsx';
 import TypingIndicator from './chat/TypingIndicator.jsx';
+import SearchPanel from './chat/SearchPanel.jsx';
 import { useFileUploads } from './chat/FileUploadPanel.jsx';
 import { isUnlimited } from './chat/utils.js';
 import { AttachmentIcon } from '../icons.jsx';
 import { withQuery } from '../imageVersions.js';
 
-const MESSAGE_PAGE_SIZE = 50;
-// After a failed fetch, wait this long before scrolling can trigger another attempt
-const LOAD_OLDER_RETRY_MS = 3000;
+// After a failed page fetch, wait this long before scrolling can trigger another attempt
+const PAGE_RETRY_MS = 3000;
 
 const EMPTY_MENTION_DATA = { members: [], channels: [], roles: [] };
 
@@ -49,7 +50,7 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, rememberMessagePolls, syncGeneration } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, holdLiveMessages, releaseLiveMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, rememberMessagePolls, syncGeneration } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [input, setInput]           = useState('');
@@ -81,70 +82,253 @@ export default function ChatView() {
   // Image context menu
   const [imageCtxMenu, setImageCtxMenu] = useState(null); // { x, y, imageUrl, filename, msg, key }
 
-  // Older messages loading state; hasMore mirrors historyRef.current.hasMore for rendering
+  // The loaded window of history (see chat/messageWindow.js). hasOlder/hasNewer mirror windowRef for rendering:
+  // hasNewer means the window doesn't reach the present, and live messages are held instead of appended.
+  const [hasOlder, setHasOlder] = useState(false);
+  const [hasNewer, setHasNewer] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  // True while a failed history fetch is cooling down; clearing it lets the list retry
-  const [olderError, setOlderError] = useState(false);
-  // Pagination state for the current channel's history: { channelId, hasMore, loading, retryAt }.
-  // The object is replaced on every channel change, so in-flight requests detect staleness by identity.
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  // 'older' | 'newer' while a failed page fetch at that end is cooling down; clearing it lets the list retry
+  const [pageError, setPageError] = useState(null);
+  // Channel load state: { channelId }. Replaced on every channel change, so channel-level requests detect staleness.
   const historyRef = useRef(null);
+  // Window state: { hasOlder, hasNewer, loadingOlder, loadingNewer, retryAt }. Replaced whenever the whole
+  // window is (a jump), so page requests started against the old one are dropped when they land.
+  const windowRef = useRef(null);
+  // Bumped per window replacement, so only the latest of overlapping jumps applies
+  const replaceSeqRef = useRef(0);
+  // True while a window replacement is in flight
+  const replacingRef = useRef(false);
+  // How MessageList should scroll once the next messages change lands: a captured anchor to hold in place, or
+  // { type: 'bottom' }. Set right before the change, so the list can apply it before the browser paints.
+  const scrollIntentRef = useRef(null);
+
+  // Message search panel. On desktop it takes the member list's place while open.
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Bumped to (re)focus the search box, e.g. Ctrl+F while the panel is already open
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
 
   function toggleMembers() {
+    if (searchOpen && !isMobile) {
+      // The member button while searching swaps the panel back to the member list
+      setSearchOpen(false);
+      if (showMembers) return;
+    }
     setShowMembers(v => {
       sessionStorage.setItem('memberPanelOpen', String(!v));
       return !v;
     });
   }
+
+  function openSearch() {
+    setSearchOpen(true);
+    setSearchFocusToken(t => t + 1);
+  }
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    if (!isMobile) inputRef.current?.focus();
+  }, [isMobile]);
+
+  // Ctrl+F (Cmd+F) searches this channel instead of the page. Left alone while a modal is open.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key?.toLowerCase() !== 'f') return;
+      if (document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      openSearch();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const scrollRef = useRef(null);
   const inputRef  = useRef(null);
 
   const channelMessages = messages[String(channelId)] ?? [];
+  // The list as last rendered, for page requests deciding what to fetch and whether to trim
+  const channelMessagesRef = useRef(channelMessages);
+  channelMessagesRef.current = channelMessages;
+
+  /** Which end's page fetch failed: show it, and let scrolling retry once the cool-down is over. */
+  function notePageError(w, end) {
+    w.retryAt = Date.now() + PAGE_RETRY_MS;
+    if (windowRef.current !== w) return;
+    setPageError(end);
+    // The user may already be at that end, where no scroll event will come to retry
+    setTimeout(() => { if (windowRef.current === w) setPageError(null); }, PAGE_RETRY_MS);
+  }
 
   /**
-   * Fetch the next page of older history. Returns false (without fetching) when there's
-   * nothing more to load, a fetch is already running, or a failed fetch is cooling down.
+   * Fetch the page before the oldest loaded message. Returns false (without fetching) when there's nothing
+   * older, a fetch is already running, the window is being replaced, or a failed fetch is cooling down.
    */
   function loadOlderMessages() {
-    const history = historyRef.current;
+    const w = windowRef.current;
     // The channelId check covers the render between a channel switch and its reset effect
-    if (history?.channelId !== String(channelId)) return false;
-    if (!history.hasMore || history.loading || Date.now() < history.retryAt) return false;
-    fetchOlderPage(history);
+    if (!w || historyRef.current?.channelId !== String(channelId)) return false;
+    if (!w.hasOlder || w.loadingOlder || Date.now() < w.retryAt) return false;
+    fetchOlderPage(w);
     return true;
   }
 
-  async function fetchOlderPage(history) {
-    const key = history.channelId;
-    // Live new/deleted messages are mirrored in the local list, so its length tracks the server offset
-    const offset = channelMessages.filter(m => !m._pending).length;
-    history.loading = true;
+  async function fetchOlderPage(w) {
+    const key = String(channelId);
+    const oldest = realMessages(channelMessagesRef.current)[0];
+    if (!oldest) return;
+    w.loadingOlder = true;
     setLoadingOlder(true);
     try {
-      const page = await getMessages(key, MESSAGE_PAGE_SIZE, offset);
-      if (historyRef.current !== history) return;
-      // Pages come newest-first; drop any overlap caused by messages arriving mid-request
-      const known = new Set(channelMessages.map(m => String(m.id)));
-      const older = page.filter(m => !known.has(String(m.id))).reverse();
-      // A full page with nothing new means the offset no longer lines up; stop instead of refetching it forever
-      history.hasMore = page.length === MESSAGE_PAGE_SIZE && older.length > 0;
-      setHasMore(history.hasMore);
-      if (older.length > 0) {
-        rememberMessagePolls(older);
-        setMessages(prev => ({ ...prev, [key]: [...older, ...(prev[key] ?? [])] }));
+      const page = await getMessagesAt(key, { before: oldest.id }, PAGE_SIZE);
+      if (windowRef.current !== w) return;
+      rememberMessagePolls(page);
+      w.hasOlder = page.length === PAGE_SIZE;
+      // Past the cap, drop the newest end. Pending sends belong at the very end, so never trim while there are any.
+      const current = channelMessagesRef.current;
+      const trim = !current.some(m => m._pending) && realMessages(current).length + page.length > MAX_WINDOW;
+      if (trim && !w.hasNewer) {
+        // The window no longer reaches the present: hold live messages from here on
+        w.hasNewer = true;
+        holdLiveMessages(key);
       }
+      scrollIntentRef.current = captureScrollAnchor(scrollRef.current);
+      setMessages(prev => ({ ...prev, [key]: prependOlder(prev[key] ?? [], page, trim) }));
+      setHasOlder(w.hasOlder);
+      setHasNewer(w.hasNewer);
     } catch (err) {
       console.error('Failed to load older messages:', err);
-      history.retryAt = Date.now() + LOAD_OLDER_RETRY_MS;
-      if (historyRef.current === history) {
-        setOlderError(true);
-        // The user may already be at the very top, where no scroll event will come to retry
-        setTimeout(() => { if (historyRef.current === history) setOlderError(false); }, LOAD_OLDER_RETRY_MS);
-      }
+      notePageError(w, 'older');
     } finally {
-      history.loading = false;
-      if (historyRef.current === history) setLoadingOlder(false);
+      w.loadingOlder = false;
+      if (windowRef.current === w) setLoadingOlder(false);
     }
+  }
+
+  /** The page after the newest loaded message, while the window doesn't reach the present. Same contract as above. */
+  function loadNewerMessages() {
+    const w = windowRef.current;
+    if (!w || historyRef.current?.channelId !== String(channelId)) return false;
+    if (!w.hasNewer || w.loadingNewer || Date.now() < w.retryAt) return false;
+    fetchNewerPage(w);
+    return true;
+  }
+
+  async function fetchNewerPage(w) {
+    const key = String(channelId);
+    const real = realMessages(channelMessagesRef.current);
+    const newest = real[real.length - 1];
+    if (!newest) return;
+    w.loadingNewer = true;
+    setLoadingNewer(true);
+    try {
+      const page = await getMessagesAt(key, { after: newest.id }, PAGE_SIZE);
+      if (windowRef.current !== w) return;
+      rememberMessagePolls(page);
+      const trim = real.length + page.length > MAX_WINDOW;
+      if (trim) w.hasOlder = true;
+      // A short page means we've caught up. Anything sent since that query ran was held: merge it in,
+      // in the same update, and go back to appending live messages.
+      let held = [];
+      if (page.length < PAGE_SIZE) {
+        w.hasNewer = false;
+        held = releaseLiveMessages(key);
+      }
+      scrollIntentRef.current = captureScrollAnchor(scrollRef.current);
+      setMessages(prev => ({ ...prev, [key]: appendNewer(prev[key] ?? [], [...page, ...held], trim) }));
+      setHasOlder(w.hasOlder);
+      setHasNewer(w.hasNewer);
+      if (!w.hasNewer) markChannelRead(channelId);
+    } catch (err) {
+      console.error('Failed to load newer messages:', err);
+      notePageError(w, 'newer');
+    } finally {
+      w.loadingNewer = false;
+      if (windowRef.current === w) setLoadingNewer(false);
+    }
+  }
+
+  /** Fetch a fresh window: the latest page (around = null) or the one centred on a message. */
+  async function fetchWindow(around) {
+    if (around == null) {
+      const page = await getMessages(channelId, PAGE_SIZE, 0);
+      return { page, hasOlder: page.length === PAGE_SIZE, hasNewer: false };
+    }
+    const page = await getMessagesAt(channelId, { around }, PAGE_SIZE);
+    return { page, ...aroundFlags(page, around) };
+  }
+
+  /**
+   * Show a freshly fetched window in place of the current one. Live messages must have been held since
+   * before the fetch: they're merged in if the window reaches the present, and held on otherwise.
+   */
+  function applyWindow({ page, hasOlder: older, hasNewer: newer }, intent) {
+    const key = String(channelId);
+    const w = { hasOlder: older, hasNewer: newer, loadingOlder: false, loadingNewer: false, retryAt: 0 };
+    windowRef.current = w;
+    let held = releaseLiveMessages(key);
+    if (newer) {
+      // Those belong past the end of this window; paging forward fetches them
+      held = [];
+      holdLiveMessages(key);
+    }
+    rememberMessagePolls(page);
+    scrollIntentRef.current = intent;
+    setMessages(prev => {
+      // Pending sends only make sense at the present
+      const pending = newer ? [] : (prev[key] ?? []).filter(m => m._pending);
+      return { ...prev, [key]: appendNewer(pending, [...page, ...held], false) };
+    });
+    setHasOlder(older);
+    setHasNewer(newer);
+    setLoadingOlder(false);
+    setLoadingNewer(false);
+    setPageError(null);
+    if (!newer) markChannelRead(channelId);
+  }
+
+  /**
+   * Replace the window with the present (around = null, scrolled to the bottom) or with the history around a
+   * message. Resolves true once it's in place, false if it failed or a later replacement superseded it.
+   */
+  async function replaceWindow(around) {
+    const key = String(channelId);
+    const history = historyRef.current;
+    const prev = windowRef.current;
+    if (!prev || history?.channelId !== key) return false;
+    const seq = ++replaceSeqRef.current;
+    replacingRef.current = true;
+    // A stand-in with both ends busy: no new page fetches start, and ones in flight are dropped when they land
+    windowRef.current = { ...prev, loadingOlder: true, loadingNewer: true };
+    setLoadingOlder(false);
+    setLoadingNewer(false);
+    holdLiveMessages(key);
+    try {
+      const result = await fetchWindow(around);
+      if (replaceSeqRef.current !== seq || historyRef.current !== history) return false;
+      applyWindow(result, around == null ? { type: 'bottom' } : null);
+      return true;
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      if (replaceSeqRef.current === seq && historyRef.current === history) {
+        windowRef.current = { ...prev, loadingOlder: false, loadingNewer: false, retryAt: 0 };
+        if (!prev.hasNewer) {
+          // We were at the present: put back what arrived during the failed fetch
+          const held = releaseLiveMessages(key);
+          if (held.length > 0) setMessages(p => ({ ...p, [key]: appendNewer(p[key] ?? [], held, false) }));
+        }
+      }
+      return false;
+    } finally {
+      if (replaceSeqRef.current === seq) replacingRef.current = false;
+    }
+  }
+
+  const loadAround = useCallback(id => replaceWindow(id), [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Go back to the newest messages. Only fetches when the window doesn't already reach them. */
+  async function goToPresent() {
+    // During a jump the window is about to move, so fetch the present even if the current one reaches it
+    if (!windowRef.current?.hasNewer && !replacingRef.current) return true;
+    return replaceWindow(null);
   }
 
   // Derive group chat info
@@ -273,10 +457,8 @@ export default function ChatView() {
       await deleteMessage(msg.channelId, msg.id);
     } catch (err) {
       console.error('Delete failed:', err);
-      // Re-fetch to restore if delete failed — simplest recovery
-      getMessages(msg.channelId, MESSAGE_PAGE_SIZE, 0)
-        .then(msgs => setMessages(p => ({ ...p, [String(msg.channelId)]: [...msgs].reverse() })))
-        .catch(console.error);
+      // Put it back where it was (the window may have moved on meanwhile, in which case it's left out)
+      setMessages(p => ({ ...p, [String(msg.channelId)]: reinsert(p[String(msg.channelId)] ?? [], msg) }));
     }
   }, [setMessages]);
 
@@ -346,17 +528,27 @@ export default function ChatView() {
     // Attachments belong to the draft, which is discarded on channel switch too
     fileUploads.clearFiles();
 
-    // Fresh pagination state; hasMore stays false until the first page tells us otherwise
-    const history = { channelId: String(channelId), hasMore: false, loading: false, retryAt: 0 };
+    // Fresh channel and window state; no paging until the first window tells us what's there
+    const history = { channelId: String(channelId) };
     historyRef.current = history;
+    windowRef.current = null;
+    replaceSeqRef.current++;
+    replacingRef.current = false;
+    scrollIntentRef.current = null;
     setLoadingOlder(false);
-    setHasMore(false);
-    setOlderError(false);
+    setLoadingNewer(false);
+    setHasOlder(false);
+    setHasNewer(false);
+    setPageError(null);
 
+    // Opening a message link: load the history around it straight away rather than the present first
+    const linked = jumpToIdRef.current;
+    // Hold live messages until the window is in place, so one arriving mid-request is neither lost nor doubled
+    holdLiveMessages(channelId);
     Promise.all([
       getChannel(channelId),
-      getMessages(channelId, MESSAGE_PAGE_SIZE, 0),
-    ]).then(([ch, msgs]) => {
+      fetchWindow(linked && /^\d+$/.test(linked) ? linked : null),
+    ]).then(([ch, win]) => {
       // Ignore responses for a channel we've already navigated away from
       if (historyRef.current !== history) return;
       // Keep the correct sidebar active based on the channel type
@@ -400,29 +592,35 @@ export default function ChatView() {
         }).catch(console.error);
       }
       setChannel(ch);
-      history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
-      setHasMore(history.hasMore);
-      rememberMessagePolls(msgs);
-      setMessages(p => ({ ...p, [String(channelId)]: [...msgs].reverse() }));
+      applyWindow(win, null);
       setLoading(false);
     }).catch(e => {
       if (historyRef.current !== history) return;
       console.error(e);
       setLoading(false);
     });
+    return () => {
+      // Leaving the channel: stop holding its live messages (the next visit loads a fresh window anyway)
+      releaseLiveMessages(channelId);
+    };
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After the hub was down, messages sent, edited or deleted meanwhile were missed: refetch the newest page and
   // put it in place of what we had from that point on. Older pages are kept when they still join up with it.
-  const channelMessagesRef = useRef(channelMessages);
-  channelMessagesRef.current = channelMessages;
+  // Away from the present there's nothing to put in place: paging forward fetches what was missed.
   useEffect(() => {
     if (!syncGeneration || !channelId) return;
     const key = String(channelId);
     const history = historyRef.current;
+    const w = windowRef.current;
+    if (!w || w.hasNewer || replacingRef.current) return;
     let cancelled = false;
-    getMessages(channelId, MESSAGE_PAGE_SIZE, 0).then(msgs => {
-      if (cancelled || historyRef.current !== history) return;
+    // Hold live messages meanwhile, so ones arriving during the request aren't overwritten by the older page
+    holdLiveMessages(key);
+    const isCurrent = () => !cancelled && historyRef.current === history && windowRef.current === w;
+    getMessages(channelId, PAGE_SIZE, 0).then(msgs => {
+      if (!isCurrent()) return;
+      const held = releaseLiveMessages(key);
       const latest = [...msgs].reverse();
       const oldestLatest = latest[0]?.id;
       // No overlap means more than a page arrived: what we had no longer joins up, so start from the newest page
@@ -431,14 +629,19 @@ export default function ChatView() {
       setMessages(p => {
         const have = p[key] ?? [];
         const kept = joins ? have.filter(m => !m._pending && m.id < oldestLatest) : [];
-        return { ...p, [key]: [...kept, ...latest, ...have.filter(m => m._pending)] };
+        return { ...p, [key]: appendNewer([...kept, ...latest, ...have.filter(m => m._pending)], held, false) };
       });
       if (!joins) {
-        history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
-        setHasMore(history.hasMore);
+        w.hasOlder = msgs.length === PAGE_SIZE;
+        setHasOlder(w.hasOlder);
       }
       markChannelRead(channelId);
-    }).catch(e => console.warn('Resync of channel messages failed:', e));
+    }).catch(e => {
+      console.warn('Resync of channel messages failed:', e);
+      if (!isCurrent()) return;
+      const held = releaseLiveMessages(key);
+      if (held.length > 0) setMessages(p => ({ ...p, [key]: appendNewer(p[key] ?? [], held, false) }));
+    });
     return () => { cancelled = true; };
   }, [syncGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -472,6 +675,15 @@ export default function ChatView() {
 
   // ?message=<id> (from a message link) asks the list to scroll to and highlight that message
   const jumpToId = searchParams.get('message');
+  const jumpToIdRef = useRef(jumpToId);
+  jumpToIdRef.current = jumpToId;
+  // A search result: jump the list to it (the same way a message link does)
+  const handleSearchJump = useCallback((msg) => {
+    setSearchParams(p => { p.set('message', String(msg.id)); return p; }, { replace: true });
+    // On phones the results cover the chat
+    if (isMobile) setSearchOpen(false);
+  }, [setSearchParams, isMobile]);
+
   const handleJumpHandled = useCallback(() => {
     // Remove the param without navigating, so the same link can be followed again
     setSearchParams(p => { p.delete('message'); return p; }, { replace: true });
@@ -491,6 +703,9 @@ export default function ChatView() {
     if (fileUploads.uploading) return;
 
     setSendError(null);
+
+    // Reading older history: go back to the present first, so the sent message shows up where it belongs
+    if (windowRef.current?.hasNewer || replacingRef.current) await goToPresent();
 
     // Check for invalid expiration times before attempting upload
     const { limits } = fileUploads;
@@ -635,6 +850,8 @@ export default function ChatView() {
           leaveBusy={leaveBusy}
           showMembers={showMembers}
           onToggleMembers={toggleMembers}
+          showSearch={searchOpen}
+          onToggleSearch={() => (searchOpen ? closeSearch() : openSearch())}
         />
 
         {/* Drag and drop overlay */}
@@ -667,10 +884,16 @@ export default function ChatView() {
           displayName={channelDisplayName}
           otherUser={otherUser}
           messages={channelMessages}
-          hasMore={hasMore}
+          hasOlder={hasOlder}
+          hasNewer={hasNewer}
           loadingOlder={loadingOlder}
-          olderError={olderError}
+          loadingNewer={loadingNewer}
+          pageError={pageError}
           onLoadOlder={loadOlderMessages}
+          onLoadNewer={loadNewerMessages}
+          onLoadAround={loadAround}
+          onJumpToPresent={goToPresent}
+          scrollIntentRef={scrollIntentRef}
           jumpToId={jumpToId}
           onJumpHandled={handleJumpHandled}
           isBlocked={isBlocked}
@@ -784,16 +1007,36 @@ export default function ChatView() {
             </div>
           </>
         ) : (
-          /* Desktop: plain flex sibling — only render when open */
-          showMembers && <MemberList {...memberListProps} />
+          /* Desktop: plain flex sibling — only render when open (search takes its place) */
+          !searchOpen && showMembers && <MemberList {...memberListProps} />
         )
+      )}
+
+      {channel && searchOpen && (
+        <SearchPanel
+          channelId={channelId}
+          channelLabel={isGuildChannel ? `#${channelDisplayName}` : channelDisplayName}
+          focusToken={searchFocusToken}
+          onJump={handleSearchJump}
+          onClose={closeSearch}
+          isMobile={isMobile}
+          peekUser={peekUser}
+          resolveUser={resolveUser}
+          getColor={getColor}
+          mentionData={mentionData}
+          isBlocked={isBlocked}
+          blockedMessageMode={blockedMessageMode}
+        />
       )}
 
       {showCreatePoll && (
         <PollCreateModal
           channelId={channelId}
           onClose={() => setShowCreatePoll(false)}
-          onCreated={() => requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; })}
+          onCreated={() => {
+            if (windowRef.current?.hasNewer) goToPresent();
+            else requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; });
+          }}
         />
       )}
 

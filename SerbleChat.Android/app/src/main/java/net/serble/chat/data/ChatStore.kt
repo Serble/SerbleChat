@@ -29,16 +29,40 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-/** The messages of one channel the app has loaded: a contiguous run ending at the newest. */
+/**
+ * The messages of one channel the app has loaded: a contiguous window of its history, oldest first. It normally ends
+ * at the newest message, but jumping to an old one (or scrolling far back) moves it, so any part of a long history
+ * can be shown without holding all of it. Paging at one end drops messages off the other once it passes
+ * [ChatStore.MAX_WINDOW].
+ */
 data class ChannelMessages(
     val messages: List<Message> = emptyList(),
     /** Oldest first, newest last. */
     val pending: List<PendingMessage> = emptyList(),
     val reachedStart: Boolean = false,
+    /** The window stops short of the newest message. Live messages then go to [buffered] instead of the list. */
+    val hasNewer: Boolean = false,
     val loadingOlder: Boolean = false,
+    val loadingNewer: Boolean = false,
     val loaded: Boolean = false,
     val error: String? = null,
+    /** Goes up each time the window is replaced, so a request started before that can tell its answer is stale. */
+    val epoch: Int = 0,
+    /** Goes up whenever the newer end changes other than by a live message (paging, trimming, replacing). */
+    val tailVersion: Int = 0,
+    /**
+     * Live messages that arrived while [hasNewer]. Merged in when paging forward reaches the present, which closes
+     * the gap between that last page being read on the server and this window rejoining the live stream.
+     */
+    val buffered: List<Message> = emptyList(),
 )
+
+/** A fetched stretch of history, ready to become a channel's window (see [ChatStore.showWindow]). */
+data class MessageWindow(val messages: List<Message>, val reachedStart: Boolean, val hasNewer: Boolean)
+
+/** Oldest first, each ID once. */
+private fun mergeById(a: List<Message>, b: List<Message>): List<Message> =
+    if (b.isEmpty()) a else (a + b).associateBy { it.id }.values.sortedBy { it.id }
 
 data class OwnStatus(val type: String = "online", val message: String = "", val expiresAt: String? = null) {
     fun effectiveType(now: Instant = Instant.now()): String =
@@ -248,7 +272,7 @@ class ChatStore(
                 users = _users.value,
                 unreads = _unreads.value,
                 lastActivity = _lastActivity.value,
-                messages = _messages.value.filterKeys { it in recent }.mapValues { it.value.messages.takeLast(50) },
+                messages = _messages.value.filter { (id, s) -> id in recent && !s.hasNewer }.mapValues { it.value.messages.takeLast(50) },
             )
             cache.write("snapshot_$id", AppJson.encodeToString(Snapshot.serializer(), snap))
         }
@@ -281,6 +305,7 @@ class ChatStore(
         // The rest are checked when they're opened (edits and deletions don't show in the newest ID).
         val latest = serverLatest
         val moved = _messages.value.filter { (id, state) ->
+            if (state.hasNewer) return@filter false
             val newest = state.messages.lastOrNull()?.id ?: return@filter false
             (latest[id] ?: 0) > newest
         }.keys
@@ -450,15 +475,47 @@ class ChatStore(
     }
 
     private suspend fun loadLatest(id: Long) {
-        val generation = _syncGeneration.value
         try {
-            val page = api.messages(id, PAGE).reversed()
-            onMessagesLoaded(page)
-            updateChannelMessages(id) { it.copy(messages = page, reachedStart = page.size < PAGE, loaded = true, error = null) }
-            freshIn[id] = generation
+            showWindow(id, fetchLatest(id))
         } catch (e: ApiException) {
             updateChannelMessages(id) { it.copy(loaded = true, error = e.message) }
         }
+    }
+
+    /** The newest page of a channel, as a window. */
+    suspend fun fetchLatest(id: Long): MessageWindow {
+        val page = api.messages(id, PAGE).reversed()
+        return MessageWindow(page, reachedStart = page.size < PAGE, hasNewer = false)
+    }
+
+    /**
+     * The stretch of history around [messageId], or null if there's no such message. Doesn't change what's shown:
+     * pass the result to [showWindow], which lets the list be told where to scroll before the new rows arrive.
+     */
+    suspend fun fetchAround(channelId: Long, messageId: Long): MessageWindow? {
+        val around = api.messages(channelId, PAGE, around = messageId).reversed()
+        if (around.none { it.id == messageId }) return null
+        val half = PAGE / 2
+        return MessageWindow(
+            around,
+            reachedStart = around.count { it.id < messageId } < half,
+            hasNewer = around.count { it.id > messageId } >= half,
+        )
+    }
+
+    /** Replaces a channel's window with [window], e.g. after jumping to a message or back to the present. */
+    fun showWindow(id: Long, window: MessageWindow) {
+        onMessagesLoaded(window.messages)
+        updateChannelMessages(id) { s ->
+            // Rejoining the live stream: add what arrived while we weren't following it
+            val messages = if (window.hasNewer) window.messages else mergeById(window.messages, s.buffered)
+            s.copy(
+                messages = messages, reachedStart = window.reachedStart, hasNewer = window.hasNewer,
+                buffered = emptyList(), loadingOlder = false, loadingNewer = false, loaded = true, error = null,
+                epoch = s.epoch + 1, tailVersion = s.tailVersion + 1,
+            )
+        }
+        freshIn[id] = _syncGeneration.value
     }
 
     /**
@@ -474,10 +531,21 @@ class ChatStore(
     }
 
     private suspend fun fetchNewer(id: Long) {
-        val have = _messages.value[id]?.messages ?: return loadLatest(id)
+        val current = _messages.value[id] ?: return loadLatest(id)
+        val have = current.messages
         val newest = have.lastOrNull()?.id ?: return loadLatest(id)
         val generation = _syncGeneration.value
+        val epoch = current.epoch
         try {
+            if (current.hasNewer) {
+                // A stretch of old history: nothing to add at the end, but edits and deletions may have been missed.
+                // Fetch the same stretch again (`after` the one before the oldest gives it from the oldest on).
+                val fresh = api.messages(id, have.size, after = have.first().id - 1).reversed().filter { it.id <= newest }
+                onMessagesLoaded(fresh)
+                updateChannelMessages(id) { s -> if (s.epoch != epoch) s else s.copy(messages = fresh, loaded = true, error = null) }
+                freshIn[id] = generation
+                return
+            }
             val newer = api.messages(id, CATCH_UP, after = newest).reversed()
             if (newer.size >= CATCH_UP) return loadLatest(id)
             onMessagesLoaded(newer)
@@ -486,9 +554,14 @@ class ChatStore(
             val latest = api.messages(id, PAGE).reversed()
             onMessagesLoaded(latest)
             updateChannelMessages(id) { state ->
+                // Jumped elsewhere meanwhile: this belongs to a window that's gone
+                if (state.epoch != epoch) return@updateChannelMessages state
                 val oldestLatest = latest.firstOrNull()?.id ?: Long.MAX_VALUE
                 val kept = state.messages.filter { it.id < oldestLatest }
-                state.copy(messages = (kept + latest).distinctBy { it.id }, loaded = true, error = null)
+                val all = (kept + latest).distinctBy { it.id }
+                val trimmed = all.size > MAX_WINDOW
+                state.copy(messages = if (trimmed) all.takeLast(MAX_WINDOW) else all, reachedStart = state.reachedStart && !trimmed,
+                    loaded = true, error = null)
             }
             freshIn[id] = generation
         } catch (e: ApiException) {
@@ -496,16 +569,26 @@ class ChatStore(
         }
     }
 
+    /** Pages back from the oldest message in the window, dropping the newest ones once it's past [MAX_WINDOW]. */
     suspend fun loadOlder(id: Long) {
         val state = _messages.value[id] ?: return
         if (state.loadingOlder || state.reachedStart) return
         val oldest = state.messages.firstOrNull()?.id ?: return
+        val epoch = state.epoch
         updateChannelMessages(id) { it.copy(loadingOlder = true) }
         try {
             val page = api.messages(id, PAGE, before = oldest).reversed()
-            onMessagesLoaded(page)
+            onMessagesLoaded(page, bump = false)
             updateChannelMessages(id) { s ->
-                s.copy(messages = (page + s.messages).distinctBy { it.id }, reachedStart = page.size < PAGE, loadingOlder = false)
+                if (s.epoch != epoch) return@updateChannelMessages s.copy(loadingOlder = false)
+                val all = mergeById(page, s.messages)
+                val trimmed = all.size > MAX_WINDOW
+                s.copy(
+                    messages = if (trimmed) all.take(MAX_WINDOW) else all,
+                    reachedStart = page.size < PAGE, loadingOlder = false,
+                    hasNewer = s.hasNewer || trimmed,
+                    tailVersion = if (trimmed) s.tailVersion + 1 else s.tailVersion,
+                )
             }
         } catch (e: ApiException) {
             updateChannelMessages(id) { it.copy(loadingOlder = false) }
@@ -513,13 +596,44 @@ class ChatStore(
         }
     }
 
+    /**
+     * Pages forward from the newest message in a window that stops short of the present, dropping the oldest ones
+     * once it's past [MAX_WINDOW]. A short page means it has caught up, and live messages join it again.
+     */
+    suspend fun loadNewer(id: Long) {
+        val state = _messages.value[id] ?: return
+        if (state.loadingNewer || !state.hasNewer) return
+        val newest = state.messages.lastOrNull()?.id ?: return
+        val epoch = state.epoch
+        updateChannelMessages(id) { it.copy(loadingNewer = true) }
+        try {
+            val page = api.messages(id, PAGE, after = newest).reversed()
+            onMessagesLoaded(page)
+            updateChannelMessages(id) { s ->
+                if (s.epoch != epoch) return@updateChannelMessages s.copy(loadingNewer = false)
+                val atPresent = page.size < PAGE
+                var all = mergeById(s.messages, page)
+                if (atPresent) all = mergeById(all, s.buffered)
+                val trimmed = all.size > MAX_WINDOW
+                s.copy(
+                    messages = if (trimmed) all.takeLast(MAX_WINDOW) else all,
+                    hasNewer = !atPresent, buffered = if (atPresent) emptyList() else s.buffered,
+                    reachedStart = s.reachedStart && !trimmed, loadingNewer = false, tailVersion = s.tailVersion + 1,
+                )
+            }
+        } catch (e: ApiException) {
+            updateChannelMessages(id) { it.copy(loadingNewer = false) }
+            throw e
+        }
+    }
+
     /** Fetches one message, e.g. to jump to a linked message far up the history. */
     suspend fun fetchMessage(channelId: Long, messageId: Long): Message = api.message(channelId, messageId)
 
-    private fun onMessagesLoaded(list: List<Message>) {
+    private fun onMessagesLoaded(list: List<Message>, bump: Boolean = true) {
         val authors = list.mapNotNull { it.authorId }
         ensureUsers(authors)
-        list.lastOrNull()?.let { bumpActivity(it.channelId, it.id) }
+        if (bump) list.lastOrNull()?.let { bumpActivity(it.channelId, it.id) }
     }
 
     private fun updateChannelMessages(id: Long, change: (ChannelMessages) -> ChannelMessages) {
@@ -535,7 +649,10 @@ class ChatStore(
 
     fun markLatestRead(id: Long) {
         clearUnread(id)
-        val newest = _messages.value[id]?.messages?.lastOrNull()?.id ?: return
+        val state = _messages.value[id] ?: return
+        // Reading old history isn't reading what's new
+        if (state.hasNewer) return
+        val newest = state.messages.lastOrNull()?.id ?: return
         scope.launch { runCatching { api.markRead(id, newest) } }
     }
 
@@ -819,7 +936,12 @@ class ChatStore(
                     val idx = s.pending.indexOfFirst { it.content == message.content }
                     if (idx >= 0) s.pending.toMutableList().apply { removeAt(idx) } else s.pending
                 } else s.pending
-                s.copy(messages = if (s.messages.any { it.id == message.id }) s.messages else s.messages + message, pending = pending)
+                when {
+                    // Showing old history: keep it for when paging forward catches up (see ChannelMessages.buffered)
+                    s.hasNewer -> s.copy(buffered = (s.buffered.filterNot { it.id == message.id } + message).takeLast(MAX_WINDOW), pending = pending)
+                    s.messages.any { it.id == message.id } -> s.copy(pending = pending)
+                    else -> s.copy(messages = s.messages + message, pending = pending)
+                }
             }
         }
         if (message.authorId == userId) return
@@ -834,13 +956,18 @@ class ChatStore(
 
     private fun replaceMessage(message: Message) {
         updateChannelMessages(message.channelId) { s ->
-            s.copy(messages = s.messages.map { if (it.id == message.id) message.copy(poll = message.poll ?: it.poll) else it })
+            fun List<Message>.edit() = map { if (it.id == message.id) message.copy(poll = message.poll ?: it.poll) else it }
+            s.copy(messages = s.messages.edit(), buffered = s.buffered.edit())
         }
     }
 
     private fun removeMessage(id: Long) {
         _messages.update { map ->
-            map.mapValues { (_, s) -> if (s.messages.any { it.id == id }) s.copy(messages = s.messages.filterNot { it.id == id }) else s }
+            map.mapValues { (_, s) ->
+                if (s.messages.any { it.id == id } || s.buffered.any { it.id == id }) {
+                    s.copy(messages = s.messages.filterNot { it.id == id }, buffered = s.buffered.filterNot { it.id == id })
+                } else s
+            }
         }
         scheduleSave()
     }
@@ -982,6 +1109,8 @@ class ChatStore(
         const val TAG = "ChatStore"
         const val PAGE = 50
         const val CATCH_UP = 100
+        /** The most messages a channel's window holds; paging past it drops them off the far end. */
+        const val MAX_WINDOW = 200
     }
 }
 

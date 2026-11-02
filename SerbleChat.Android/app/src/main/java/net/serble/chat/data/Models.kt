@@ -179,6 +179,14 @@ data class Message(
     val sentAt: Instant by lazy { parseInstant(createdAt) ?: Instant.EPOCH }
 }
 
+@Serializable
+data class SearchResults(
+    val messages: List<Message> = emptyList(),
+    val hasMore: Boolean = false,
+    /** Only on the first page. */
+    val totalCount: Int? = null,
+)
+
 /** A message the user sent that the server hasn't confirmed yet. */
 data class PendingMessage(val localId: Long, val channelId: Long, val content: String, val failed: Boolean = false)
 

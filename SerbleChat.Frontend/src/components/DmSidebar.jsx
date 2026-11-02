@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
@@ -11,8 +11,9 @@ import Avatar from './Avatar.jsx';
 import UserPanel from './UserPanel.jsx';
 import useGroupChatIcon from './useGroupChatIcon.js';
 import { IconButton } from './ui/index.js';
-import { GearIcon, PeopleIcon, PlusIcon } from '../icons.jsx';
-import { getAccountById } from '../api.js';
+import { GearIcon, PeopleIcon, PlusIcon, SearchIcon, CloseIcon } from '../icons.jsx';
+import { getAccountById, getOrCreateDmChannel } from '../api.js';
+import './chat/chat.css';
 import { AvatarStatusDot } from './status/StatusDot.jsx';
 
 const HOVER_CLASS = 'hov-bg hov-text-secondary';
@@ -30,6 +31,9 @@ function rowStyle(active, bold) {
     transition: 'background 0.1s, color 0.1s',
   };
 }
+
+// Hovered rows, and the keyboard-selected row while filtering
+const SELECTED_STYLE = { background: 'var(--bg-hover)', color: 'var(--text-secondary)' };
 
 const labelStyle = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 };
 
@@ -60,7 +64,7 @@ function SidebarItem({ icon, label, active, badge, onClick }) {
   );
 }
 
-function DmItem({ dm, currentChannelId }) {
+function DmItem({ dm, currentChannelId, selected, onOpen }) {
   const { currentUser, resolveUser, unreads, getUserStatus, seedUserStatuses, presenceResync } = useApp();
   const nav = useNavigate();
   const [otherUser, setOtherUser] = useState(null);
@@ -93,10 +97,11 @@ function DmItem({ dm, currentChannelId }) {
   return (
     <>
       <button
-        onClick={() => nav(`/app/channel/${dm.channelId}`)}
+        onClick={() => { nav(`/app/channel/${dm.channelId}`); onOpen?.(); }}
         onContextMenu={handleContextMenu}
         className={active ? undefined : HOVER_CLASS}
-        style={rowStyle(active, unread > 0)}
+        style={{ ...rowStyle(active, unread > 0), ...(selected && !active && SELECTED_STYLE) }}
+        data-selected={selected || undefined}
       >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar userId={otherId} name={name} size={28} color={otherUser?.color} />
@@ -131,7 +136,7 @@ function DmItem({ dm, currentChannelId }) {
   );
 }
 
-function GroupItem({ chat, currentChannelId }) {
+function GroupItem({ chat, currentChannelId, selected, onOpen }) {
   const { unreads, currentUser, channelUpdatedEvent } = useApp();
   const nav = useNavigate();
   const active = String(currentChannelId) === String(chat.channelId);
@@ -161,12 +166,13 @@ function GroupItem({ chat, currentChannelId }) {
         }}
       >
         <button
-          onClick={() => nav(`/app/channel/${chat.channelId}`)}
+          onClick={() => { nav(`/app/channel/${chat.channelId}`); onOpen?.(); }}
           onContextMenu={handleContextMenu}
+          data-selected={selected || undefined}
           style={{
             ...rowStyle(active, unread > 0),
             width: undefined, flex: 1, minWidth: 0,
-            ...(!active && hovered && { background: 'var(--bg-hover)', color: 'var(--text-secondary)' }),
+            ...(!active && (hovered || selected) && SELECTED_STYLE),
           }}
         >
           {/* Group chat icon or avatar */}
@@ -217,6 +223,71 @@ function GroupItem({ chat, currentChannelId }) {
   );
 }
 
+/** A friend you have no DM with yet, offered while filtering: opening it starts the conversation. */
+function FriendResult({ userId, name, selected, onOpen }) {
+  const { getUserStatus, peekUser } = useApp();
+  const user = peekUser(userId);
+  const { presence } = getUserStatus(userId, user);
+  return (
+    <button
+      onClick={onOpen}
+      className={HOVER_CLASS}
+      data-selected={selected || undefined}
+      style={{ ...rowStyle(false), ...(selected && SELECTED_STYLE) }}
+    >
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <Avatar userId={userId} name={name} size={28} color={user?.color} />
+        <AvatarStatusDot presence={presence} size={8} />
+      </div>
+      <span style={labelStyle}>{name}</span>
+    </button>
+  );
+}
+
+/** Usernames for a set of user ids, filled in as they resolve (from the user cache when possible). */
+function useUsernames(ids) {
+  const { resolveUser, peekUser } = useApp();
+  const key = ids.join(',');
+  const [names, setNames] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    for (const id of ids) {
+      const cached = peekUser(id);
+      if (cached?.username) {
+        setNames(p => (p[id] === cached.username ? p : { ...p, [id]: cached.username }));
+        continue;
+      }
+      resolveUser(id).then(u => {
+        if (!cancelled && u?.username) setNames(p => ({ ...p, [id]: u.username }));
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return names;
+}
+
+/**
+ * How well a name matches the filter: 0 starts with it, 1 a word in it does, 2 contains it, -1 no match.
+ * `q` is already lower-cased.
+ */
+function matchRank(name, q) {
+  const n = name.toLowerCase();
+  if (n.startsWith(q)) return 0;
+  if (n.split(/[\s\-_.]+/).some(w => w.startsWith(q))) return 1;
+  return n.includes(q) ? 2 : -1;
+}
+
+/** Keep only matches, best first; ties keep their order (most recently active first). */
+function filterByName(items, q) {
+  return items
+    .map((item, i) => ({ item, i, rank: item.name ? matchRank(item.name, q) : -1 }))
+    .filter(x => x.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(x => x.item);
+}
+
+const NO_IDS = [];
+
 function SectionHeader({ label, action }) {
   return (
     <div style={{
@@ -233,11 +304,16 @@ function SectionHeader({ label, action }) {
 }
 
 export default function DmSidebar() {
-  const { currentUser, dmChannels, groupChats, friends, channelLastActive } = useApp();
+  const { currentUser, dmChannels, groupChats, friends, channelLastActive, refreshDms } = useApp();
   const { voiceSession, voiceMuted, toggleMute, leaveVoice, joinVoice, voiceChannelId, voiceParticipants, remoteScreenShares, localScreenShare, voiceStatus, voiceError } = useVoice();
   const nav = useNavigate();
   const loc = useLocation();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  // Conversation filter
+  const [query, setQuery] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const filterRef = useRef(null);
+  const listRef = useRef(null);
 
   const currentChannelId = loc.pathname.match(/\/channel\/(\d+)/)?.[1];
   const onFriends = loc.pathname === '/app/friends';
@@ -254,6 +330,111 @@ export default function DmSidebar() {
     (channelLastActive[String(b.channelId)] ?? 0) - (channelLastActive[String(a.channelId)] ?? 0)
   );
 
+  // ── Conversation filter ──
+  const q = query.trim().toLowerCase();
+  const filtering = q.length > 0;
+  const me = currentUser?.id;
+  const otherIdOf = dm => (dm.user1Id === me ? dm.user2Id : dm.user1Id);
+  // Accepted friends you have no DM with yet: offered so you can start one from here
+  const dmUserIds = new Set(dmChannels.map(otherIdOf));
+  const friendIds = friends
+    .filter(f => !f.pending)
+    .map(f => (f.user1Id === me ? f.user2Id : f.user1Id))
+    .filter(id => id && !dmUserIds.has(id));
+  const names = useUsernames(filtering ? [...dmUserIds, ...friendIds] : NO_IDS);
+
+  const results = useMemo(() => {
+    if (!filtering) return [];
+    const dms = filterByName(sortedDms.map(dm => ({ kind: 'dm', key: `dm-${dm.channelId}`, dm, name: names[otherIdOf(dm)] })), q);
+    const groups = filterByName(sortedGroups.map(chat => ({ kind: 'group', key: `group-${chat.channelId}`, chat, name: chat.channel?.name ?? '' })), q);
+    const people = filterByName(friendIds.map(id => ({ kind: 'friend', key: `friend-${id}`, userId: id, name: names[id] })), q)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...dms, ...groups, ...people];
+  }, [filtering, q, names, dmChannels, groupChats, friends, channelLastActive, me]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A new filter starts the keyboard selection at the best match
+  useEffect(() => { setSelectedIdx(0); }, [q]);
+
+  // Ctrl+K (Cmd+K) jumps to the filter from anywhere on the home screens
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key?.toLowerCase() !== 'k') return;
+      if (document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      filterRef.current?.focus();
+      filterRef.current?.select();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Keep the keyboard-selected row in view
+  useEffect(() => {
+    if (filtering) listRef.current?.querySelector('[data-selected]')?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx, filtering]);
+
+  function finishFilter() {
+    setQuery('');
+    filterRef.current?.blur();
+  }
+
+  async function openResult(r) {
+    if (!r) return;
+    if (r.kind === 'dm') nav(`/app/channel/${r.dm.channelId}`);
+    else if (r.kind === 'group') nav(`/app/channel/${r.chat.channelId}`);
+    else {
+      try {
+        const ch = await getOrCreateDmChannel(r.userId);
+        refreshDms();
+        nav(`/app/channel/${ch.id}`);
+      } catch (e) {
+        console.error('Could not open a DM:', e);
+        return;
+      }
+    }
+    finishFilter();
+  }
+
+  function handleFilterKeyDown(e) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.min(results.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.max(0, i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      openResult(results[selectedIdx]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (query) setQuery('');
+      else filterRef.current?.blur();
+    }
+  }
+
+  function renderResults() {
+    if (results.length === 0) {
+      return (
+        <div style={{ padding: '1.25rem 0.5rem', color: 'var(--text-subtle)', fontSize: '0.82rem', lineHeight: 1.6, overflowWrap: 'anywhere' }}>
+          No conversations match “{query.trim()}”.
+        </div>
+      );
+    }
+    const out = [];
+    let lastKind = null;
+    results.forEach((r, i) => {
+      if (r.kind !== lastKind) {
+        out.push(<SectionHeader key={`h-${r.kind}`} label={r.kind === 'dm' ? 'Direct Messages' : r.kind === 'group' ? 'Group Chats' : 'Start a Conversation'} />);
+        lastKind = r.kind;
+      }
+      const selected = i === selectedIdx;
+      if (r.kind === 'dm') out.push(<DmItem key={r.key} dm={r.dm} currentChannelId={currentChannelId} selected={selected} onOpen={finishFilter} />);
+      else if (r.kind === 'group') out.push(<GroupItem key={r.key} chat={r.chat} currentChannelId={currentChannelId} selected={selected} onOpen={finishFilter} />);
+      else out.push(<FriendResult key={r.key} userId={r.userId} name={r.name} selected={selected} onOpen={() => openResult(r)} />);
+    });
+    return out;
+  }
+
   return (
     <div style={{
       width: 240, background: 'var(--bg-secondary)', flexShrink: 0,
@@ -266,17 +447,35 @@ export default function DmSidebar() {
         padding: '0 0.75rem', borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
-        <div style={{
-          flex: 1, background: 'var(--bg-tertiary)', borderRadius: '4px',
-          padding: '0.35rem 0.6rem', color: 'var(--text-muted)',
-          fontSize: '0.82rem', cursor: 'text', userSelect: 'none',
-        }}>
-          Find a conversation…
+        <div className="search-box search-box--sidebar" onClick={() => filterRef.current?.focus()}>
+          <SearchIcon size={13} />
+          <input
+            ref={filterRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={handleFilterKeyDown}
+            placeholder="Find a conversation…"
+            aria-label="Find a conversation"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          {query && (
+            <button
+              type="button"
+              className="search-box-clear"
+              title="Clear"
+              aria-label="Clear filter"
+              onClick={e => { e.stopPropagation(); setQuery(''); filterRef.current?.focus(); }}
+            >
+              <CloseIcon size={12} />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Scrollable list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.5rem 0' }}>
+      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.5rem 0' }}>
+        {filtering ? renderResults() : <>
         {/* Friends */}
         <SidebarItem
           icon={<PeopleIcon size={16} />}
@@ -324,6 +523,7 @@ export default function DmSidebar() {
             No conversations yet.<br />Add friends to start chatting!
           </div>
         )}
+        </>}
       </div>
 
       {/* Voice Panel - shown when connected to voice */}

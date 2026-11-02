@@ -77,3 +77,25 @@ export function parseUtcDate(str) {
 export function isUnlimited(value) {
   return value === -1;
 }
+
+/**
+ * Split a search query the way the server does: whitespace separates words, "double quotes" keep a
+ * phrase together, and repeats (ignoring case) are dropped. Every term must appear in a match.
+ */
+export function parseSearchTerms(query) {
+  const terms = [];
+  let current = '';
+  let quoted = false;
+  const flush = () => {
+    const term = current.trim();
+    current = '';
+    if (term && !terms.some(t => t.toLowerCase() === term.toLowerCase())) terms.push(term);
+  };
+  for (const c of query ?? '') {
+    if (c === '"') { flush(); quoted = !quoted; }
+    else if (!quoted && /\s/.test(c)) flush();
+    else current += c;
+  }
+  flush();
+  return terms.slice(0, 10);
+}

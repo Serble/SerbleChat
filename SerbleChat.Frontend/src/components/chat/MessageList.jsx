@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import Avatar from '../Avatar.jsx';
 import { MessageBubble, BlockedGroupBubble } from './MessageBubble.jsx';
 import { markMessagesAsRead } from '../../api.js';
@@ -9,13 +9,34 @@ import './chat.css';
 
 // Consecutive messages from the same author within this window are grouped
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
-// Start fetching older messages when the user is within this distance of the top of the history
-const LOAD_OLDER_THRESHOLD_PX = 600;
+// Start fetching the next page when the user is within this distance of either end of the loaded history
+const LOAD_PAGE_THRESHOLD_PX = 600;
 // Beyond this distance from the bottom the user counts as "reading history"
 const AWAY_FROM_BOTTOM_PX = 80;
-// Give up looking for a linked message after paging back this many times
-const MAX_JUMP_PAGES = 60;
 const HIGHLIGHT_MS = 2400;
+
+/**
+ * Note where the message nearest the middle of the view sits, so the view can be put back exactly there
+ * after messages are added or dropped around it. Returns a scroll intent for MessageList, or null.
+ */
+export function captureScrollAnchor(scroller) {
+  if (!scroller) return null;
+  const box = scroller.getBoundingClientRect();
+  const mid = box.top + box.height / 2;
+  let best = null;
+  let bestDist = Infinity;
+  for (const el of scroller.querySelectorAll('[data-msgid]')) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < box.top || r.top > box.bottom) continue;
+    const dist = r.top <= mid && r.bottom >= mid ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+    if (dist < bestDist) {
+      best = el;
+      bestDist = dist;
+      if (dist === 0) break;
+    }
+  }
+  return best && { type: 'anchor', id: best.getAttribute('data-msgid'), top: best.getBoundingClientRect().top };
+}
 
 function dayKey(d) {
   return d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
@@ -145,7 +166,8 @@ export function MessageListSkeleton() {
  */
 export default function MessageList({
   scrollRef, channel, channelId, displayName, otherUser, messages,
-  hasMore, loadingOlder, olderError, onLoadOlder, jumpToId, onJumpHandled,
+  hasOlder, hasNewer, loadingOlder, loadingNewer, pageError,
+  onLoadOlder, onLoadNewer, onLoadAround, onJumpToPresent, scrollIntentRef, jumpToId, onJumpHandled,
   isBlocked, blockedMessageMode, currentUserId, editingMsgId, activeMsgId, bubbleProps,
 }) {
   const [highlightId, setHighlightId] = useState(null);
@@ -153,7 +175,9 @@ export default function MessageList({
   const [farFromBottom, setFarFromBottom] = useState(false);
   // Id of the newest message when the user scrolled away from the bottom (null while at the bottom)
   const [awayAnchor, setAwayAnchor] = useState(null);
-  const jumpPagesRef = useRef(0);
+  // The linked message we've already loaded the history around (so a missing one is reported, not refetched)
+  const [loadedAround, setLoadedAround] = useState(null);
+  const aroundRequestedRef = useRef(null);
   const lastMarkedReadIdRef = useRef(null);
   const markReadTimeoutRef = useRef(null);
 
@@ -177,16 +201,20 @@ export default function MessageList({
     return '';
   }
 
-  function checkNearTop() {
+  function checkNearEdges() {
     const el = scrollRef.current;
-    if (!el || !hasMore) return;
+    if (!el) return;
     const distanceFromTop = el.scrollHeight - el.clientHeight + el.scrollTop;
-    if (distanceFromTop < LOAD_OLDER_THRESHOLD_PX) onLoadOlder();
+    if (hasOlder && distanceFromTop < LOAD_PAGE_THRESHOLD_PX) onLoadOlder();
+    if (hasNewer && -el.scrollTop < LOAD_PAGE_THRESHOLD_PX) onLoadNewer();
   }
 
   function handleScroll() {
     const el = scrollRef.current;
     if (!el) return;
+    // Wheeling to the bottom can leave Chromium at scrollTop 1 (just past the end). Away from exactly 0, the
+    // column-reverse scroller stops sticking to the bottom, and new messages would land below the view.
+    if (el.scrollTop > 0 && el.scrollTop < 2) el.scrollTop = 0;
     const fromBottom = -el.scrollTop;
     setFarFromBottom(fromBottom > el.clientHeight);
     if (fromBottom > AWAY_FROM_BOTTOM_PX) {
@@ -194,49 +222,95 @@ export default function MessageList({
     } else if (awayAnchor !== null) {
       setAwayAnchor(null);
     }
-    checkNearTop();
+    checkNearEdges();
   }
 
-  function jumpToPresent() {
+  async function jumpToPresent() {
     const el = scrollRef.current;
     if (!el) return;
+    // Away from the present, the newest messages have to be loaded first; that lands at the bottom
+    if (hasNewer) {
+      setJumpState('searching');
+      const ok = await onJumpToPresent();
+      setJumpState(ok ? null : 'notfound');
+      return;
+    }
     // Smooth-scrolling through a long history is slow; skip to the last screenful first
     if (-el.scrollTop > el.clientHeight * 2) el.scrollTop = -el.clientHeight;
     el.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Scrolling isn't the only way the top of the history can end up on screen: the first page, a
+  // Hold the view in place across a page landing (or snap to the bottom after going to the present).
+  // A layout effect, so the correction happens before the browser paints the changed list.
+  useLayoutEffect(() => {
+    const intent = scrollIntentRef.current;
+    if (!intent) return;
+    scrollIntentRef.current = null;
+    const el = scrollRef.current;
+    if (!el) return;
+    if (intent.type === 'bottom') {
+      el.scrollTop = 0;
+      return;
+    }
+    const target = el.querySelector(`[data-msgid="${CSS.escape(intent.id)}"]`);
+    if (!target) return;
+    // In the column-reverse scroller, raising scrollTop moves the content up
+    const delta = target.getBoundingClientRect().top - intent.top;
+    if (Math.abs(delta) >= 0.5) el.scrollTop += delta;
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scrolling isn't the only way an end of the loaded history can end up on screen: the first page, a
   // short page, or hidden blocked messages may not fill the viewport. Re-check whenever the list changes.
   useEffect(() => {
-    checkNearTop();
-  }, [units, loadingOlder, hasMore, olderError]); // eslint-disable-line react-hooks/exhaustive-deps
+    checkNearEdges();
+  }, [units, loadingOlder, loadingNewer, hasOlder, hasNewer, pageError]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Jump to a linked message, paging back through history until it's loaded
-  useEffect(() => {
+  // Jump to a linked message: scroll to it if it's loaded, otherwise load the history around it first.
+  // A layout effect, so a freshly loaded window is scrolled into place before it's ever painted.
+  useLayoutEffect(() => {
     if (!jumpToId) return;
+    const id = String(jumpToId);
     const scroller = scrollRef.current;
-    const el = scroller?.querySelector(`[data-msgid="${CSS.escape(String(jumpToId))}"]`);
+    const el = scroller?.querySelector(`[data-msgid="${CSS.escape(id)}"]`);
     if (el) {
-      jumpPagesRef.current = 0;
+      aroundRequestedRef.current = null;
       setJumpState(null);
       // Smooth-scroll short hops; jump straight to far-away (e.g. freshly loaded) messages
       const offset = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-      const far = Math.abs(offset) > scroller.clientHeight * 2;
+      const far = loadedAround === id || Math.abs(offset) > scroller.clientHeight * 2;
       el.scrollIntoView({ behavior: far ? 'auto' : 'smooth', block: 'center' });
-      setHighlightId(String(jumpToId));
+      setHighlightId(id);
       onJumpHandled();
       return;
     }
-    if (loadingOlder) { setJumpState('searching'); return; }
-    if (hasMore && jumpPagesRef.current < MAX_JUMP_PAGES && onLoadOlder()) {
-      jumpPagesRef.current++;
+    if (aroundRequestedRef.current !== id) {
+      aroundRequestedRef.current = id;
       setJumpState('searching');
+      onLoadAround(id).then(ok => {
+        if (aroundRequestedRef.current !== id) return;
+        if (ok) setLoadedAround(id);
+        else {
+          aroundRequestedRef.current = null;
+          setJumpState('notfound');
+          onJumpHandled();
+        }
+      });
       return;
     }
-    jumpPagesRef.current = 0;
-    setJumpState('notfound');
-    onJumpHandled();
-  }, [jumpToId, units, hasMore, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (loadedAround === id) {
+      // The history around it is loaded and it isn't there: deleted, or from a hidden blocked user.
+      // Show where it would have been.
+      const target = Number(id);
+      const near = [...(scroller?.querySelectorAll('[data-msgid]') ?? [])]
+        .find(e => Number(e.getAttribute('data-msgid')) >= target);
+      if (near) near.scrollIntoView({ block: 'center' });
+      else if (scroller) scroller.scrollTop = 0;
+      aroundRequestedRef.current = null;
+      setLoadedAround(null);
+      setJumpState('notfound');
+      onJumpHandled();
+    }
+  }, [jumpToId, units, loadedAround]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!highlightId) return;
@@ -291,15 +365,15 @@ export default function MessageList({
     };
   }, [messages, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const showJumpPill = farFromBottom || newCount > 0;
+  const showJumpPill = farFromBottom || newCount > 0 || hasNewer;
 
   return (
     <div className="msg-list-wrap">
       <div ref={scrollRef} className="msg-scroller" onScroll={handleScroll}>
         <div className="msg-list">
-          {hasMore ? (
-            <div className="msg-loading-older" style={{ visibility: loadingOlder || olderError ? 'visible' : 'hidden' }}>
-              {olderError
+          {hasOlder ? (
+            <div className="msg-loading-older" style={{ visibility: loadingOlder || pageError === 'older' ? 'visible' : 'hidden' }}>
+              {pageError === 'older'
                 ? "Couldn't load older messages. Retrying…"
                 : <><Spinner /> Loading older messages…</>}
             </div>
@@ -334,6 +408,13 @@ export default function MessageList({
               />
             );
           })}
+          {hasNewer && (
+            <div className="msg-loading-older msg-loading-newer" style={{ visibility: loadingNewer || pageError === 'newer' ? 'visible' : 'hidden' }}>
+              {pageError === 'newer'
+                ? "Couldn't load newer messages. Retrying…"
+                : <><Spinner /> Loading newer messages…</>}
+            </div>
+          )}
           <div className="msg-list-end" />
         </div>
       </div>
@@ -341,7 +422,7 @@ export default function MessageList({
       {jumpState && (
         <div className="msg-toast" role="status">
           {jumpState === 'searching'
-            ? <><Spinner /> Finding message…</>
+            ? <><Spinner /> Loading messages…</>
             : "Couldn't find that message"}
         </div>
       )}

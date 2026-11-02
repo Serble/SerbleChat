@@ -266,7 +266,7 @@ export function BlockedGroupBubble({ messages, authorId, peekUser, resolveUser, 
   const name = author?.username ?? '…';
 
   return (
-    <div className="msg-blocked-group">
+    <div className="msg-blocked-group" data-msgid={messages[0]?.id}>
       <div className="msg-blocked">
         <BlockIcon size={14} style={{ flexShrink: 0 }} />
         <span className="msg-blocked-label">

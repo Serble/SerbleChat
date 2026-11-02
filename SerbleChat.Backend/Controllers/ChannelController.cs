@@ -138,7 +138,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
     /// </summary>
     [HttpGet("{channelId:long}/messages")]
     public async Task<ActionResult<IEnumerable<Message>>> GetMessages(long channelId, [FromQuery] int limit = 50, [FromQuery] int offset = 0,
-        [FromQuery] long? before = null, [FromQuery] long? after = null) {
+        [FromQuery] long? before = null, [FromQuery] long? after = null, [FromQuery] long? around = null) {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -154,9 +154,55 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return Forbid();
         }
     
-        List<Message> messages = await msgs.GetMessages(channelId, limit, offset, before, after);
+        // around: a window centred on that message, for jumping to one anywhere in the history
+        List<Message> messages = around.HasValue
+            ? await msgs.GetMessagesAround(channelId, around.Value, limit)
+            : await msgs.GetMessages(channelId, limit, offset, before, after);
         await polls.AttachPolls(messages);
         return Ok(messages);
+    }
+
+    [HttpGet("{channelId:long}/messages/search")]
+    public async Task<ActionResult<SearchMessagesResponse>> SearchMessages(long channelId, [FromQuery] string? q,
+        [FromQuery] string? authorId = null, [FromQuery] long? before = null, [FromQuery] int limit = 25) {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        Channel? channel = await channels.GetChannel(channelId);
+        if (channel == null) {
+            return NotFound("Channel not found");
+        }
+
+        if (!await channels.UserHasAccessToChannel(userId, channel, false)) {
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(q)) {
+            return BadRequest("Search query is required");
+        }
+        if (q.Length > SearchLimits.QueryMaxLength) {
+            return BadRequest($"Search query can be at most {SearchLimits.QueryMaxLength} characters");
+        }
+
+        List<string> terms = SearchQueryParser.ParseTerms(q, SearchLimits.MaxTerms);
+        if (terms.Count == 0) {
+            return BadRequest("Search query is required");
+        }
+        limit = Math.Clamp(limit, 1, SearchLimits.PageMax);
+
+        // One extra tells us whether there's another page
+        List<Message> found = await msgs.SearchMessages(channelId, terms, authorId, before, limit + 1);
+        bool hasMore = found.Count > limit;
+        if (hasMore) found.RemoveAt(found.Count - 1);
+        await polls.AttachPolls(found);
+
+        return Ok(new SearchMessagesResponse {
+            Messages = found,
+            HasMore = hasMore,
+            TotalCount = before.HasValue ? null : hasMore ? await msgs.CountSearchResults(channelId, terms, authorId) : found.Count,
+        });
     }
 
     [HttpPost("{channelId:long}/messages/{messageId:long}/read")]

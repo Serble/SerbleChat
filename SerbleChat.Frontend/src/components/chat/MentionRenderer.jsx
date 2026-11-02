@@ -129,6 +129,35 @@ function splitMentions(node) {
   node.children = out;
 }
 
+/** remark plugin: wrap every case-insensitive occurrence of the search terms in text in a <mark>. */
+function remarkHighlight({ terms }) {
+  const sorted = [...terms].sort((a, b) => b.length - a.length);  // longest first, so overlaps prefer it
+  const re = new RegExp(sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  return (tree) => markTerms(tree, re);
+}
+
+function markTerms(node, re) {
+  if (!node.children) return;
+  const out = [];
+  for (const child of node.children) {
+    if (child.type !== 'text') {
+      markTerms(child, re);
+      out.push(child);
+      continue;
+    }
+    re.lastIndex = 0;
+    let last = 0, m;
+    while ((m = re.exec(child.value)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      if (m.index > last) out.push({ type: 'text', value: child.value.slice(last, m.index) });
+      out.push({ type: 'searchHit', children: [{ type: 'text', value: m[0] }], data: { hName: 'mark', hProperties: { className: 'msg-search-hit' } } });
+      last = m.index + m[0].length;
+    }
+    if (last < child.value.length) out.push(last === 0 ? child : { type: 'text', value: child.value.slice(last) });
+  }
+  node.children = out;
+}
+
 /** remark plugin: put an `edited` marker at the end of the last paragraph (or on its own line). */
 function remarkEditedMarker({ title }) {
   return (tree) => {
@@ -151,15 +180,18 @@ const MENTION_PLUGINS = [remarkGfm, remarkBreaks, remarkMentions];
  *
  * Wrapped in React.memo so it only re-renders when its own props change.
  */
-export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick, editedTitle }) {
+export const MentionText = React.memo(function MentionText({ content, mdComponents, mentionData, resolveUser, onUserClick, editedTitle, highlightTerms }) {
   const [expanded, setExpanded] = useState(false);
   const { messageLinesLimit } = useClientOptions() ?? { messageLinesLimit: 28 };
   const collapsedMaxHeight = `${messageLinesLimit * 1.375}rem`;
 
-  const plugins = useMemo(
-    () => editedTitle ? [...MENTION_PLUGINS, [remarkEditedMarker, { title: editedTitle }]] : MENTION_PLUGINS,
-    [editedTitle]
-  );
+  const highlightKey = highlightTerms?.join('\u0000') ?? '';
+  const plugins = useMemo(() => {
+    let list = MENTION_PLUGINS;
+    if (highlightKey) list = [...list, [remarkHighlight, { terms: highlightKey.split('\u0000') }]];
+    if (editedTitle) list = [...list, [remarkEditedMarker, { title: editedTitle }]];
+    return list;
+  }, [editedTitle, highlightKey]);
 
   const components = useMemo(() => ({
     ...mdComponents,
