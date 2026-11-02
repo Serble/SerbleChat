@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -203,6 +204,13 @@ private val uncoverPage: androidx.compose.animation.EnterTransition =
 private val leavePage: androidx.compose.animation.ExitTransition =
     slideOutHorizontally(tween(NAV_MS, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it }
 
+// The back gesture seeks through these, so they're linear: the page then sits exactly under the
+// finger instead of running ahead of it. The swipe's own spring supplies the easing on release.
+private val gestureUncoverPage: androidx.compose.animation.EnterTransition =
+    slideInHorizontally(tween(NAV_MS, easing = LinearEasing)) { -it / 4 } + fadeIn(tween(NAV_MS, easing = LinearEasing), initialAlpha = 0.6f)
+private val gestureLeavePage: androidx.compose.animation.ExitTransition =
+    slideOutHorizontally(tween(NAV_MS, easing = LinearEasing)) { it }
+
 @Composable
 private fun MainNav(nav: NavHostController, channelRequest: ChannelRequest?, openChannel: (Long, Long?) -> Unit) {
     NavHost(
@@ -212,8 +220,8 @@ private fun MainNav(nav: NavHostController, channelRequest: ChannelRequest?, ope
         exitTransition = { coverPage },
         popEnterTransition = { uncoverPage },
         popExitTransition = { leavePage },
-        predictivePopEnterTransition = { uncoverPage },
-        predictivePopExitTransition = { leavePage },
+        predictivePopEnterTransition = { gestureUncoverPage },
+        predictivePopExitTransition = { gestureLeavePage },
     ) {
         composable(Routes.HOME) {
             MainScreen(

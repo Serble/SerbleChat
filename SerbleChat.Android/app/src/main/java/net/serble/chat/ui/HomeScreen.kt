@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +30,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.HeadsetOff
 import androidx.compose.material3.Badge
@@ -77,6 +77,7 @@ fun NavPanel(
     onOpenChannel: (Long) -> Unit,
     onOpenFriends: () -> Unit,
     onOpenYou: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenVoice: () -> Unit,
     onOpenGuildSettings: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -98,7 +99,6 @@ fun NavPanel(
                     selected = selected,
                     onSelect = onSelect,
                     onAdd = { addGuild = true },
-                    onOpenSettings = onOpenYou,
                     guildUnread = { id -> guildChannels[id]?.any { (unreads[it.id] ?: 0) > 0 } == true },
                     homeUnread = unreads.filterKeys { id -> store.channel(id)?.type != ChannelType.GUILD }.values.sum(),
                 )
@@ -108,7 +108,7 @@ fun NavPanel(
                 }
             }
             CallBar(onOpenVoice)
-            Spacer(Modifier.navigationBarsPadding())
+            UserBanner(onOpenYou = onOpenYou, onOpenSettings = onOpenSettings)
         }
     }
 
@@ -123,15 +123,11 @@ private fun GuildRail(
     selected: Long,
     onSelect: (Long) -> Unit,
     onAdd: () -> Unit,
-    onOpenSettings: () -> Unit,
     guildUnread: (Long) -> Boolean,
     homeUnread: Int,
 ) {
     val app = LocalApp.current
     val guilds by app.store.guilds.collectAsStateWithLifecycle()
-    val account by app.store.account.collectAsStateWithLifecycle()
-    val own by app.store.ownStatus.collectAsStateWithLifecycle()
-    val hubState by app.hub.state.collectAsStateWithLifecycle()
     val colors = LocalChatColors.current
     Column(
         Modifier.width(72.dp).fillMaxHeight().background(colors.rail).statusBarsPadding(),
@@ -163,16 +159,47 @@ private fun GuildRail(
                 }
             }
         }
-        // No clip here: it would cut off the status dot, which sits over the avatar's edge
-        Box(Modifier.padding(vertical = 10.dp).clickable(
-            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-            indication = androidx.compose.material3.ripple(bounded = false, radius = 28.dp),
-            onClick = onOpenSettings,
-        )) {
-            val me = account
-            Avatar(me?.id, me?.username ?: "?", 44.dp,
-                status = if (hubState == HubState.Connected) own.effectiveType().let { if (it == "invisible") "offline" else it } else "offline")
+    }
+}
+
+/**
+ * Who you are, across the whole bottom of the panel as on desktop, running down behind the gesture
+ * bar. Tapping it sets your status; the gear opens settings.
+ */
+@Composable
+private fun UserBanner(onOpenYou: () -> Unit, onOpenSettings: () -> Unit) {
+    val app = LocalApp.current
+    val account by app.store.account.collectAsStateWithLifecycle()
+    val own by app.store.ownStatus.collectAsStateWithLifecycle()
+    val hubState by app.hub.state.collectAsStateWithLifecycle()
+    val colors = LocalChatColors.current
+    val me = account
+    val type = own.effectiveType()
+    val connected = hubState == HubState.Connected
+    val line = when {
+        !connected -> "Connecting…"
+        own.effectiveMessage().isNotBlank() -> own.effectiveMessage()
+        else -> statusLabel(type)
+    }
+    Row(
+        Modifier.fillMaxWidth().background(colors.userPanel).navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = onOpenYou).padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(me?.id, me?.username ?: "?", 40.dp,
+                status = if (connected) type.let { if (it == "invisible") "offline" else it } else "offline")
+            RowSpacer(12.dp)
+            Column(Modifier.weight(1f)) {
+                Text(me?.username ?: "…", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
+        IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

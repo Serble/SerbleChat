@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -47,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -87,9 +92,15 @@ fun MainScreen(
     var guild by rememberSaveable { mutableStateOf(HOME) }
     var you by remember { mutableStateOf(false) }
     var restored by rememberSaveable { mutableStateOf(false) }
+    // The last outside request acted on, so coming back from another page doesn't replay it
+    var handledRequest by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val density = LocalDensity.current
-    val state = remember { AnchoredDraggableState(initialValue = Pane.Nav) }
+    // Which panel is out survives going to another page and back, so the screen underneath a back
+    // swipe is already as it was left instead of sliding into place
+    var savedPane by rememberSaveable { mutableStateOf(Pane.Nav) }
+    val state = remember { AnchoredDraggableState(initialValue = savedPane) }
+    LaunchedEffect(state.settledValue) { savedPane = state.settledValue }
     val animation = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
     fun show(pane: Pane) {
         scope.launch { state.animateTo(pane, animation) }
@@ -118,7 +129,12 @@ fun MainScreen(
             }
         }
     }
-    LaunchedEffect(request?.serial) { request?.let { open(it.channelId, it.messageId) } }
+    LaunchedEffect(request?.serial) {
+        val r = request ?: return@LaunchedEffect
+        if (r.serial == handledRequest) return@LaunchedEffect
+        handledRequest = r.serial
+        open(r.channelId, r.messageId)
+    }
 
     // The channel went away (deleted, left the guild): back to the channel list
     val guildChannels by store.guildChannels.collectAsStateWithLifecycle()
@@ -170,7 +186,12 @@ fun MainScreen(
                 Pane.Members at -side
             })
         }
-        val offset = if (state.offset.isNaN()) side else state.offset
+        // Before the anchors are in (the first frame), place the chat where its panel says
+        val offset = if (state.offset.isNaN()) when (state.currentValue) {
+            Pane.Nav -> side
+            Pane.Chat -> 0f
+            Pane.Members -> -side
+        } else state.offset
         val sideWidth = with(density) { side.toDp() }
 
         // Underneath: whichever side is being uncovered goes on top of the other
@@ -181,6 +202,7 @@ fun MainScreen(
             onOpenChannel = { open(it) },
             onOpenFriends = onOpenFriends,
             onOpenYou = { you = true },
+            onOpenSettings = onOpenSettings,
             onOpenVoice = onOpenVoice,
             onOpenGuildSettings = onOpenGuildSettings,
             modifier = Modifier.width(sideWidth).fillMaxHeight().align(Alignment.CenterStart).zIndex(if (offset >= 0) 1f else 0f),
@@ -228,6 +250,20 @@ fun MainScreen(
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { show(Pane.Chat) },
                 )
             }
+        }
+
+        // With a side panel out, one solid strip behind the status bar rather than a band of each
+        // panel's colour. It fades in as the chat slides away, so the chat's own header still
+        // colours the status bar while the chat is in front.
+        if (progress > 0f) {
+            Box(
+                Modifier
+                    .zIndex(3f)
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .graphicsLayer { alpha = progress }
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            )
         }
     }
     if (you) YouSheet(onDismiss = { you = false }, onOpenSettings = { you = false; onOpenSettings() })
