@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
 import { filesCreateFile, filesUploadBlob, formatBytes, filesGetLimits } from '../../filesApi.js';
+import { useFilesAuth, getFilesToken, withFilesToken } from '../../filesAuth.js';
 import { IconButton, Select, TextInput } from '../ui/index.js';
 import { AttachmentIcon, CloseIcon, WarningIcon } from '../../icons.jsx';
 import { isUnlimited } from './utils.js';
@@ -161,13 +161,22 @@ function FileUploadItem({ file, expirationHours, onExpirationChange, onRemove, u
   );
 }
 
+// Why uploads aren't going to the user's Serble Files account, for the hint under the queue.
+const GUEST_REASONS = {
+  consent_required: 'allow SerbleChat to use Serble Files in Settings › Files to use your account.',
+  denied: "Serble Files won't accept SerbleChat right now.",
+  reauth_required: 'sign in to SerbleChat again to use your Serble Files account.',
+  unavailable: "Serble Files couldn't be connected.",
+};
+
 /**
  * File upload panel shown above chat input.
  * Displays queued files (from useFileUploads) waiting to be uploaded on send.
  */
 export function FileUploadPanel({ uploads }) {
-  const { items, uploading, limits, setFileExpiration, removeFile } = uploads;
+  const { items, uploading, limits, setFileExpiration, removeFile, filesStatus } = uploads;
   if (items.length === 0) return null;
+  const guestReason = GUEST_REASONS[filesStatus];
 
   return (
     <div style={{
@@ -195,6 +204,11 @@ export function FileUploadPanel({ uploads }) {
           />
         ))}
       </div>
+      {guestReason && (
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingBottom: '0.5rem' }}>
+          Uploading as a guest: {guestReason}
+        </div>
+      )}
     </div>
   );
 }
@@ -208,7 +222,7 @@ let nextItemId = 1;
  * are removed. `files` / `fileExpirations` are index-aligned views of the queue.
  */
 export function useFileUploads() {
-  const { filesApiToken } = useClientOptions();
+  const { token: filesApiToken, status: filesStatus } = useFilesAuth();
   const [items, setItems] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [limits, setLimits] = useState(null); // Account limits
@@ -217,7 +231,9 @@ export function useFileUploads() {
   // Fetch limits when token changes (works with or without auth — anonymous limits)
   useEffect(() => {
     let cancelled = false;
-    filesGetLimits(filesApiToken)
+    // getFilesToken replaces a token that's about to expire; an expired one would quietly get guest limits
+    getFilesToken()
+      .then(token => filesGetLimits(token))
       .then(data => { if (!cancelled) setLimits(data); })
       .catch(err => console.warn('Failed to fetch file limits:', err));
     return () => { cancelled = true; };
@@ -269,7 +285,7 @@ export function useFileUploads() {
         }
 
         // Create file metadata on Files API (token can be null for anonymous uploads)
-        const createResponse = await filesCreateFile(file.name, file.size, expirationHours, filesApiToken);
+        const createResponse = await withFilesToken(token => filesCreateFile(file.name, file.size, expirationHours, token));
         if (!createResponse.file || !createResponse.file.id) {
           throw new Error('No file ID in response');
         }
@@ -306,5 +322,6 @@ export function useFileUploads() {
     uploadAllFiles,
     fileInputRef,
     limits,
+    filesStatus,
   };
 }

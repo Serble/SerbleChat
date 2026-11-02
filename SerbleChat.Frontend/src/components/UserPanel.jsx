@@ -11,6 +11,7 @@ import { navigateToRoot } from '../electron-utils.js';
 import { disablePush } from '../push.js';
 import { AvatarStatusDot } from './status/StatusDot.jsx';
 import { STATUS_META } from './status/status.js';
+import { clearFilesAuth } from '../filesAuth.js';
 
 /** Mic / deafen toggle: red with a struck-through icon while off. */
 function PanelToggle({ off, onClick, disabled, title, Icon, OffIcon }) {
@@ -146,7 +147,7 @@ export default function UserPanel() {
             icon={LogoutIcon}
             label="Log out"
             variant="danger"
-            onClick={async () => { await disablePush(); localStorage.removeItem('jwt'); navigateToRoot(); }}
+            onClick={async () => { await disablePush(); clearFilesAuth(); localStorage.removeItem('jwt'); navigateToRoot(); }}
           />
         </StatusMenu>
       )}

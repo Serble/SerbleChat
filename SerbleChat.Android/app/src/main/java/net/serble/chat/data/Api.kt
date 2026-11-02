@@ -106,6 +106,9 @@ class Api(
         return response.accessToken ?: throw ApiException(400, "Sign-in failed.")
     }
 
+    /** A Serble Files sign-in code (cross-app sign-in), or what has to happen first. */
+    suspend fun filesSignInCode(): FilesConnectResponse = post("/auth/files")
+
     suspend fun vapidPublicKey(): String = raw("GET", "/auth/vapid-public-key", auth = false).trim().removeSurrounding("\"")
 
     suspend fun account(): Account = get("/account")

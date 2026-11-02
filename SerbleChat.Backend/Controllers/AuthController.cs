@@ -14,7 +14,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("/auth")]
 [ApiController]
 public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt, IOptions<PushNotificationsSettings> pushSettings, 
-    IOptions<JwtSettings> jwtSettings) : ControllerBase {
+    IOptions<JwtSettings> jwtSettings, IOptions<SerbleApiSettings> serbleSettings) : ControllerBase {
     
     [HttpPost]
     public async Task<ActionResult<AuthResponse>> Post(AuthenticateRequest request) {
@@ -72,6 +72,50 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
         return Ok();
     }
     
+    /// <summary>
+    /// Connects the user to Serble Files without a second login (cross-app sign-in). Returns a code
+    /// the client redeems at the Files API, or what has to happen first. See <see cref="FilesConnectResponse"/>.
+    /// </summary>
+    [Authorize]
+    [HttpPost("files")]
+    public async Task<ActionResult<FilesConnectResponse>> ConnectFiles() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return Unauthorized();
+        }
+
+        TokenResponse? tokens = await serbleApi.GetAccessToken(user);
+        if (tokens == null) {
+            return Ok(new FilesConnectResponse {
+                Status = "reauth_required",
+                Message = "Your Serble sign-in is no longer valid. Sign in to SerbleChat again to use Serble Files."
+            });
+        }
+
+        CrossAppCodeResult result = await serbleApi.GetCrossAppCode(tokens.AccessToken, serbleSettings.Value.FilesClientId);
+        return Ok(result.Outcome switch {
+            CrossAppCodeOutcome.Issued => new FilesConnectResponse { Status = "ok", Code = result.Code },
+            CrossAppCodeOutcome.ConsentRequired => new FilesConnectResponse {
+                Status = "consent_required", ConsentUrl = result.ConsentUrl
+            },
+            CrossAppCodeOutcome.Denied => new FilesConnectResponse {
+                Status = "denied", Message = "Serble Files won't accept a sign-in from SerbleChat: " + result.Error
+            },
+            CrossAppCodeOutcome.ReauthRequired => new FilesConnectResponse {
+                Status = "reauth_required",
+                Message = "Your Serble sign-in is no longer valid. Sign in to SerbleChat again to use Serble Files."
+            },
+            _ => new FilesConnectResponse {
+                Status = "unavailable", Message = "Couldn't reach Serble to connect Serble Files: " + result.Error
+            }
+        });
+    }
+
     [HttpGet("vapid-public-key")]
     [AllowAnonymous]
     public ActionResult<string> GetVapidPublicKey() {

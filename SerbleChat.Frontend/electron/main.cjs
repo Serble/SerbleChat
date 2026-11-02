@@ -338,6 +338,10 @@ function startOAuthCallbackServer() {
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         const authorized = url.searchParams.get('authorized');
+        // Cross-app consent (Serble Files) comes back with target, or error=access_denied
+        const target = url.searchParams.get('target');
+        const error = url.searchParams.get('error');
+        const ok = error == null && (authorized === 'true' || target != null);
         
         // Send success response to browser
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -346,7 +350,7 @@ function startOAuthCallbackServer() {
           <html>
           <head>
             <meta charset="utf-8">
-            <title>Login Successful</title>
+            <title>${ok ? 'Done' : 'Cancelled'}</title>
             <style>
               body {
                 font-family: system-ui, -apple-system, sans-serif;
@@ -373,8 +377,8 @@ function startOAuthCallbackServer() {
           </head>
           <body>
             <div class="container">
-              <div class="icon">✓</div>
-              <h1>Login Successful!</h1>
+              <div class="icon">${ok ? '✓' : '✕'}</div>
+              <h1>${ok ? 'All done!' : 'Cancelled'}</h1>
               <p>You can close this window and return to SerbleChat.</p>
             </div>
           </body>
@@ -383,7 +387,7 @@ function startOAuthCallbackServer() {
         
         // Resolve the promise with the callback data
         if (oauthCallbackResolve) {
-          oauthCallbackResolve({ code, state, authorized });
+          oauthCallbackResolve({ code, state, authorized, target, error });
           oauthCallbackResolve = null;
         }
       } else {

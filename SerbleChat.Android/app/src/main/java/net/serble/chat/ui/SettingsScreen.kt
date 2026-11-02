@@ -64,7 +64,7 @@ import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onOpenAppearance: () -> Unit, onOpenBlocked: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenAppearance: () -> Unit, onOpenBlocked: () -> Unit, onOpenFiles: () -> Unit) {
     val app = LocalApp.current
     val store = app.store
     val account by store.account.collectAsStateWithLifecycle()
@@ -101,6 +101,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAppearance: () -> Unit, onOpenBlock
             SettingRow("Set status", "Online, away, do not disturb or invisible, with a message") { statusDialog = true }
             SettingRow("Edit profile", "About me and profile colour") { editProfile = true }
             SettingRow("Blocked users", "See and unblock people you've blocked", onOpenBlocked)
+            SettingRow("Serble Files", "Where your attachments are stored, and how much room is left", onOpenFiles)
 
             SectionLabel("Notifications")
             SwitchRow("Push notifications", "On this phone, when the app isn't open", local.pushEnabled) { on ->

@@ -52,6 +52,7 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
     lateinit var push: Push private set
     lateinit var voice: Voice private set
     lateinit var themes: net.serble.chat.data.ThemeStore private set
+    lateinit var files: net.serble.chat.data.Files private set
     private lateinit var cache: JsonCache
 
     @Volatile private var token: String? = null
@@ -74,6 +75,7 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         hub = Hub(BuildConfig.API_URL, http, token = { token }, scope = scope)
         store = ChatStore(api, hub, cache, scope)
         themes = net.serble.chat.data.ThemeStore(api, cache, scope)
+        files = net.serble.chat.data.Files(BuildConfig.FILES_API_URL, http, api, settings, store, contentResolver, scope)
         notifier = Notifier(this, http, ::avatarUrl)
         notifier.createChannels()
         messageNotifications = MessageNotifications(store, api, notifier)
@@ -158,6 +160,7 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         store.clear()
         cache.clear()
         themes.reset()
+        files.clear()
         settings.clearSession()
         token = null
         NotificationManagerCompat.from(this).cancelAll()

@@ -87,6 +87,7 @@ object Routes {
     fun friends(tab: Int = 0) = "friends?tab=$tab"
     const val SETTINGS = "settings"
     const val VOICE = "voice"
+    const val FILES = "files"
     const val GUILD_SETTINGS = "guild/{guildId}"
     fun guildSettings(guildId: Long) = "guild/$guildId"
 }
@@ -135,6 +136,7 @@ fun AppRoot(app: ChatApp, incoming: Flow<Incoming>) {
                                 }
                             }
                         }
+                        is Incoming.FilesConsent -> if (app.signedIn.value == true) messages.show(app.files.finishConsent(event.uri))
                         is Incoming.DebugToken -> runCatching { app.useToken(event.token) }.onFailure { messages.show(it.message ?: "Bad token") }
                         is Incoming.OpenChannel -> {
                             if (app.signedIn.value == true) openChannel(event.channelId, event.messageId)
@@ -230,8 +232,10 @@ private fun MainNav(nav: NavHostController, channelRequest: ChannelRequest?, ope
                 onBack = { nav.popBackStack() },
                 onOpenAppearance = { nav.navigate(Routes.APPEARANCE) },
                 onOpenBlocked = { nav.navigate(Routes.friends(2)) },
+                onOpenFiles = { nav.navigate(Routes.FILES) },
             )
         }
+        composable(Routes.FILES) { FilesScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.APPEARANCE) { AppearanceScreen(onBack = { nav.popBackStack() }, onEdit = { nav.navigate(Routes.theme(it)) }) }
         composable(Routes.THEME, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
             ThemeEditorScreen(id = entry.arguments?.getString("id") ?: return@composable, onBack = { nav.popBackStack() })
@@ -299,6 +303,12 @@ private suspend fun startSignIn(context: Context, app: ChatApp) {
     } catch (_: Exception) {
         context.startActivity(Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+}
+
+/** Opens Serble's page asking the user to allow SerbleChat into Serble Files. */
+suspend fun startFilesConsent(context: Context, app: ChatApp) {
+    val url = app.files.consentUrl(BuildConfig.FILES_CONSENT_REDIRECT) ?: return
+    openUrl(context, url.toString())
 }
 
 /** Opens a web link in a browser tab. */

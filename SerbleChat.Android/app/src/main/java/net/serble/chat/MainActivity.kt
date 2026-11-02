@@ -13,6 +13,8 @@ import net.serble.chat.ui.AppRoot
 /** Things that arrive from outside the app: the sign-in redirect, notifications, links. */
 sealed interface Incoming {
     data class SignIn(val uri: Uri) : Incoming
+    /** Back from Serble's page allowing SerbleChat to sign the user in to Serble Files. */
+    data class FilesConsent(val uri: Uri) : Incoming
     data class OpenChannel(val channelId: Long, val messageId: Long? = null) : Incoming
     data class Invite(val id: String) : Incoming
     data class DebugToken(val token: String) : Incoming
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
         fun parse(uri: Uri): Incoming? {
             val segments = uri.pathSegments
             return when {
+                uri.scheme == "serblechat" && uri.host == "auth" && segments.firstOrNull() == "files-callback" -> Incoming.FilesConsent(uri)
                 uri.scheme == "serblechat" && uri.host == "auth" -> Incoming.SignIn(uri)
                 uri.scheme == "serblechat" && uri.host == "channel" ->
                     segments.firstOrNull()?.toLongOrNull()?.let { Incoming.OpenChannel(it, uri.getQueryParameter("message")?.toLongOrNull()) }

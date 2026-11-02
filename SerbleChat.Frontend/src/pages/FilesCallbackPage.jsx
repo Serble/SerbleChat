@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { filesAuthenticateWithCode } from '../filesApi.js';
-import { useClientOptions } from '../context/ClientOptionsContext.jsx';
+import { finishFilesConsent } from '../filesAuth.js';
 import { LightningIcon, CheckIcon, WarningIcon } from '../icons.jsx';
 
 // Inject loading animation styles
@@ -81,66 +80,27 @@ const s = {
   },
 };
 
+// Serble sends the user back here after they allow (or refuse) SerbleChat signing them in to
+// Serble Files. finishFilesConsent checks the state and connects Files.
 export default function FilesCallbackPage() {
   const navigate = useNavigate();
-  const { setFilesApiToken } = useClientOptions();
-  const [stage, setStage] = useState('init'); // 'init', 'exchanging', 'success', 'error'
+  const [stage, setStage] = useState('exchanging'); // 'exchanging', 'success', 'error'
   const [errorTitle, setErrorTitle] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [returnTo, setReturnTo] = useState('/app');
 
   useEffect(() => {
     (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const authorized = params.get('authorized');
-      const code = params.get('code');
-      const returnedState = params.get('state');
-      const savedState = sessionStorage.getItem('files_oauth_state');
-
-      // ── CSRF state check ────────────────────────────────────────────────────
-      if (returnedState !== savedState) {
-        setErrorTitle('Security Check Failed');
-        setErrorMessage('State mismatch detected. This could indicate a security issue. Please try logging in again.');
-        setStage('error');
-        sessionStorage.removeItem('files_oauth_state');
-        return;
-      }
-      sessionStorage.removeItem('files_oauth_state');
-
-      // ── Authorization check ──────────────────────────────────────────────────
-      if (authorized !== 'true' || !code) {
-        setErrorTitle('Login Cancelled or Invalid');
-        setErrorMessage('You denied the login request or the authorization code is missing. Please try again.');
+      const result = await finishFilesConsent(new URLSearchParams(window.location.search));
+      setReturnTo(result.returnTo);
+      if (!result.ok) {
+        setErrorTitle("Couldn't connect Serble Files");
+        setErrorMessage(result.error);
         setStage('error');
         return;
       }
-
-      // ── Exchange code for token ──────────────────────────────────────────────
-      setStage('exchanging');
-
-      try {
-        const data = await filesAuthenticateWithCode(code);
-        if (!data.accessToken) {
-          throw new Error('Files API did not return an access token');
-        }
-
-        // Save token directly to ClientOptions
-        setFilesApiToken(data.accessToken);
-
-        // Also dispatch event for any listeners
-        window.dispatchEvent(new CustomEvent('filesOAuthSuccess', {
-          detail: { token: data.accessToken }
-        }));
-
-        setStage('success');
-        setTimeout(() => {
-          // Redirect back to app
-          navigate('/app', { replace: true });
-        }, 1000);
-      } catch (err) {
-        setErrorTitle('Login Failed');
-        setErrorMessage(err.message || 'Could not complete the login process. Please check your connection and try again.');
-        setStage('error');
-      }
+      setStage('success');
+      setTimeout(() => navigate(result.returnTo, { replace: true }), 1000);
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -148,15 +108,13 @@ export default function FilesCallbackPage() {
     <div style={s.page}>
       <div style={s.card}>
         {/* Loading State */}
-        {stage === 'init' || stage === 'exchanging' ? (
+        {stage === 'exchanging' ? (
           <div style={s.loadingContainer}>
             <div style={{ ...s.spinner, ...{} }} className="callback-spinner">
               <LightningIcon size={48} />
             </div>
-            <h2 style={s.title}>Authenticating Files API...</h2>
-            <p style={s.subtitle}>
-              {stage === 'init' ? 'Verifying your credentials' : 'Completing authentication'}
-            </p>
+            <h2 style={s.title}>Connecting Serble Files...</h2>
+            <p style={s.subtitle}>Completing authentication</p>
           </div>
         ) : null}
 
@@ -164,7 +122,7 @@ export default function FilesCallbackPage() {
         {stage === 'success' && (
           <div style={s.loadingContainer}>
             <CheckIcon size={48} />
-            <h2 style={s.title}>Files API Connected!</h2>
+            <h2 style={s.title}>Serble Files Connected!</h2>
             <p style={s.subtitle}>Redirecting you to the app...</p>
           </div>
         )}
@@ -179,15 +137,9 @@ export default function FilesCallbackPage() {
             <div style={s.buttonGroup}>
               <button
                 style={{ ...s.btn, ...s.btnPrimary }}
-                onClick={() => navigate('/app')}
+                onClick={() => navigate(returnTo, { replace: true })}
               >
                 Back to App
-              </button>
-              <button
-                style={{ ...s.btn, ...s.btnSecondary }}
-                onClick={() => window.location.reload()}
-              >
-                Retry
               </button>
             </div>
           </>

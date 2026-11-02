@@ -23,6 +23,9 @@ android {
         // redirect url on the Serble app, beside the web one.
         buildConfigField("String", "OAUTH_REDIRECT", quoted("serblechat://auth/callback"))
         buildConfigField("String", "OAUTH_CLIENT_ID", quoted(prop("oauthClientId")))
+        // Where Serble sends the browser after the user allows SerbleChat into Serble Files (only
+        // asked when Serble needs consent). Also a redirect url to register on the Serble app.
+        buildConfigField("String", "FILES_CONSENT_REDIRECT", quoted("serblechat://auth/files-callback"))
 
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=none" } }
     }
@@ -51,6 +54,7 @@ android {
             buildConfigField("String", "LIVEKIT_URL", quoted(prop(key("liveKitUrl"))))
             buildConfigField("String", "FRONTEND_URL", quoted(prop(key("frontendUrl"))))
             buildConfigField("String", "S3_URL", quoted(prop(key("s3Url"))))
+            buildConfigField("String", "FILES_API_URL", quoted(prop(key("filesApiUrl"))))
             // Signing in with a backend test token: only builds that talk to a development backend
             buildConfigField("boolean", "DEV_SIGN_IN", debug.toString())
         }

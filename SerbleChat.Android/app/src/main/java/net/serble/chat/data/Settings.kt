@@ -42,6 +42,8 @@ class SettingsStore(private val context: Context) {
         val echo = stringPreferencesKey("echo")
         val agc = stringPreferencesKey("agc")
         val push = stringPreferencesKey("push")
+        val filesToken = stringPreferencesKey("files_token")
+        val filesConsentState = stringPreferencesKey("files_consent_state")
     }
 
     val settings: Flow<LocalSettings> = context.settingsStore.data.map { p ->
@@ -94,6 +96,8 @@ class SettingsStore(private val context: Context) {
             it.remove(K.oauthState)
             it.remove(K.pushEndpoint)
             it.remove(K.lastChannel)
+            it.remove(K.filesToken)
+            it.remove(K.filesConsentState)
         }
     }
 
@@ -106,6 +110,17 @@ class SettingsStore(private val context: Context) {
     suspend fun oauthState(): String? = context.sessionStore.data.first()[K.oauthState]
     suspend fun setOauthState(state: String?) {
         context.sessionStore.edit { if (state == null) it.remove(K.oauthState) else it[K.oauthState] = state }
+    }
+
+    /** This phone's Serble Files token: obtained through the backend, so it lives with the session. */
+    suspend fun filesToken(): String? = context.sessionStore.data.first()[K.filesToken]
+    suspend fun setFilesToken(token: String?) {
+        context.sessionStore.edit { if (token == null) it.remove(K.filesToken) else it[K.filesToken] = token }
+    }
+
+    suspend fun filesConsentState(): String? = context.sessionStore.data.first()[K.filesConsentState]
+    suspend fun setFilesConsentState(state: String?) {
+        context.sessionStore.edit { if (state == null) it.remove(K.filesConsentState) else it[K.filesConsentState] = state }
     }
 
     /** The push endpoint last registered with the backend, so it can be unregistered when it changes. */

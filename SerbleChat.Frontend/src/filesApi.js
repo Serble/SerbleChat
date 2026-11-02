@@ -3,16 +3,7 @@
 
 const BASE = import.meta.env.VITE_SERBLE_FILES_API_URL ?? 'https://api.files.serble.net';
 
-export const FILES_OAUTH_URL = 'https://serble.net/oauth/authorize';
-export const FILES_CLIENT_ID = import.meta.env.VITE_FILES_CLIENT_ID;
-export const FILES_REDIRECT_URI = `${window.location.origin}/files-callback`;
-
-/**
- * Get the files API auth token from client options
- */
-export function getFilesAuthToken(clientOptions) {
-  return clientOptions?.filesApiToken || null;
-}
+// Signing in to the Files API goes through SerbleChat's backend (cross-app sign-in): see filesAuth.js.
 
 /**
  * Build headers for authenticated Files API requests
@@ -36,7 +27,7 @@ async function handle(res) {
 // ── Account (Files API) ───────────────────────────────────────────────────────
 
 /**
- * POST /account – authenticate with Files API using OAuth code
+ * POST /account – redeem a Serble sign-in code for a Files API token
  */
 export async function filesAuthenticateWithCode(code) {
   const res = await fetch(`${BASE}/account`, {

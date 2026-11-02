@@ -36,6 +36,19 @@ export async function exchangeCode(code) {
   return handle(res);
 }
 
+/**
+ * POST /auth/files  – ask the backend for a Serble Files sign-in code (cross-app sign-in).
+ * Returns { status: 'ok', code } | { status: 'consent_required', consentUrl }
+ *       | { status: 'denied' | 'reauth_required' | 'unavailable', message }
+ */
+export async function requestFilesSignInCode() {
+  const res = await fetch(`${BASE}/auth/files`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return handle(res);
+}
+
 /** GET /auth/vapid-public-key  – returns the server's VAPID public key (no auth needed) */
 export async function getVapidPublicKey() {
   const res = await fetch(`${BASE}/auth/vapid-public-key`);

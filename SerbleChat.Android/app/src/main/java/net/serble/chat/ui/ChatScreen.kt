@@ -1,5 +1,8 @@
 package net.serble.chat.ui
 
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.activity.result.PickVisualMediaRequest
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -515,6 +518,8 @@ private fun MessageItem(
             message.poll?.let { PollCard(it, canManage = canManage) }
             val invites = remember(message.content) { INVITE_RE.findAll(message.content).map { it.groupValues[1] }.distinct().take(3).toList() }
             invites.forEach { InviteEmbed(it) }
+            val fileLinks = remember(message.content) { FILE_RE.findAll(message.content).map { it.value }.distinct().take(10).toList() }
+            fileLinks.forEach { FileEmbed(it) }
         }
     }
 }
@@ -575,6 +580,10 @@ private fun Composer(
     var value by remember(channelId) { mutableStateOf(TextFieldValue(drafts[channelId] ?: "")) }
     val mentions = remember(channelId) { mutableStateMapOf<String, String>() }
     var plus by remember { mutableStateOf(false) }
+    val allUploads by app.files.uploads.collectAsStateWithLifecycle()
+    val uploads = allUploads[channelId] ?: net.serble.chat.data.ChannelUploads()
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { app.files.attach(channelId, it) }
+    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { app.files.attach(channelId, it) }
 
     LaunchedEffect(editing?.id) {
         if (editing != null) {
@@ -598,18 +607,32 @@ private fun Composer(
     val query = MENTION_QUERY.find(value.text.substring(0, value.selection.end.coerceAtMost(value.text.length)))?.groupValues?.get(1)
     val suggestions = if (query == null) emptyList() else members.filter { it.username.startsWith(query, ignoreCase = true) && it.id != store.userId }.take(5)
 
+    val hasFiles = editing == null && uploads.items.isNotEmpty()
+    val canSendNow = (value.text.isNotBlank() || hasFiles) && !uploads.uploading
+
     fun send() {
         var text = value.text.trim()
-        if (text.isEmpty()) return
+        if (text.isEmpty() && !hasFiles) return
+        if (uploads.uploading) return
         for ((name, id) in mentions) text = text.replace(Regex("(?<![\\w@])@" + Regex.escape(name) + "(?![\\w.-])"), "<@user:$id>")
         val target = editing
         if (target != null) {
             messagesUi.run(scope) { store.editMessage(target, text) }
             onCancelEdit()
+        } else if (hasFiles) {
+            // The text goes with the files once they've uploaded. If one fails, the text comes back
+            // so nothing is lost while the user fixes it.
+            val typed = value.text
+            app.files.send(channelId, text) { sent ->
+                if (!sent && value.text.isEmpty()) {
+                    value = TextFieldValue(typed, TextRange(typed.length))
+                    drafts[channelId] = typed
+                }
+            }
         } else store.sendMessage(channelId, text)
         value = TextFieldValue("")
         drafts.remove(channelId)
-        mentions.clear()
+        if (!hasFiles) mentions.clear()
     }
 
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
@@ -633,6 +656,7 @@ private fun Composer(
                 }
             }
         }
+        if (editing == null) AttachmentQueue(channelId, uploads)
         if (editing != null) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Edit, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
             RowSpacer(8.dp)
@@ -640,10 +664,18 @@ private fun Composer(
             IconButton(onClick = { onCancelEdit(); value = TextFieldValue("") }) { Icon(Icons.Default.Close, "Cancel editing") }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
-            if (editing == null && canPoll) Box {
+            if (editing == null) Box {
                 IconButton(onClick = { plus = true }) { Icon(Icons.Default.AddCircle, "More", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 DropdownMenu(plus, { plus = false }) {
-                    DropdownMenuItem(leadingIcon = { Icon(Icons.Default.Poll, null) }, text = { Text("Create poll") }, onClick = { plus = false; onNewPoll() })
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Default.Image, null) }, text = { Text("Photos and videos") }, onClick = {
+                        plus = false
+                        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    })
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Default.AttachFile, null) }, text = { Text("Files") }, onClick = {
+                        plus = false
+                        pickFiles.launch(arrayOf("*/*"))
+                    })
+                    if (canPoll) DropdownMenuItem(leadingIcon = { Icon(Icons.Default.Poll, null) }, text = { Text("Create poll") }, onClick = { plus = false; onNewPoll() })
                 }
             }
             TextField(
@@ -665,9 +697,9 @@ private fun Composer(
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             )
             RowSpacer(4.dp)
-            IconButton(onClick = { send() }, enabled = value.text.isNotBlank()) {
+            IconButton(onClick = { send() }, enabled = canSendNow) {
                 Icon(if (editing != null) Icons.Default.Edit else Icons.AutoMirrored.Filled.Send, if (editing != null) "Save" else "Send",
-                    tint = if (value.text.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    tint = if (canSendNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

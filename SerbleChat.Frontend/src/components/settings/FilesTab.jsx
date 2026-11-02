@@ -1,26 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
-import { filesAuthenticateWithCode, filesGetAccount, filesGetLimits, filesGetUsage, formatBytes, FILES_OAUTH_URL, FILES_CLIENT_ID, FILES_REDIRECT_URI } from '../../filesApi.js';
-import { isElectron, electronOAuthFlow } from '../../electron-utils.js';
+import { filesGetAccount, filesGetLimits, filesGetUsage, formatBytes } from '../../filesApi.js';
+import { useFilesAuth, connectFiles, startFilesConsent, withFilesToken } from '../../filesAuth.js';
 import { Button, Card, ErrorBox, Hint } from '../ui/index.js';
-import { FolderIcon, KeyLockIcon } from '../../icons.jsx';
+import { FolderIcon, KeyLockIcon, WarningIcon } from '../../icons.jsx';
 import { TabBody } from './common.jsx';
-
-const ELECTRON_REDIRECT_URI = 'http://localhost:13579/callback';
 
 // The Files API uses -1 for "no limit"
 function formatLimit(value, format = formatBytes) {
   return value === -1 ? 'Unlimited' : format(value);
-}
-
-function buildOAuthUrl(redirectUri, state) {
-  const url = new URL(FILES_OAUTH_URL);
-  url.searchParams.set('client_id', FILES_CLIENT_ID);
-  url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('state', state);
-  url.searchParams.set('scope', 'user_info');
-  return url.toString();
 }
 
 const cardLabelStyle = {
@@ -28,66 +15,46 @@ const cardLabelStyle = {
   textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.75rem',
 };
 
+const NOT_CONNECTED_TITLES = {
+  consent_required: 'Allow SerbleChat to use Serble Files',
+  denied: 'Serble Files is unavailable',
+  reauth_required: 'Sign in again to use Serble Files',
+  unavailable: "Couldn't connect to Serble Files",
+};
+
 export default function FilesTab() {
-  const { filesApiToken, setFilesApiToken } = useClientOptions();
+  const { status, token, message } = useFilesAuth();
   const [info, setInfo] = useState(null); // { user, limits, usage }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [working, setWorking] = useState(false);
 
-  // Web OAuth completes in FilesCallbackPage, which dispatches this event
-  useEffect(() => {
-    function handleOAuthSuccess(event) { setFilesApiToken(event.detail.token); }
-    window.addEventListener('filesOAuthSuccess', handleOAuthSuccess);
-    return () => window.removeEventListener('filesOAuthSuccess', handleOAuthSuccess);
-  }, [setFilesApiToken]);
-
-  const loadInfo = useCallback(async token => {
+  const loadInfo = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [user, limits, usage] = await Promise.all([
-        filesGetAccount(token),
-        filesGetLimits(token),
-        filesGetUsage(token),
-      ]);
+      const [user, limits, usage] = await withFilesToken(t => Promise.all([
+        filesGetAccount(t),
+        filesGetLimits(t),
+        filesGetUsage(t),
+      ]));
       setInfo({ user, limits, usage });
     } catch (err) {
-      setError(`Failed to load Files API info: ${err.message}`);
+      setError(`Failed to load your Serble Files account: ${err.message}`);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const connected = status === 'connected' && !!token;
   useEffect(() => {
-    setInfo(null);
-    if (filesApiToken) loadInfo(filesApiToken);
-  }, [filesApiToken, loadInfo]);
+    if (connected) loadInfo();
+    else setInfo(null);
+  }, [connected, loadInfo]);
 
-  async function handleLogin() {
-    setError(null);
-    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-
-    if (!isElectron()) {
-      sessionStorage.setItem('files_oauth_state', state);
-      window.location.href = buildOAuthUrl(FILES_REDIRECT_URI, state);
-      return;
-    }
-
-    // Electron: open the system browser and wait for the local callback server
-    setLoading(true);
-    try {
-      const callback = await electronOAuthFlow(buildOAuthUrl(ELECTRON_REDIRECT_URI, state));
-      if (callback.state !== state) throw new Error('State mismatch - possible security issue');
-      if (callback.authorized !== 'true' || !callback.code) throw new Error('Login was cancelled or denied');
-
-      const data = await filesAuthenticateWithCode(callback.code);
-      if (!data.accessToken) throw new Error('Server did not return an access token');
-      setFilesApiToken(data.accessToken);
-    } catch (err) {
-      setError(`Login failed: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+  async function run(fn) {
+    setWorking(true);
+    try { await fn(); } finally { setWorking(false); }
   }
 
   const { user, limits, usage } = info ?? {};
@@ -98,24 +65,46 @@ export default function FilesTab() {
   return (
     <TabBody>
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 0.5rem' }}>
-        <FolderIcon size={16} /> Files API
+        <FolderIcon size={16} /> Serble Files
       </h3>
       <Hint style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-        Authenticate with the Files API to upload files for sharing in chat. Files are stored securely and can be set to expire.
+        Files you attach in chat are uploaded to Serble Files with your Serble account. SerbleChat connects to it for you, so there's nothing to sign in to. Files can be set to expire.
       </Hint>
 
       <ErrorBox style={{ marginBottom: '1rem' }}>{error}</ErrorBox>
 
-      {!filesApiToken ? (
-        <Card style={{ padding: '1.5rem', textAlign: 'center' }}>
-          <KeyLockIcon size={32} style={{ marginBottom: '0.75rem', color: 'var(--text-muted)' }} />
-          <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Not connected to Files API
-          </div>
-          <Button variant="primary" onClick={handleLogin} disabled={loading}>
-            {loading ? 'Logging in…' : 'Login with Serble'}
-          </Button>
-        </Card>
+      {!connected ? (
+        status === 'idle' || status === 'connecting' ? (
+          <Card style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Connecting to Serble Files…
+          </Card>
+        ) : (
+          <Card style={{ padding: '1.5rem', textAlign: 'center' }}>
+            {status === 'consent_required'
+              ? <KeyLockIcon size={32} style={{ marginBottom: '0.75rem', color: 'var(--text-muted)' }} />
+              : <WarningIcon size={32} style={{ marginBottom: '0.75rem', color: 'var(--text-muted)' }} />}
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+              {NOT_CONNECTED_TITLES[status] ?? NOT_CONNECTED_TITLES.unavailable}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              {status === 'consent_required'
+                ? 'Serble needs your permission before SerbleChat can upload to your Serble Files account. Until then, uploads are anonymous and use the guest limits.'
+                : (message || 'Uploads are anonymous and use the guest limits until this is fixed.')}
+            </div>
+            {status === 'consent_required' && message && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--danger)', marginBottom: '1rem' }}>{message}</div>
+            )}
+            {status === 'consent_required' ? (
+              <Button variant="primary" onClick={() => run(startFilesConsent)} disabled={working}>
+                {working ? 'Waiting for Serble…' : 'Allow access'}
+              </Button>
+            ) : status !== 'reauth_required' && (
+              <Button variant="secondary" onClick={() => run(connectFiles)} disabled={working}>
+                {working ? 'Connecting…' : 'Try again'}
+              </Button>
+            )}
+          </Card>
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <Card>
@@ -161,9 +150,6 @@ export default function FilesTab() {
             </Card>
           )}
 
-          <div>
-            <Button variant="secondary" onClick={() => setFilesApiToken(null)}>Logout</Button>
-          </div>
         </div>
       )}
     </TabBody>

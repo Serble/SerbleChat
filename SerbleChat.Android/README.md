@@ -22,6 +22,12 @@ Serble app's redirect URLs. Debug and preview builds can also sign in with a bac
 from the "Developer token" box or `adb shell am start -d "serblechat://debug/signin?token=<jwt>"`
 (the backend needs `Jwt:AllowTestingAccountGeneration` for `/auth/tokens/{n}`).
 
+**Attachments** go to Serble Files (`serbleChat.filesApiUrl` / `debugFilesApiUrl`). There's no
+second login: the backend gets a Files sign-in code through Serble's cross-app sign-in
+(`POST /auth/files`). If Serble ever needs the user's consent first, Settings › Serble Files sends
+them to Serble's consent page, which returns to `serblechat://auth/files-callback`; register that
+on the Serble app's redirect URLs too.
+
 **Invite and message links** (`https://chat.serble.net/invite/...`, `/app/channel/...`) open in
 the app without asking once the site serves `/.well-known/assetlinks.json`. The frontend build
 writes it when `VITE_ANDROID_CERT_FINGERPRINTS` is set to the SHA-256 fingerprint of the release
@@ -80,5 +86,5 @@ screen off. Settings offers three noise suppression modes:
 - `voice/`: the LiveKit call, the RNNoise bridge, and the call service.
 - `ui/`: Compose screens.
 
-Not on mobile yet: Serble Files uploads (that system is being reworked), editing roles and channel
+Not on mobile yet: editing roles and channel
 permission overrides, webhooks, and video or screen sharing.
