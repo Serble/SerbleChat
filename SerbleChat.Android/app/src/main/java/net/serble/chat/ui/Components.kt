@@ -239,3 +239,27 @@ fun NameLine(name: String, sub: String?, modifier: Modifier = Modifier, nameColo
 
 @Composable
 fun RowSpacer(width: Dp = 12.dp) = Spacer(Modifier.width(width))
+
+/** The web app's crown (icons.jsx CrownIcon): three points with ball tips over a band. */
+val CrownIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    fun circle(cx: Float, cy: Float, r: Float) = "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0z"
+    val fill = androidx.compose.ui.graphics.SolidColor(Color.Black)
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Crown", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            androidx.compose.ui.graphics.vector.addPathNodes("M3 8.5 7.5 12 12 5.5l4.5 6.5L21 8.5l-2 9H5z"),
+            fill = fill, stroke = fill, strokeLineWidth = 1.5f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round, strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+        )
+        .addPath(androidx.compose.ui.graphics.vector.addPathNodes(circle(3f, 7.5f, 1.7f) + circle(12f, 4.2f, 1.9f) + circle(21f, 7.5f, 1.7f) +
+            "M6.1 19h11.8a1.1 1.1 0 0 1 0 2.2H6.1a1.1 1.1 0 0 1 0-2.2z"), fill = fill)
+        .build()
+}
+
+/** Gold, as on the web app's member list. */
+val OwnerGold = Color(0xFFF0B232)
+
+/** The crown shown beside a guild's or group's owner. */
+@Composable
+fun OwnerCrown(modifier: Modifier = Modifier, size: Dp = 16.dp) {
+    androidx.compose.material3.Icon(CrownIcon, "Owner", modifier.size(size), tint = OwnerGold)
+}

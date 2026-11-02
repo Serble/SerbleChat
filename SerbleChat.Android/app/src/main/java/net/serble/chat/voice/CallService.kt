@@ -30,8 +30,16 @@ class CallService : Service() {
         when (intent?.action) {
             ACTION_LEAVE -> app.voice.leave()
             ACTION_MUTE -> app.voice.toggleMute()
+            ACTION_STOP_SHARE -> app.voice.stopScreenShare()
         }
-        val type = if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+        // The camera type only while it's on: claiming it needs the camera permission
+        val camera = app.voice.call.value?.cameraOn == true &&
+            checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val type = when {
+            Build.VERSION.SDK_INT < 30 -> 0
+            camera -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
         ServiceCompat.startForeground(this, Notifier.CALL_NOTIFICATION_ID, notification(), type)
         if (watcher == null) {
             watcher = app.scope.launch {
@@ -67,9 +75,15 @@ class CallService : Service() {
             call == null -> "Connecting…"
             call.phase == CallPhase.Connecting -> "Connecting…"
             call.phase == CallPhase.Reconnecting -> "Reconnecting…"
-            call.deafened -> "Deafened"
-            call.muted -> "Muted"
-            else -> "In call"
+            else -> listOfNotNull(
+                when {
+                    call.deafened -> "Deafened"
+                    call.muted -> "Muted"
+                    else -> "In call"
+                },
+                "Camera on".takeIf { call.cameraOn },
+                "Sharing your screen".takeIf { call.screenSharing },
+            ).joinToString(" · ")
         }
         return NotificationCompat.Builder(this, Notifier.CHANNEL_CALLS)
             .setSmallIcon(R.drawable.ic_call)
@@ -88,5 +102,24 @@ class CallService : Service() {
     companion object {
         const val ACTION_LEAVE = "net.serble.chat.LEAVE_CALL"
         const val ACTION_MUTE = "net.serble.chat.MUTE"
+        const val ACTION_STOP_SHARE = "net.serble.chat.STOP_SHARE"
+        const val SCREEN_NOTIFICATION_ID = 2
+
+        /** Shown by LiveKit's screen capture service while the screen is shared. */
+        fun screenNotification(context: android.content.Context): android.app.Notification {
+            val stop = PendingIntent.getService(context, ACTION_STOP_SHARE.hashCode(),
+                Intent(context, CallService::class.java).setAction(ACTION_STOP_SHARE), PendingIntent.FLAG_IMMUTABLE)
+            val open = PendingIntent.getActivity(context, 1, Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)
+            return NotificationCompat.Builder(context, Notifier.CHANNEL_CALLS)
+                .setSmallIcon(R.drawable.ic_call)
+                .setContentTitle("Sharing your screen")
+                .setContentText("Everyone in the call can see it")
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(open)
+                .addAction(0, "Stop sharing", stop)
+                .build()
+        }
     }
 }

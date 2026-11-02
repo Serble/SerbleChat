@@ -294,6 +294,11 @@ private fun MembersPanel(channelId: Long?, modifier: Modifier) {
     var profile by remember { mutableStateOf<String?>(null) }
     val channel = channelId?.let { store.channel(it) }
     val colors = memberColors[channel?.guildId] ?: emptyMap()
+    val guilds by store.guilds.collectAsStateWithLifecycle()
+    val groups by store.groups.collectAsStateWithLifecycle()
+    // Guilds and group chats have an owner; DMs don't
+    val ownerId = channel?.guildId?.let { g -> guilds.firstOrNull { it.id == g }?.ownerId }
+        ?: groups.firstOrNull { it.channelId == channelId }?.ownerId
     val members = memberIds[channelId].orEmpty().mapNotNull { users[it] }
     val online = members.filter { it.status != "offline" }.sortedBy { it.username.lowercase() }
     val offline = members.filter { it.status == "offline" }.sortedBy { it.username.lowercase() }
@@ -306,9 +311,9 @@ private fun MembersPanel(channelId: Long?, modifier: Modifier) {
             LazyColumn {
                 if (members.isEmpty()) item { EmptyState("No one here yet", if (channelId == null) "Open a channel to see who's in it." else "Loading…") }
                 if (online.isNotEmpty()) item { SectionLabel("Online — ${online.size}") }
-                items(online, key = { "on" + it.id }) { MemberRow(it, colors[it.id]) { id -> profile = id } }
+                items(online, key = { "on" + it.id }) { MemberRow(it, colors[it.id], owner = it.id == ownerId) { id -> profile = id } }
                 if (offline.isNotEmpty()) item { SectionLabel("Offline — ${offline.size}") }
-                items(offline, key = { "off" + it.id }) { MemberRow(it, colors[it.id]) { id -> profile = id } }
+                items(offline, key = { "off" + it.id }) { MemberRow(it, colors[it.id], owner = it.id == ownerId) { id -> profile = id } }
             }
         }
     }

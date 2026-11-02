@@ -13,8 +13,15 @@ import io.livekit.android.audio.AudioProcessorOptions
 import io.livekit.android.audio.AudioSwitchHandler
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
+import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
+import io.livekit.android.room.participant.Participant
+import io.livekit.android.room.track.CameraPosition
 import io.livekit.android.room.track.LocalAudioTrackOptions
+import io.livekit.android.room.track.LocalVideoTrack
+import io.livekit.android.room.track.Track
+import io.livekit.android.room.track.VideoTrack
+import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +40,9 @@ enum class CallPhase { Connecting, Connected, Reconnecting }
 
 data class AudioOutput(val name: String, val device: AudioDevice)
 
+/** Someone's camera or screen, mine included. [key] is the track's ID, so it stays the same while it's up. */
+data class VideoFeed(val key: String, val userId: String, val screen: Boolean, val track: VideoTrack, val local: Boolean)
+
 data class CallState(
     val channelId: Long,
     val phase: CallPhase = CallPhase.Connecting,
@@ -43,6 +53,11 @@ data class CallState(
     val outputs: List<AudioOutput> = emptyList(),
     val output: AudioOutput? = null,
     val noiseSuppression: NoiseSuppression = NoiseSuppression.RnNoise,
+    val cameraOn: Boolean = false,
+    val frontCamera: Boolean = true,
+    val screenSharing: Boolean = false,
+    /** Screens first, then cameras. */
+    val videos: List<VideoFeed> = emptyList(),
 )
 
 /**
@@ -68,8 +83,20 @@ class Voice(
     private var rnnoise: RnNoiseProcessor? = null
     private var events: Job? = null
     private val lock = Mutex()
+    private val sounds by lazy { Sounds(context.applicationContext) }
 
     fun clearError() { _errors.value = null }
+
+    /** Streams that were already up when we joined arrive just after; they don't get a sound. */
+    private var quietStreamsUntil = 0L
+
+    private fun play(sound: Sound, inCall: Boolean = true) {
+        scope.launch {
+            if (!settings().callSounds) return@launch
+            Log.d(TAG, "Playing $sound")
+            runCatching { sounds.play(sound, inCall) }
+        }
+    }
 
     fun join(channelId: Long) {
         scope.launch {
@@ -78,6 +105,7 @@ class Voice(
                 leaveLocked()
                 val local = settings()
                 _call.value = CallState(channelId, noiseSuppression = local.noiseSuppression)
+                sounds // loads them while connecting, so the join sound is ready
                 CallService.start(context)
                 try {
                     val token = api.voiceToken(channelId)
@@ -121,6 +149,9 @@ class Voice(
                     newRoom.connect(liveKitUrl, token)
                     newRoom.localParticipant.setMicrophoneEnabled(true)
                     _call.update { it?.copy(phase = CallPhase.Connected) }
+                    play(Sound.Join)
+                    quietStreamsUntil = android.os.SystemClock.elapsedRealtime() + 3000
+                    refreshVideos(newRoom)
                     reportState()
                 } catch (e: Exception) {
                     Log.e(TAG, "Couldn't join voice", e)
@@ -138,6 +169,7 @@ class Voice(
     private fun leaveLocked() {
         events?.cancel()
         events = null
+        if (_call.value?.phase == CallPhase.Connected) play(Sound.Leave, inCall = false)
         room?.let {
             runCatching { it.disconnect() }
             runCatching { it.release() }
@@ -160,7 +192,9 @@ class Voice(
 
     fun setMuted(muted: Boolean) {
         val c = _call.value ?: return
+        if (c.muted == muted) return
         _call.value = c.copy(muted = muted)
+        play(if (muted) Sound.Mute else Sound.Unmute)
         scope.launch {
             runCatching { room?.localParticipant?.setMicrophoneEnabled(!muted) }
             reportState()
@@ -176,6 +210,7 @@ class Voice(
         val c = _call.value ?: return
         // Deafening mutes you as well; undeafening restores the mic
         _call.value = c.copy(deafened = deafened, muted = deafened)
+        play(if (deafened) Sound.Deafen else Sound.Undeafen)
         scope.launch {
             room?.setSpeakerMute(deafened)
             runCatching { room?.localParticipant?.setMicrophoneEnabled(!deafened) }
@@ -191,6 +226,105 @@ class Voice(
     fun applyNoiseSuppression(mode: NoiseSuppression) {
         rnnoise?.enabled = mode == NoiseSuppression.RnNoise
         _call.update { it?.copy(noiseSuppression = mode) }
+    }
+
+    /** Turns the camera on or off. The caller has the camera permission already. */
+    fun setCamera(on: Boolean) {
+        scope.launch {
+            val r = room ?: return@launch
+            val front = _call.value?.frontCamera ?: true
+            try {
+                if (on) r.localParticipant.videoTrackCaptureDefaults =
+                    r.localParticipant.videoTrackCaptureDefaults.copy(position = if (front) CameraPosition.FRONT else CameraPosition.BACK)
+                r.localParticipant.setCameraEnabled(on)
+                _call.update { it?.copy(cameraOn = on) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't switch the camera", e)
+                _errors.value = "Couldn't turn the camera ${if (on) "on" else "off"}: ${e.message ?: "unknown error"}"
+            }
+            // The call's service needs the camera type to keep it running with the screen off
+            CallService.start(context)
+            refreshVideos(r)
+        }
+    }
+
+    /** Front to back camera and back again. */
+    fun flipCamera() {
+        val c = _call.value ?: return
+        val track = room?.localParticipant?.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack ?: return
+        val front = !c.frontCamera
+        runCatching { track.switchCamera(position = if (front) CameraPosition.FRONT else CameraPosition.BACK) }
+            .onSuccess { _call.update { it?.copy(frontCamera = front) } }
+            .onFailure { Log.e(TAG, "Couldn't flip the camera", it) }
+    }
+
+    /** Starts sharing the screen, with the result of Android's screen capture prompt. */
+    fun startScreenShare(permission: Intent) {
+        scope.launch {
+            val r = room ?: return@launch
+            try {
+                r.localParticipant.setScreenShareEnabled(
+                    true,
+                    ScreenCaptureParams(permission, CallService.SCREEN_NOTIFICATION_ID, CallService.screenNotification(context),
+                        // Stopped from outside the app, e.g. the status bar's screen sharing chip
+                        onStop = { stopScreenShare() }),
+                )
+                _call.update { it?.copy(screenSharing = true) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't share the screen", e)
+                _errors.value = "Couldn't share your screen: ${e.message ?: "unknown error"}"
+            }
+            refreshVideos(r)
+        }
+    }
+
+    fun stopScreenShare() {
+        scope.launch {
+            val r = room ?: return@launch
+            if (_call.value?.screenSharing != true) return@launch
+            runCatching { r.localParticipant.setScreenShareEnabled(false) }
+            _call.update { it?.copy(screenSharing = false) }
+            refreshVideos(r)
+        }
+    }
+
+    /** Readies a view to show this call's video. False when there's no call to show any from. */
+    fun initRenderer(renderer: TextureViewRenderer): Boolean {
+        val r = room ?: return false
+        return runCatching { r.initVideoRenderer(renderer) }.isSuccess
+    }
+
+    /**
+     * Works out the video feeds afresh from the room, playing the stream sounds for screens that came or went.
+     * Synchronized: our own changes and the room's events both call it, and each change should sound once.
+     */
+    @Synchronized
+    private fun refreshVideos(room: Room) {
+        val feeds = mutableListOf<VideoFeed>()
+        fun collect(p: Participant, local: Boolean) {
+            val userId = p.identity?.value ?: return
+            for ((pub, track) in p.videoTrackPublications) {
+                val video = track as? VideoTrack ?: continue
+                if (pub.muted) continue
+                val screen = when (pub.source) {
+                    Track.Source.SCREEN_SHARE -> true
+                    Track.Source.CAMERA -> false
+                    else -> continue
+                }
+                feeds += VideoFeed(pub.sid, userId, screen, video, local)
+            }
+        }
+        collect(room.localParticipant, local = true)
+        room.remoteParticipants.values.forEach { collect(it, local = false) }
+        feeds.sortBy { if (it.screen) 0 else 1 }
+
+        val before = _call.value?.videos?.filter { it.screen }?.map { it.key }?.toSet() ?: return
+        val after = feeds.filter { it.screen }.map { it.key }.toSet()
+        if (android.os.SystemClock.elapsedRealtime() >= quietStreamsUntil) {
+            if ((after - before).isNotEmpty()) play(Sound.StreamStart)
+            else if ((before - after).isNotEmpty()) play(Sound.StreamEnd)
+        }
+        _call.update { it?.copy(videos = feeds, screenSharing = room.localParticipant.isScreenShareEnabled) }
     }
 
     private fun reportState() {
@@ -209,6 +343,13 @@ class Voice(
                     _call.update { it?.copy(phase = CallPhase.Connected) }
                     reportState()
                 }
+                is RoomEvent.ParticipantConnected -> play(Sound.Join)
+                is RoomEvent.ParticipantDisconnected -> {
+                    play(Sound.Leave)
+                    refreshVideos(room)
+                }
+                is RoomEvent.TrackSubscribed, is RoomEvent.TrackUnsubscribed, is RoomEvent.TrackPublished,
+                is RoomEvent.TrackUnpublished, is RoomEvent.TrackMuted, is RoomEvent.TrackUnmuted -> refreshVideos(room)
                 is RoomEvent.Disconnected -> {
                     if (_call.value != null) {
                         _errors.value = "You were disconnected from the call."

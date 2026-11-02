@@ -304,6 +304,8 @@ fun FileEmbed(url: String) {
         return
     }
     if (ext in IMAGE_EXTENSIONS && !imageFailed) {
+        var viewing by remember(url) { mutableStateOf(false) }
+        if (viewing) ImageViewer(url, name) { viewing = false }
         SubcomposeAsyncImage(
             model = url,
             contentDescription = name,
@@ -311,7 +313,7 @@ fun FileEmbed(url: String) {
             loading = { Box(Modifier.size(200.dp, 140.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) } },
             error = { imageFailed = true },
             modifier = Modifier.padding(top = 6.dp).widthIn(max = 320.dp).heightIn(max = 320.dp).clip(RoundedCornerShape(10.dp))
-                .clickable { openUrl(context, url) },
+                .clickable { viewing = true },
         )
         return
     }

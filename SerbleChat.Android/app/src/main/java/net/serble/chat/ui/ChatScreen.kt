@@ -759,12 +759,17 @@ private fun MessageActions(
 }
 
 @Composable
-internal fun MemberRow(user: User, color: String?, onPick: (String) -> Unit) {
+internal fun MemberRow(user: User, color: String?, owner: Boolean = false, onPick: (String) -> Unit) {
     ListRow(selected = false, onClick = { onPick(user.id) }) {
         Avatar(user.id, user.username, 36.dp, status = user.status)
         RowSpacer()
         NameLine(user.username, user.statusMessage.takeIf { it.isNotBlank() }, nameColor = memberColor(color) ?: Color.Unspecified,
-            modifier = Modifier.weight(1f).widthIn(max = 400.dp))
+            modifier = Modifier.weight(1f, fill = !owner).widthIn(max = 400.dp))
+        if (owner) {
+            RowSpacer(6.dp)
+            OwnerCrown()
+            Spacer(Modifier.weight(1f))
+        }
     }
 }
 

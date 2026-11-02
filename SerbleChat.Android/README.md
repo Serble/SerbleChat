@@ -68,8 +68,14 @@ only and the app clears that notification.
 
 ## Voice and noise suppression
 
-Calls use the LiveKit SDK with a foreground service (`microphone` type), so they carry on with the
-screen off. Settings offers three noise suppression modes:
+Calls use the LiveKit SDK with a foreground service (`microphone` type, plus `camera` while the
+camera is on), so they carry on with the screen off. Cameras and screen shares from either app show
+in the call screen; tap one to watch it full screen, where pinch or double-tap zooms. Sharing your
+own screen goes through Android's capture prompt and LiveKit's `mediaProjection` service. The call
+sounds (join, leave, mute, deafen, stream start and end) are the web app's files in `res/raw`,
+played as part of the call's audio, and can be turned off in Settings.
+
+Settings offers three noise suppression modes:
 
 - **RNNoise** (default): the same model the web app uses, compiled from `app/src/main/cpp/rnnoise`
   and run as LiveKit's capture post-processor. Capture is forced to 48 kHz because that's the only
@@ -87,4 +93,4 @@ screen off. Settings offers three noise suppression modes:
 - `ui/`: Compose screens.
 
 Not on mobile yet: editing roles and channel
-permission overrides, webhooks, and video or screen sharing.
+permission overrides, and webhooks.

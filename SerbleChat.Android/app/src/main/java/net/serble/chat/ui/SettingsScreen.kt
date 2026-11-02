@@ -153,6 +153,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAppearance: () -> Unit, onOpenBlock
             SwitchRow("Automatic gain", "Evens out how loud you are", local.autoGainControl) { on ->
                 scope.launch { app.settings.update { it.copy(autoGainControl = on) } }
             }
+            SwitchRow("Call sounds", "When people join or leave, start or stop streaming, and when you mute or deafen", local.callSounds) { on ->
+                scope.launch { app.settings.update { it.copy(callSounds = on) } }
+            }
 
             SectionLabel("Appearance")
             val theme by app.themes.active.collectAsStateWithLifecycle()

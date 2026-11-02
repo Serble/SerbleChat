@@ -76,8 +76,14 @@ fun GuildSettingsScreen(guildId: Long, onBack: () -> Unit) {
                 ListRow(selected = false, onClick = { profile = m.user.id }) {
                     Avatar(m.user.id, m.user.username, 36.dp, status = m.user.status)
                     RowSpacer()
-                    NameLine(m.user.username, if (m.user.id == guild.ownerId) "Owner" else null, Modifier.weight(1f),
+                    val isOwner = m.user.id == guild.ownerId
+                    NameLine(m.user.username, if (isOwner) "Owner" else null, Modifier.weight(1f, fill = !isOwner),
                         nameColor = memberColor(m.color) ?: Color.Unspecified)
+                    if (isOwner) {
+                        RowSpacer(6.dp)
+                        OwnerCrown()
+                        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                    }
                 }
             }
             if (owner) item {

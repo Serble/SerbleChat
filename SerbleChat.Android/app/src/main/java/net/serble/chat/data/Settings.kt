@@ -24,6 +24,8 @@ data class LocalSettings(
     val autoGainControl: Boolean = true,
     /** Off means the user turned push off on this phone. */
     val pushEnabled: Boolean = true,
+    /** The joined, left, muted, deafened and stream sounds in calls. */
+    val callSounds: Boolean = true,
 )
 
 // Two stores on purpose: the session holds the sign-in token and is excluded from backups
@@ -45,18 +47,12 @@ class SettingsStore(private val context: Context) {
         val echo = stringPreferencesKey("echo")
         val agc = stringPreferencesKey("agc")
         val push = stringPreferencesKey("push")
+        val sounds = stringPreferencesKey("sounds")
         val filesToken = stringPreferencesKey("files_token")
         val filesConsentState = stringPreferencesKey("files_consent_state")
     }
 
-    val settings: Flow<LocalSettings> = context.settingsStore.data.map { p ->
-        LocalSettings(
-            noiseSuppression = p[K.noise]?.let { runCatching { NoiseSuppression.valueOf(it) }.getOrNull() } ?: NoiseSuppression.RnNoise,
-            echoCancellation = p[K.echo] != "false",
-            autoGainControl = p[K.agc] != "false",
-            pushEnabled = p[K.push] != "false",
-        )
-    }
+    val settings: Flow<LocalSettings> = context.settingsStore.data.map { p -> settingsFrom(p) }
 
     suspend fun current(): LocalSettings = settings.first()
 
@@ -68,6 +64,7 @@ class SettingsStore(private val context: Context) {
             p[K.echo] = next.echoCancellation.toString()
             p[K.agc] = next.autoGainControl.toString()
             p[K.push] = next.pushEnabled.toString()
+            p[K.sounds] = next.callSounds.toString()
         }
     }
 
@@ -76,6 +73,7 @@ class SettingsStore(private val context: Context) {
         echoCancellation = p[K.echo] != "false",
         autoGainControl = p[K.agc] != "false",
         pushEnabled = p[K.push] != "false",
+        callSounds = p[K.sounds] != "false",
     )
 
     data class Session(val token: String?, val userId: String?)

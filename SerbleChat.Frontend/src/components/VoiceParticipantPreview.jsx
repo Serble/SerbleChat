@@ -5,8 +5,9 @@ import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, ScreenShareIcon, VideoIcon } from '../icons.jsx';
+import { MicIcon, ScreenShareIcon, VideoIcon, PlusIcon, MinusIcon } from '../icons.jsx';
 import VoicePollStrip from './poll/VoicePollStrip.jsx';
+import { useStreamZoom } from './voice/useStreamZoom.js';
 
 // Calculate optimal grid layout to maximize stream size
 function calculateOptimalGrid(numStreams, containerWidth, containerHeight) {
@@ -641,6 +642,8 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
 function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidden }) {
   const [user, setUser] = useState(null);
   const containerRef = useRef(null);
+  // Expanded streams can be zoomed into, to read small text on someone's screen
+  const zoom = useStreamZoom(containerRef, share.videoElement, isExpanded && !hidden);
 
   useEffect(() => {
     if (share.isLocal || !share.participantIdentity) return;
@@ -683,7 +686,8 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
 
    return (
     <div 
-      onClick={onClick}
+      className="stream-tile"
+      onClick={() => (isExpanded ? zoom.handleClick(onClick) : onClick())}
       style={{
         background: isExpanded ? 'transparent' : 'var(--bg-tertiary)',
         borderRadius: '8px',
@@ -697,6 +701,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
         minHeight: '0',
         flex: isExpanded ? 1 : 'initial',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
       {!isExpanded && (
@@ -751,8 +756,30 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           justifyContent: 'center',
           flex: 1,
           minHeight: '0',
+          overflow: 'hidden',
+          // Pinch zooms the stream rather than the page
+          touchAction: isExpanded ? 'none' : 'auto',
+          cursor: isExpanded ? (zoom.zoomed ? 'grab' : 'zoom-in') : 'pointer',
         }}
       />
+      {isExpanded && !hidden && (
+        <div
+          className="stream-zoom-bar"
+          data-zoomed={zoom.zoomed}
+          onClick={e => e.stopPropagation()}
+          onDoubleClick={e => e.stopPropagation()}
+        >
+          <button type="button" onClick={zoom.zoomOut} disabled={!zoom.zoomed} title="Zoom out" aria-label="Zoom out">
+            <MinusIcon size={14} />
+          </button>
+          <button type="button" className="stream-zoom-level" onClick={zoom.reset} disabled={!zoom.zoomed} title="Reset zoom">
+            {Math.round(zoom.scale * 100)}%
+          </button>
+          <button type="button" onClick={zoom.zoomIn} disabled={zoom.scale >= 7.99} title="Zoom in (or scroll, pinch, double-click)" aria-label="Zoom in">
+            <PlusIcon size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

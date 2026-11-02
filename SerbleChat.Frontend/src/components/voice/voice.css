@@ -47,3 +47,46 @@
 /* Participant chip outline while speaking */
 .voice-speaking-ring { border: 1px solid transparent; transition: border-color 0.15s ease-in-out; }
 .voice-speaking-ring[data-speaking='true'] { border-color: color-mix(in srgb, var(--success) 55%, transparent); }
+
+/* Zoom controls on an expanded stream: faint until the stream is hovered, solid once zoomed in */
+.stream-zoom-bar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: default;
+}
+.stream-tile:hover .stream-zoom-bar,
+.stream-zoom-bar[data-zoomed='true'] { opacity: 1; }
+.stream-zoom-bar:focus-within { opacity: 1; }
+.stream-zoom-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stream-zoom-bar button:not(:disabled):hover { background: rgba(255, 255, 255, 0.15); }
+.stream-zoom-bar button:disabled { opacity: 0.45; cursor: default; }
+.stream-zoom-level { min-width: 44px !important; font-variant-numeric: tabular-nums; }
+/* Touch screens have no hover: keep the controls visible */
+@media (hover: none) { .stream-zoom-bar { opacity: 1; } }

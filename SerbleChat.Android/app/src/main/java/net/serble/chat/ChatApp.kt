@@ -163,6 +163,8 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         store.attach()
         _signedIn.value = true
         hub.start()
+        // Already connected as someone else (a test account swapped in): connect again as this one
+        hub.reconnect()
         scope.launch { runCatching { store.refresh() } }
         scope.launch { themes.sync() }
         push.ensureRegistered()
