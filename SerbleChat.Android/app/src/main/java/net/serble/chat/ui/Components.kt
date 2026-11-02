@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.SubcomposeAsyncImage
 import net.serble.chat.ChatApp
+import net.serble.chat.data.ImageVersion
 import net.serble.chat.ui.theme.LocalChatColors
 
 /** Copies text to the clipboard; returns a function to call with what to copy. */
@@ -103,11 +105,15 @@ fun RemoteImage(url: String?, name: String, size: Dp, shape: Shape = CircleShape
     )
 }
 
+/** User ID to avatar version, from [net.serble.chat.data.ChatStore.avatarVersions]. Provided at the root. */
+val LocalAvatarVersions = compositionLocalOf<Map<String, Long>> { emptyMap() }
+
 @Composable
 fun Avatar(userId: String?, name: String, size: Dp = 40.dp, status: String? = null) {
     val app = LocalContext.current.applicationContext as ChatApp
+    val versions = LocalAvatarVersions.current
     Box {
-        RemoteImage(userId?.let { app.avatarUrl(it) }, name, size)
+        RemoteImage(userId?.let { app.avatarUrl(it, versions[it] ?: ImageVersion.UNKNOWN) }, name, size)
         if (status != null) {
             StatusDot(status, Modifier.align(Alignment.BottomEnd), size = (size.value * 0.32f).coerceAtLeast(10f).dp)
         }

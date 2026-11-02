@@ -350,6 +350,8 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         await groups.AddMembers(
             members.Select(id => new GroupChatMember {GroupChatId = groupId, UserId = id})
         );
+        // What was said before they were added isn't unread to them
+        await unreads.MarkChannelsReadToLatest(members, [groupId]);
         await updates.Clients.Users(members).SendAsync("NewChannel", new {
             Id = groupId,
             Channel = chat.ChannelNavigation,
@@ -595,7 +597,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
             return BadRequest(msg);
         }
 
-        await images.UploadImage(file, $"channel-icons/{channelId}.webp");
+        await channels.SetIconVersion(channel, await images.UploadImage(file, $"channel-icons/{channelId}.webp"));
         await SignalChannelUpdated(channelId);
         return Ok();
     }
@@ -618,6 +620,7 @@ public class ChannelController(IChannelRepo channels, IDmChannelRepo dms, IGroup
         }
 
         await images.DeleteImage($"channel-icons/{channelId}.webp");
+        await channels.SetIconVersion(channel, 0);
         await SignalChannelUpdated(channelId);
         return Ok();
     }

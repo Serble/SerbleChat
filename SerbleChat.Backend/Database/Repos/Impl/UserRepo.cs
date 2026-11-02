@@ -18,6 +18,11 @@ public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : 
         return await context.Users.FirstOrDefaultAsync(u => u.Id == id);
     }
     
+    public Task<ChatUser[]> GetUsersByIds(IEnumerable<string> ids) {
+        string[] list = ids.Distinct().ToArray();
+        return context.Users.Where(u => list.Contains(u.Id)).ToArrayAsync();
+    }
+
     public async Task<ChatUser?> GetUserByUsername(string username) {
         return await context.Users.FirstOrDefaultAsync(u => u.Username == username);
     }
@@ -33,6 +38,12 @@ public class UserRepo(ChatDatabaseContext context, IPresenceService presence) : 
     public async Task UpdateUser(ChatUser user) {
         context.Entry(user).State = EntityState.Modified;
         await context.SaveChangesAsync();
+    }
+
+    public async Task SetAvatarVersion(ChatUser user, long version) {
+        await context.Users.Where(u => u.Id == user.Id)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.AvatarVersion, version));
+        user.AvatarVersion = version;
     }
 
     public Task<bool> AreUsersBlocked(string userId1, string userId2) {

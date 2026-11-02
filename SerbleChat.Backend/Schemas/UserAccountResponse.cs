@@ -14,7 +14,8 @@ public record UserAccountResponse(
     string Color,
     string StatusType,
     string StatusMessage,
-    DateTime? StatusExpiresAt)
+    DateTime? StatusExpiresAt,
+    long AvatarVersion)
 {
     public static UserAccountResponse FromChatUser(ChatUser user) {
         return new UserAccountResponse(
@@ -29,22 +30,24 @@ public record UserAccountResponse(
             user.Color,
             user.EffectiveStatusType().ToName(),
             user.EffectiveStatusMessage(),
-            user.EffectiveStatusExpiresAt());
+            user.EffectiveStatusExpiresAt(),
+            user.AvatarVersion);
     }
 }
 
 /// <param name="IsOnline">Whether <paramref name="Status"/> is anything but offline. Kept for older clients.</param>
 /// <param name="Status">online, away, dnd or offline. Invisible users are reported as offline.</param>
+/// <param name="AvatarVersion">See <see cref="ChatUser.AvatarVersion"/>.</param>
 public record PublicUserResponse(
     string Id, string Username, bool IsAdmin, bool IsBanned, DateTime CreatedAt, bool IsOnline,
     string Blurb, string Color,
-    string Status, string StatusMessage, DateTime? StatusExpiresAt)
+    string Status, string StatusMessage, DateTime? StatusExpiresAt, long AvatarVersion)
 {
     /// <param name="connected">Whether the user has a live connection, from <see cref="Services.IPresenceService"/>.</param>
     public static PublicUserResponse FromChatUser(ChatUser user, bool connected) {
         string status = user.PublicPresence(connected);
         return new PublicUserResponse(user.Id, user.Username, user.IsAdmin, user.IsBanned, user.CreatedAt,
             status != UserStatusNames.Offline, user.Blurb, user.Color,
-            status, user.EffectiveStatusMessage(), user.EffectiveStatusExpiresAt());
+            status, user.EffectiveStatusMessage(), user.EffectiveStatusExpiresAt(), user.AvatarVersion);
     }
 }

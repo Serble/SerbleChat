@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getProfilePictureUrl } from '../api.js';
+import { useAvatarVersion } from '../imageVersions.js';
 import { avatarBg } from '../userColor.js';
 
 /**
@@ -15,11 +16,19 @@ import { avatarBg } from '../userColor.js';
  * @param {string} [props.src] - Image to show instead of the user's profile picture (e.g. a webhook avatar)
  */
 export default function Avatar({ userId, name, size = 64, color, style = {}, src }) {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  // The version changes when they change their picture, which changes the URL (see imageVersions.js)
+  const version = useAvatarVersion(userId);
+  const pfpUrl = src ?? (userId ? getProfilePictureUrl(userId, version) : null);
+
+  // Load state belongs to one URL: a new picture starts over rather than staying on the old failure
+  const [state, setState] = useState({ url: pfpUrl, error: false, loaded: false });
+  if (state.url !== pfpUrl) setState({ url: pfpUrl, error: false, loaded: false });
+  const imageError = state.url === pfpUrl && state.error;
+  const imageLoaded = state.url === pfpUrl && state.loaded;
+  const setImageError = () => setState(s => (s.url === pfpUrl ? { ...s, error: true } : s));
+  const setImageLoaded = () => setState(s => (s.url === pfpUrl ? { ...s, loaded: true } : s));
 
   const initial = name ? name[0].toUpperCase() : '?';
-  const pfpUrl = src ?? (userId ? getProfilePictureUrl(userId) : null);
 
   const baseStyle = {
     width: size,
@@ -83,8 +92,8 @@ export default function Avatar({ userId, name, size = 64, color, style = {}, src
           objectFit: 'cover',
           display: imageLoaded ? 'block' : 'none',
         }}
-        onLoad={() => setImageLoaded(true)}
-        onError={() => setImageError(true)}
+        onLoad={setImageLoaded}
+        onError={setImageError}
       />
     </div>
   );

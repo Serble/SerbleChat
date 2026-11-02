@@ -5,6 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import { useApp } from '../../context/AppContext.jsx';
 import { openExternalLink } from '../../electron-utils.js';
 import { uploadProfilePicture, deleteProfilePicture } from '../../api.js';
+import { noteUser } from '../../imageVersions.js';
 import { nameTextColor, bannerBg } from '../../userColor.js';
 import Avatar from '../Avatar.jsx';
 import { Button, TextInput, TextArea, SaveStatus, SectionTitle, Hint, useFlashStatus } from '../ui/index.js';
@@ -105,7 +106,9 @@ function ProfilePictureSection({ currentUser, avatarKey, onChanged }) {
 
     setStatus('uploading');
     try {
-      await uploadProfilePicture(file);
+      const result = await uploadProfilePicture(file);
+      // A new version is a new URL everywhere the avatar shows (an older server sends none: just re-render)
+      if (typeof result?.avatarVersion === 'number') noteUser({ id: currentUser?.id, avatarVersion: result.avatarVersion });
       onChanged();
       flash('uploaded');
     } catch (err) {
@@ -119,6 +122,7 @@ function ProfilePictureSection({ currentUser, avatarKey, onChanged }) {
     setStatus('deleting');
     try {
       await deleteProfilePicture();
+      noteUser({ id: currentUser?.id, avatarVersion: 0 });
       onChanged();
       flash('deleted');
     } catch (err) {

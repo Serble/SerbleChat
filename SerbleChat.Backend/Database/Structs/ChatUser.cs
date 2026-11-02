@@ -32,6 +32,14 @@ public class ChatUser {
     
     [StringLength(7)]
     public string Color { get; set; } = "";
+
+    /// <summary>
+    /// Changes whenever the profile picture does, so clients can cache <c>pfp/{Id}.webp?v={AvatarVersion}</c> for good.
+    /// 0 means there is none. -1 means not known yet: rows from before versions existed, until
+    /// <see cref="Services.Impl.ImageVersionBackfill"/> has looked in S3.
+    /// </summary>
+    [JsonProperty(PropertyName = "avatar_version")]
+    public long AvatarVersion { get; set; }
     
     // STATUS
     // Read these through UserStatusExtensions, which applies the expiry.

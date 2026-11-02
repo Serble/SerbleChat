@@ -122,6 +122,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<DeliveryRecorder>(
 builder.Services.AddSingleton<NotificationService>();
 builder.Services.AddSingleton<INotificationService>(sp => sp.GetRequiredService<NotificationService>());
 builder.Services.AddHostedService<NotificationWorker>();
+builder.Services.AddHostedService<ImageVersionBackfill>();
 builder.Services.AddHttpClient<ISerbleApiClient, SerbleApiClient>();
 builder.Services.AddScoped<IVoiceManager, VoiceManager>();
 builder.Services.AddScoped<IImagesService, ImagesService>();

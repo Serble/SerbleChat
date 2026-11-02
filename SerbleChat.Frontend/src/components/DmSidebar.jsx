@@ -70,7 +70,7 @@ function DmItem({ dm, currentChannelId }) {
     if (!currentUser) return;
     const otherId = dm.user1Id === currentUser.id ? dm.user2Id : dm.user1Id;
     resolveUser(otherId).then(setOtherUser);
-  }, [dm, currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dm, currentUser, resolveUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After a reconnect, refetch their status (resolveUser would answer from its cache)
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { withQuery } from '../../imageVersions.js';
 
 /**
  * Guild/channel icons live at a fixed URL that 404s when no icon is set, so we
@@ -16,7 +17,7 @@ export default function useIconProbe(baseUrl, updatedEvent, idKey, id) {
   const [version, setVersion] = useState(refreshTs);
   useEffect(() => { if (refreshTs) setVersion(refreshTs); }, [refreshTs]);
 
-  const src = version ? `${baseUrl}?t=${version}` : baseUrl;
+  const src = version ? withQuery(baseUrl, `t=${version}`) : baseUrl;
   const [exists, setExists] = useState(false);
 
   useEffect(() => {

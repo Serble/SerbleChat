@@ -102,16 +102,7 @@ public class PresenceService(
         try {
             bool connected = await IsConnected(user.Id);
 
-            // Everyone who could see this user: their guilds, DMs and group chats.
-            // A connection in several of these groups gets the event more than once; the client just overwrites.
-            List<string> groups = [];
-            groups.AddRange((await services.GetRequiredService<IGuildRepo>().GetGuildsForUser(user.Id))
-                .Select(g => $"guild-{g.Id}"));
-            groups.AddRange((await services.GetRequiredService<IDmChannelRepo>().GetDmChannels(user.Id))
-                .Select(dm => $"channel-{dm.ChannelId}"));
-            groups.AddRange((await services.GetRequiredService<IGroupChatRepo>().GetGroupChats(user.Id))
-                .Select(g => $"channel-{g.GroupChatId}"));
-
+            List<string> groups = await AudienceGroups(user.Id, services);
             if (groups.Count > 0) {
                 await hub.Clients.Groups(groups).SendAsync("UserStatusUpdated", UserStatusUpdate.From(user, connected));
             }
@@ -121,5 +112,37 @@ public class PresenceService(
             // A failed broadcast only means stale dots until the next refetch; never fail the caller over it
             logger.LogWarning(e, "Failed to broadcast status for user {UserId}", user.Id);
         }
+    }
+
+    public async Task BroadcastProfile(ChatUser user) {
+        try {
+            using IServiceScope scope = scopes.CreateScope();
+            List<string> groups = await AudienceGroups(user.Id, scope.ServiceProvider);
+            var payload = new { user.Id, User = PublicUserResponse.FromChatUser(user, await IsConnected(user.Id)) };
+            if (groups.Count > 0) {
+                await hub.Clients.Groups(groups).SendAsync("UserUpdated", payload);
+            }
+            // Their own other devices, which may share no channel with anyone yet
+            await hub.Clients.User(user.Id).SendAsync("UserUpdated", payload);
+        }
+        catch (Exception e) {
+            // Clients also refetch users when they reconnect, so a lost broadcast only delays the change
+            logger.LogWarning(e, "Failed to broadcast profile for user {UserId}", user.Id);
+        }
+    }
+
+    /// <summary>
+    /// The SignalR groups of everyone who could see this user: their guilds, DMs and group chats. A connection in
+    /// several of them gets an event more than once; clients just overwrite.
+    /// </summary>
+    private static async Task<List<string>> AudienceGroups(string userId, IServiceProvider services) {
+        List<string> groups = [];
+        groups.AddRange((await services.GetRequiredService<IGuildRepo>().GetGuildsForUser(userId))
+            .Select(g => $"guild-{g.Id}"));
+        groups.AddRange((await services.GetRequiredService<IDmChannelRepo>().GetDmChannels(userId))
+            .Select(dm => $"channel-{dm.ChannelId}"));
+        groups.AddRange((await services.GetRequiredService<IGroupChatRepo>().GetGroupChats(userId))
+            .Select(g => $"channel-{g.GroupChatId}"));
+        return groups;
     }
 }

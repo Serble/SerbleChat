@@ -114,7 +114,13 @@ class Api(
     suspend fun account(): Account = get("/account")
     suspend fun user(id: String): User = get("/account/${q(id)}")
     suspend fun userByName(username: String): User = get("/account/from-username/${q(username)}")
+    /** Many users at once (the server takes up to [MAX_BATCH_USERS]). Unknown IDs are left out. */
+    suspend fun users(ids: Collection<String>): List<User> = post("/account/batch", buildJsonObject {
+        put("ids", kotlinx.serialization.json.JsonArray(ids.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+    })
     suspend fun unreads(): Map<String, Int> = get("/account/unreads")
+    /** The newest message ID in each channel I can see, keyed by channel ID. Empty channels are left out. */
+    suspend fun channelActivity(): Map<String, Long> = get("/account/channel-activity")
     suspend fun blocks(): List<User> = get("/account/blocks")
     suspend fun block(id: String) = send("POST", "/account/blocks/${q(id)}")
     suspend fun unblock(id: String) = send("DELETE", "/account/blocks/${q(id)}")
@@ -260,6 +266,7 @@ class Api(
 
     companion object {
         fun q(value: String): String = URLEncoder.encode(value, Charsets.UTF_8).replace("+", "%20")
+        const val MAX_BATCH_USERS = 500
     }
 }
 

@@ -69,16 +69,58 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             user.WebPushIncludeContent = request.WebPushIncludeContent.Value;
         }
 
-        if (request.Blurb != null) {
+        bool profileChanged = false;
+        if (request.Blurb != null && request.Blurb != user.Blurb) {
             user.Blurb = request.Blurb;
+            profileChanged = true;
         }
         
-        if (request.Color != null) {
+        if (request.Color != null && request.Color != user.Color) {
             user.Color = request.Color;
+            profileChanged = true;
         }
 
         await users.UpdateUser(user);
+        if (profileChanged) {
+            await presence.BroadcastProfile(user);
+        }
         return Ok();
+    }
+
+    /// <summary>The most users <see cref="GetMany"/> returns at once.</summary>
+    public const int MaxBatchUsers = 500;
+
+    /// <summary>
+    /// Many users' public profiles in one request, for clients refreshing everyone they have cached (e.g. after
+    /// being offline, when they may have missed <c>UserUpdated</c> and <c>UserStatusUpdated</c> events).
+    /// Unknown IDs are left out.
+    /// </summary>
+    [HttpPost("batch")]
+    public async Task<ActionResult<PublicUserResponse[]>> GetMany([FromBody] UserBatchRequest request) {
+        if (request.Ids == null! || request.Ids.Length == 0) {
+            return Ok(Array.Empty<PublicUserResponse>());
+        }
+        if (request.Ids.Length > MaxBatchUsers) {
+            return BadRequest($"At most {MaxBatchUsers} users at a time");
+        }
+        ChatUser[] found = await users.GetUsersByIds(request.Ids);
+        return Ok(await users.CompilePublicUserResponses(found));
+    }
+
+    /// <summary>
+    /// The newest message ID in every channel the caller can see (channels with no messages are left out).
+    /// Lets a client that was away tell which of its cached conversations moved on, and order its lists, without
+    /// fetching each one.
+    /// </summary>
+    [HttpGet("channel-activity")]
+    public async Task<ActionResult<Dictionary<long, long>>> GetChannelActivity() {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) {
+            return Unauthorized();
+        }
+
+        List<long> visible = (await channels.GetChannelsVisibleToUser(userId)).Select(c => c.Id).ToList();
+        return Ok(await unreads.GetLatestMessageIds(visible));
     }
 
     [HttpGet("{id}")]
@@ -255,7 +297,7 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
     }
     
     [HttpGet("unreads")]
-    public async Task<ActionResult<Dictionary<int, int>>> GetUnreadCounts() {
+    public async Task<ActionResult<Dictionary<long, int>>> GetUnreadCounts() {
         string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId == null) {
             return Unauthorized();
@@ -269,11 +311,12 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
         Dictionary<long, Channel> channelData = (await channels.GetChannelsVisibleToUser(userId)).ToDictionary(c => c.Id);
         Dictionary<long, UserChannelNotificationPreferences> channelPrefs = await users.GetAllChannelNotificationPreferences(userId);
         Dictionary<long, UserGuildNotificationPreferences> guildPrefs = await users.GetAllUserGuildNotificationPreferences(userId);
-        Dictionary<long, int> msgUnreadCounts = await unreads.GetChannelUnreadMessagesCounts(userId);
+        Dictionary<long, int> msgUnreadCounts = await unreads.GetChannelUnreadMessagesCounts(userId, channelData.Keys);
         Dictionary<long, int> mentionUnreadCounts = await unreads.GetChannelUnreadMentionsCounts(userId);
         Dictionary<long, int> response = new();
-        foreach (int channelId in msgUnreadCounts.Keys.Union(mentionUnreadCounts.Keys)) {
-            Channel channel = channelData[channelId];
+        foreach (long channelId in msgUnreadCounts.Keys.Union(mentionUnreadCounts.Keys)) {
+            // Mentions can be in channels the user can no longer see (left the guild, lost access)
+            if (!channelData.TryGetValue(channelId, out Channel? channel)) continue;
             
             int msgCount = msgUnreadCounts.GetValueOrDefault(channelId, 0);
             int mentionCount = mentionUnreadCounts.GetValueOrDefault(channelId, 0);
@@ -409,8 +452,15 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return BadRequest(msg);
         }
 
-        await images.UploadImage(file, $"pfp/{userId}.webp");
-        return Ok();
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
+        long version = await images.UploadImage(file, $"pfp/{userId}.webp");
+        await users.SetAvatarVersion(user, version);
+        await presence.BroadcastProfile(user);
+        return Ok(new { AvatarVersion = version });
     }
 
     [HttpDelete("pfp")]
@@ -420,7 +470,14 @@ public class AccountController(IUserRepo users, IUnreadsRepo unreads, IChannelRe
             return Unauthorized();
         }
         
+        ChatUser? user = await users.GetUserById(userId);
+        if (user == null) {
+            return NotFound("User not found in local database");
+        }
+
         await images.DeleteImage($"pfp/{userId}.webp");
+        await users.SetAvatarVersion(user, 0);
+        await presence.BroadcastProfile(user);
         return Ok();
     }
 }

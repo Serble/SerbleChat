@@ -19,6 +19,7 @@ import TypingIndicator from './chat/TypingIndicator.jsx';
 import { useFileUploads } from './chat/FileUploadPanel.jsx';
 import { isUnlimited } from './chat/utils.js';
 import { AttachmentIcon } from '../icons.jsx';
+import { withQuery } from '../imageVersions.js';
 
 const MESSAGE_PAGE_SIZE = 50;
 // After a failed fetch, wait this long before scrolling can trigger another attempt
@@ -48,7 +49,7 @@ export default function ChatView() {
   const { channelId } = useParams();
   const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, rememberMessagePolls } = useApp();
+  const { currentUser, dmChannels, groupChats, messages, setMessages, resolveUser, peekUser, channelEvent, refreshDms, setActiveGuildId, loadGuildPermissions, getMyPerms, loadGuildMemberColors, getMemberColor, rolesUpdatedEvent, userUpdatedEvent, loadChannelPermissions, getMyChannelPerms, isBlocked, unblockUser, setActiveChannelId, markChannelRead, registerChannelMeta, channelUpdatedEvent, typingUsers, rememberMessagePolls, syncGeneration } = useApp();
   const { blockedMessageMode } = useClientOptions() ?? { blockedMessageMode: 'masked' };
   const { isMobile } = useMobile() ?? { isMobile: false };
   const [input, setInput]           = useState('');
@@ -411,6 +412,36 @@ export default function ChatView() {
     });
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // After the hub was down, messages sent, edited or deleted meanwhile were missed: refetch the newest page and
+  // put it in place of what we had from that point on. Older pages are kept when they still join up with it.
+  const channelMessagesRef = useRef(channelMessages);
+  channelMessagesRef.current = channelMessages;
+  useEffect(() => {
+    if (!syncGeneration || !channelId) return;
+    const key = String(channelId);
+    const history = historyRef.current;
+    let cancelled = false;
+    getMessages(channelId, MESSAGE_PAGE_SIZE, 0).then(msgs => {
+      if (cancelled || historyRef.current !== history) return;
+      const latest = [...msgs].reverse();
+      const oldestLatest = latest[0]?.id;
+      // No overlap means more than a page arrived: what we had no longer joins up, so start from the newest page
+      const joins = oldestLatest != null && channelMessagesRef.current.some(m => !m._pending && m.id >= oldestLatest);
+      rememberMessagePolls(msgs);
+      setMessages(p => {
+        const have = p[key] ?? [];
+        const kept = joins ? have.filter(m => !m._pending && m.id < oldestLatest) : [];
+        return { ...p, [key]: [...kept, ...latest, ...have.filter(m => m._pending)] };
+      });
+      if (!joins) {
+        history.hasMore = msgs.length === MESSAGE_PAGE_SIZE;
+        setHasMore(history.hasMore);
+      }
+      markChannelRead(channelId);
+    }).catch(e => console.warn('Resync of channel messages failed:', e));
+    return () => { cancelled = true; };
+  }, [syncGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Resolve other user for DM channel header
   useEffect(() => {
     if (!channel || channel.type !== 1 || !currentUser) return;
@@ -420,7 +451,7 @@ export default function ChatView() {
     let cancelled = false;
     resolveUser(otherId).then(u => { if (!cancelled) setOtherUser(u); });
     return () => { cancelled = true; };
-  }, [channel, dmChannels, currentUser, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channel, dmChannels, currentUser, channelId, resolveUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if channel has an icon (guild or group chat)
   useEffect(() => {
@@ -434,9 +465,9 @@ export default function ChatView() {
   useEffect(() => {
     if (!channelUpdatedEvent || !channel) return;
     if (String(channelUpdatedEvent.channelId) !== String(channel.id)) return;
-    const bust = '?t=' + channelUpdatedEvent.ts;
-    if (channel.type === 0) return probeImage(getChannelIconUrl(channel.guildId, channel.id) + bust, setHasChannelIcon);
-    if (channel.type === 2) return probeImage(getGroupChatIconUrl(channel.id) + bust, setHasChannelIcon);
+    const bust = 't=' + channelUpdatedEvent.ts;
+    if (channel.type === 0) return probeImage(withQuery(getChannelIconUrl(channel.guildId, channel.id), bust), setHasChannelIcon);
+    if (channel.type === 2) return probeImage(withQuery(getGroupChatIconUrl(channel.id), bust), setHasChannelIcon);
   }, [channelUpdatedEvent, channel]);
 
   // ?message=<id> (from a message link) asks the list to scroll to and highlight that message

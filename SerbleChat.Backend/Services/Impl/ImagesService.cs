@@ -29,7 +29,15 @@ public class ImagesService(IAmazonS3 s3, IOptions<ApiSettings> apiSettings, IOpt
         return true;
     }
 
-    public async Task UploadImage(IFormFile file, string key) {
+    /// <summary>
+    /// How long browsers and proxies may reuse an image without asking again. Clients that know an image's version
+    /// put it in the URL, so for them a new picture is a new URL and this never makes them stale; it bounds how
+    /// stale a client that uses the bare URL (an old app version, a webhook avatar) can be. After it runs out
+    /// the ETag makes the check cheap.
+    /// </summary>
+    private const string CacheControl = "public, max-age=3600";
+
+    public async Task<long> UploadImage(IFormFile file, string key) {
         await using Stream inputStream = file.OpenReadStream();
         using MagickImage image = new(inputStream);
 
@@ -52,9 +60,12 @@ public class ImagesService(IAmazonS3 s3, IOptions<ApiSettings> apiSettings, IOpt
         PutObjectRequest request = new() {
             BucketName = s3Settings.Value.BucketName,
             Key = key,
-            InputStream = ms
+            InputStream = ms,
+            ContentType = "image/webp"
         };
+        request.Headers.CacheControl = CacheControl;
         await s3.PutObjectAsync(request);
+        return IImagesService.VersionFor(DateTime.UtcNow);
     }
 
     public Task DeleteImage(string key) {
@@ -64,5 +75,22 @@ public class ImagesService(IAmazonS3 s3, IOptions<ApiSettings> apiSettings, IOpt
         };
 
         return s3.DeleteObjectAsync(request);
+    }
+
+    public async Task<Dictionary<string, DateTime>> ListImages(string prefix, CancellationToken ct = default) {
+        Dictionary<string, DateTime> result = new();
+        ListObjectsV2Request request = new() {
+            BucketName = s3Settings.Value.BucketName,
+            Prefix = prefix
+        };
+        ListObjectsV2Response response;
+        do {
+            response = await s3.ListObjectsV2Async(request, ct);
+            foreach (S3Object o in response.S3Objects ?? []) {
+                result[o.Key] = o.LastModified ?? DateTime.UtcNow;
+            }
+            request.ContinuationToken = response.NextContinuationToken;
+        } while (response.IsTruncated == true);
+        return result;
     }
 }

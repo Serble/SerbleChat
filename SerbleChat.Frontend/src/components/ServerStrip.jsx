@@ -7,6 +7,7 @@ import GuildNotifContextMenu from './GuildNotifContextMenu.jsx';
 import { useMobile } from '../context/MobileContext.jsx';
 import { getGuildIconUrl } from '../api.js';
 import { HomeIcon, GearIcon, PlusIcon } from '../icons.jsx';
+import { withQuery } from '../imageVersions.js';
 
 // Discord-style indicator on the strip's left edge: dot when unread, short on hover, tall when selected.
 // Rendered as a sibling of the 48px button, so its parent must be position: relative.
@@ -115,7 +116,7 @@ function GuildIcon({ guild, active, onClick, onContextMenu, unreadCount, imageRe
         {hasIcon && (
           <img
             key={imageRefreshKey}
-            src={getGuildIconUrl(guild.id) + '?t=' + imageRefreshKey}
+            src={withQuery(getGuildIconUrl(guild.id), 't=' + imageRefreshKey)}
             alt={guild.name}
             onError={() => setImageError(true)}
             style={{

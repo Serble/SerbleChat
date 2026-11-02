@@ -4,6 +4,7 @@ import { getChannelIconUrl, getGroupChatIconUrl } from '../../api.js';
 import { IconButton } from '../ui/index.js';
 import { PersonIcon, PeopleIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon } from '../../icons.jsx';
 import './chat.css';
+import { withQuery } from '../../imageVersions.js';
 
 function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   return (
@@ -47,7 +48,7 @@ export default function ChatHeader({
   const voiceCapable   = isDmChannel || isGroupChannel || (isGuildChannel && channel?.voiceCapable);
   const inThisVoice    = voiceChannelId === Number(channelId);
   // Cache-buster so an updated icon is re-fetched
-  const iconQuery      = iconVersion ? '?t=' + iconVersion : '';
+  const iconQuery      = iconVersion ? 't=' + iconVersion : '';
 
   return (
     <div style={{
@@ -70,7 +71,7 @@ export default function ChatHeader({
         // Group chat: show icon as avatar
         <img
           key={`header-group-icon-${channelId}-${iconVersion || 0}`}
-          src={getGroupChatIconUrl(channelId) + iconQuery}
+          src={withQuery(getGroupChatIconUrl(channelId), iconQuery)}
           alt="Group icon"
           onError={onIconError}
           style={{ width: 32, height: 32, borderRadius: '6px', flexShrink: 0, objectFit: 'cover' }}
@@ -84,7 +85,7 @@ export default function ChatHeader({
         {isGuildChannel && hasChannelIcon && (
           <img
             key={`header-channel-icon-${channelId}-${iconVersion || 0}`}
-            src={getChannelIconUrl(channel.guildId, channelId) + iconQuery}
+            src={withQuery(getChannelIconUrl(channel.guildId, channelId), iconQuery)}
             alt="Channel icon"
             onError={onIconError}
             style={{ width: 20, height: 20, borderRadius: '4px', flexShrink: 0, objectFit: 'cover' }}

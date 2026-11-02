@@ -159,4 +159,30 @@ public class ChatDatabaseContext(DbContextOptions<ChatDatabaseContext> options) 
             .HasForeignKey(c => c.GuildId)
             .OnDelete(DeleteBehavior.Cascade);
     }
+
+    // Image versions (ChatUser.AvatarVersion, Guild.IconVersion, Channel.IconVersion) are only ever written by targeted
+    // UPDATEs (the repos' Set*Version and ImageVersionBackfill). A normal save of a row that was loaded before an
+    // upload would otherwise put the old version back, and clients would keep showing the old picture.
+    private static readonly string[] VersionProperties = [nameof(ChatUser.AvatarVersion), nameof(Guild.IconVersion)];
+
+    private void ProtectImageVersions() {
+        foreach (var entry in ChangeTracker.Entries()) {
+            if (entry.State != EntityState.Modified) continue;
+            if (entry.Entity is not (ChatUser or Guild or Channel)) continue;
+            foreach (string name in VersionProperties) {
+                var property = entry.Metadata.FindProperty(name);
+                if (property != null) entry.Property(name).IsModified = false;
+            }
+        }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) {
+        ProtectImageVersions();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) {
+        ProtectImageVersions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 }

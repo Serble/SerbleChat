@@ -53,13 +53,12 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         ).CountAsync();
     }
 
-    public Task<int> GetUnreadMessagesCount(string userId, long channelId) {
-        return context.Messages
-            .Where(m => m.ChannelId == channelId)
-            .Join(context.ChannelReads.Where(cr => cr.UserId == userId && cr.ChannelId == channelId),
-                m => m.ChannelId, cr => cr.ChannelId, (m, cr) => new { Message = m, Read = cr })
-            .Where(x => x.Message.Id > x.Read.LastReadMessageId)
-            .Select(x => x.Message.Id) // can be x.Message or 1, just need any result
+    public async Task<int> GetUnreadMessagesCount(string userId, long channelId) {
+        // No read marker means nothing in the channel has been read yet (joining a guild or group sets one at
+        // its newest message, see MarkChannelsReadToLatest)
+        long lastRead = await GetLastReadMessageId(userId, channelId);
+        return await context.Messages
+            .Where(m => m.ChannelId == channelId && m.Id > lastRead && (m.AuthorId == null || m.AuthorId != userId))
             .CountAsync();
     }
 
@@ -82,16 +81,43 @@ public class UnreadsRepo(ChatDatabaseContext context) : IUnreadsRepo {
         ).ToDictionaryAsync(o => o.ChannelId, o => o.UnreadMentionCount);
     }
 
-    public Task<Dictionary<long, int>> GetChannelUnreadMessagesCounts(string userId) {
-        return context.Messages
-            .Join(context.ChannelReads.Where(cr => cr.UserId == userId),
-                m => m.ChannelId, cr => cr.ChannelId, (m, cr) => new { Message = m, Read = cr })
-            .Where(x => x.Message.Id > x.Read.LastReadMessageId)
-            .GroupBy(x => x.Message.ChannelId)
-            .Select(g => new {
+    public Task<Dictionary<long, int>> GetChannelUnreadMessagesCounts(string userId, IReadOnlyCollection<long> channelIds) {
+        long[] ids = channelIds.ToArray();
+        return (
+            from m in context.Messages
+            // Left join: a channel with no read marker has never been read, so all of it counts
+            join cr in context.ChannelReads.Where(r => r.UserId == userId)
+                on m.ChannelId equals cr.ChannelId into reads
+            from read in reads.DefaultIfEmpty()
+            where ids.Contains(m.ChannelId)
+                  && (read == null || m.Id > read.LastReadMessageId)
+                  // What you sent yourself was never unread to you
+                  && (m.AuthorId == null || m.AuthorId != userId)
+            group m by m.ChannelId
+            into g
+            select new {
                 ChannelId = g.Key,
                 UnreadCount = g.Count()
             }).ToDictionaryAsync(o => o.ChannelId, o => o.UnreadCount);
+    }
+
+    public Task<Dictionary<long, long>> GetLatestMessageIds(IReadOnlyCollection<long> channelIds) {
+        long[] ids = channelIds.ToArray();
+        return context.Messages
+            .Where(m => ids.Contains(m.ChannelId))
+            .GroupBy(m => m.ChannelId)
+            .Select(g => new { ChannelId = g.Key, Latest = g.Max(m => m.Id) })
+            .ToDictionaryAsync(o => o.ChannelId, o => o.Latest);
+    }
+
+    public async Task MarkChannelsReadToLatest(IReadOnlyCollection<string> userIds, IReadOnlyCollection<long> channelIds) {
+        if (userIds.Count == 0 || channelIds.Count == 0) return;
+        Dictionary<long, long> latest = await GetLatestMessageIds(channelIds);
+        foreach (string userId in userIds) {
+            foreach ((long channelId, long messageId) in latest) {
+                await MarkRead(userId, channelId, messageId);
+            }
+        }
     }
 
     public Task AddUserMentions(long channelId, long messageId, IEnumerable<string> userIds) {

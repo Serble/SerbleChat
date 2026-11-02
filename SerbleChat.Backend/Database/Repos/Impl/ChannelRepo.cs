@@ -21,6 +21,12 @@ public class ChannelRepo(ChatDatabaseContext context, IGroupChatRepo groups, IDm
         await context.SaveChangesAsync();
     }
 
+    public async Task SetIconVersion(Channel channel, long version) {
+        await context.Channels.Where(c => c.Id == channel.Id)
+            .ExecuteUpdateAsync(set => set.SetProperty(c => c.IconVersion, version));
+        channel.IconVersion = version;
+    }
+
     public async Task DeleteChannel(long id) {
         Channel? channel = await GetChannel(id);
         if (channel == null) {

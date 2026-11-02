@@ -10,6 +10,9 @@ public interface IUserRepo {
     Task<ChatUser?> GetUserByUsername(string username);
     Task UpdateRefreshToken(string id, string refreshToken);
     Task UpdateUser(ChatUser user);
+    /// <summary>The only way to change <see cref="ChatUser.AvatarVersion"/>: <see cref="UpdateUser"/> leaves it alone.</summary>
+    Task SetAvatarVersion(ChatUser user, long version);
+    Task<ChatUser[]> GetUsersByIds(IEnumerable<string> ids);
     
     Task<bool> AreUsersBlocked(string userId1, string userId2);
     Task BlockUser(string blockerId, string blockedId);

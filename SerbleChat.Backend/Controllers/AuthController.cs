@@ -14,7 +14,7 @@ namespace SerbleChat.Backend.Controllers;
 [Route("/auth")]
 [ApiController]
 public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtManager jwt, IOptions<PushNotificationsSettings> pushSettings, 
-    IOptions<JwtSettings> jwtSettings, IOptions<SerbleApiSettings> serbleSettings) : ControllerBase {
+    IOptions<JwtSettings> jwtSettings, IOptions<SerbleApiSettings> serbleSettings, IPresenceService presence) : ControllerBase {
     
     [HttpPost]
     public async Task<ActionResult<AuthResponse>> Post(AuthenticateRequest request) {
@@ -39,9 +39,13 @@ public class AuthController(IUserRepo users, ISerbleApiClient serbleApi, IJwtMan
             await users.CreateUser(user);
         }
         else {
+            bool renamed = user.Username != info.Username;
             user.Username = info.Username;
             user.RefreshToken = tokenResponse.RefreshToken;
             await users.UpdateUser(user);
+            if (renamed) {
+                await presence.BroadcastProfile(user);
+            }
         }
 
         if (user.IsBanned) {

@@ -33,6 +33,12 @@ public class GuildRepo(ChatDatabaseContext context, IPresenceService presence, I
         await context.SaveChangesAsync();
     }
 
+    public async Task SetIconVersion(Guild guild, long version) {
+        await context.Guilds.Where(g => g.Id == guild.Id)
+            .ExecuteUpdateAsync(set => set.SetProperty(g => g.IconVersion, version));
+        guild.IconVersion = version;
+    }
+
     public async Task AddGuildMember(long guildId, string userId) {
         bool exists = await context.GuildMembers
             .AnyAsync(m => m.GuildId == guildId && m.UserId == userId);

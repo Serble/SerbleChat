@@ -148,7 +148,7 @@ private fun GuildRail(
             }
             items(guilds, key = { it.id }) { guild ->
                 RailItem(selected = selected == guild.id, unread = guildUnread(guild.id), onClick = { onSelect(guild.id) }) {
-                    RemoteImage(app.guildIconUrl(guild.id), guild.name, 48.dp, RoundedCornerShape(if (selected == guild.id) 16.dp else 24.dp))
+                    RemoteImage(app.guildIconUrl(guild), guild.name, 48.dp, RoundedCornerShape(if (selected == guild.id) 16.dp else 24.dp))
                 }
             }
             item {
@@ -302,7 +302,7 @@ private fun ConversationList(currentChannel: Long?, onOpenChannel: (Long) -> Uni
                     val inCall = (voice[row.channel.id]?.size ?: 0) > 0
                     ListRow(selected = row.channel.id == currentChannel, onClick = { onOpenChannel(row.channel.id) }) {
                         if (row.userId != null) Avatar(row.userId, row.name, 40.dp, status = user?.status ?: "offline")
-                        else RemoteImage(app.groupIconUrl(row.channel.id), row.name, 40.dp)
+                        else RemoteImage(app.groupIconUrl(row.channel), row.name, 40.dp)
                         RowSpacer()
                         NameLine(
                             row.name,

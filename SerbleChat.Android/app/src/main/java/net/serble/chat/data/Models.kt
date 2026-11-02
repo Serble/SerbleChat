@@ -65,7 +65,19 @@ data class Account(
     val statusType: String = "online",
     val statusMessage: String = "",
     val statusExpiresAt: String? = null,
+    val avatarVersion: Long = ImageVersion.UNKNOWN,
 )
+
+/**
+ * Images (avatars, guild and channel icons) carry a version that changes whenever the picture does. It goes in
+ * the image's URL, so a cached copy of an old picture can never be shown for a new one.
+ */
+object ImageVersion {
+    /** There is no picture: show the fallback without asking the server. */
+    const val NONE = 0L
+    /** An older server, or a row it hasn't checked yet: use the bare URL. */
+    const val UNKNOWN = -1L
+}
 
 @Serializable
 data class User(
@@ -80,6 +92,7 @@ data class User(
     val status: String = "offline",
     val statusMessage: String = "",
     val statusExpiresAt: String? = null,
+    val avatarVersion: Long = ImageVersion.UNKNOWN,
 )
 
 @Serializable
@@ -90,6 +103,7 @@ data class Channel(
     val type: Int = ChannelType.GUILD,
     val name: String = "",
     val voiceCapable: Boolean = false,
+    val iconVersion: Long = ImageVersion.UNKNOWN,
 )
 
 @Serializable
@@ -98,6 +112,7 @@ data class Guild(
     val name: String,
     val createdAt: String = "",
     val ownerId: String = "",
+    val iconVersion: Long = ImageVersion.UNKNOWN,
 )
 
 @Serializable

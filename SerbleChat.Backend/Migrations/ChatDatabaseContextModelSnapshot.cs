@@ -36,6 +36,9 @@ namespace SerbleChat.Backend.Migrations
                     b.Property<long?>("GuildId")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("IconVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -119,6 +122,9 @@ namespace SerbleChat.Backend.Migrations
                     b.Property<string>("Id")
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
+
+                    b.Property<long>("AvatarVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Blurb")
                         .IsRequired()
@@ -298,6 +304,9 @@ namespace SerbleChat.Backend.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<long>("IconVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .IsRequired()

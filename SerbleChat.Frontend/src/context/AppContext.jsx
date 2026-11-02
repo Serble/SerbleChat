@@ -8,8 +8,9 @@ import {
   getUnreads, getChannelNotifPrefs, setChannelNotifPrefs,
   patchAccount, getGuildNotifPrefs, setGuildNotifPrefs as setGuildNotifPrefsApi,
   getGuildChannels, getUsersInVoice, getActivePolls,
-  setMyStatus, clearMyStatus, expireMyStatus,
+  setMyStatus, clearMyStatus, expireMyStatus, getUsersBatch,
 } from '../api.js';
+import { noteUser } from '../imageVersions.js';
 import { resolveOwnStatus, resolvePublicStatus, expiresAtMs } from '../components/status/status.js';
 import { resubscribeIfEnabled } from '../push.js';
 import { playSound, preloadSounds } from '../sound.js';
@@ -25,6 +26,8 @@ export function AppProvider({ children }) {
   const [dmChannels,  setDmChannels]    = useState([]);
   const [groupChats,  setGroupChats]    = useState([]);
   const [guilds,      setGuilds]        = useState([]);
+  const guildsRef = useRef(guilds);
+  guildsRef.current = guilds;
   const [blockedUsers, setBlockedUsers] = useState([]); // PublicUserResponse[]
   const [blockedUserIds, setBlockedUserIds] = useState(new Set()); // Set<string>
   const [isConnected, setIsConnected]   = useState(false);
@@ -79,10 +82,18 @@ export function AppProvider({ children }) {
   const [statusClock, setStatusClock] = useState(0);
   // Bumped after the hub reconnects: status events may have been missed, so lists refetch
   const [presenceResync, setPresenceResync] = useState(0);
+  // Bumped when cached user records change (a profile update, or the refetch after a reconnect). resolveUser
+  // changes with it, so everything that resolved a user resolves again and shows the new name.
+  const [userRevision, setUserRevision] = useState(0);
+  // Bumped after the hub comes back from being down: the open channel refetches its messages (see ChatView)
+  const [syncGeneration, setSyncGeneration] = useState(0);
   // channelId (string) -> Set<userId> of users currently typing
   const [typingUsers, setTypingUsers] = useState({});
 
   const hubRef          = useRef(null);
+  // Failed attempts at the initial connection (connectHub), and the timer for the next one
+  const connectAttemptsRef = useRef(0);
+  const connectRetryRef    = useRef(null);
   const userCacheRef    = useRef({});
   const heartbeatRef    = useRef(null);
   const initDoneRef     = useRef(false); // guard against double-invoke
@@ -179,12 +190,7 @@ export function AppProvider({ children }) {
       // Mark initial data as loaded after guilds and channel mappings are populated
       setInitialDataLoaded(true);
       // Load initial unread counts (already filtered by per-channel prefs server-side)
-      try {
-        const counts = await getUnreads();
-        const stringKeyed = {};
-        for (const [k, v] of Object.entries(counts ?? {})) stringKeyed[String(k)] = v;
-        setUnreads(stringKeyed);
-      } catch (e) { console.warn('getUnreads failed:', e); }
+      await reloadUnreads();
       // Re-register push subscription in the background (no-op if not opted in)
       resubscribeIfEnabled().catch(e => console.warn('resubscribeIfEnabled failed:', e));
       connectHub();
@@ -422,6 +428,41 @@ export function AppProvider({ children }) {
     }
   }
 
+  /** Unread counts from the server, except for the channel on screen (it's being read). */
+  async function reloadUnreads() {
+    try {
+      const counts = await getUnreads();
+      const stringKeyed = {};
+      for (const [k, v] of Object.entries(counts ?? {})) {
+        if (String(k) !== activeChannelIdRef.current) stringKeyed[String(k)] = v;
+      }
+      setUnreads(stringKeyed);
+    } catch (e) { console.warn('getUnreads failed:', e); }
+  }
+
+  /**
+   * After the hub was down, anything could have changed: messages, unreads, lists, other people's profiles
+   * and statuses. Refetch it all, and have the open channel refetch its messages.
+   */
+  async function resyncAfterOutage() {
+    setUserStatuses({});
+    setPresenceResync(n => n + 1);
+    setSyncGeneration(n => n + 1);
+    const ids = Object.keys(userCacheRef.current);
+    await Promise.allSettled([
+      reloadUnreads(),
+      getMyAccount().then(u => setCurrentUser(p => ({ ...(p ?? {}), ...u }))),
+      getFriends().then(setFriends),
+      getDmChannels().then(setDmChannels),
+      reloadGroups(),
+      reloadGuilds(),
+      refreshBlockedUsers(),
+      (async () => {
+        for (let i = 0; i < ids.length; i += 500) applyUsers(await getUsersBatch(ids.slice(i, i + 500)));
+      })(),
+    ]);
+  }
+
   async function reloadGroups() {
     try {
       const members = await getGroupChats();
@@ -537,7 +578,8 @@ export function AppProvider({ children }) {
       userCacheRef.current[id] = fb;
       return fb;
     }
-  }, []); // deps: empty — only uses a ref and a module-level import
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRevision]); // reads a ref; a new revision means cached users changed, so callers should resolve again
 
   /**
    * Record statuses from user records just fetched from the API (PublicUserResponse,
@@ -552,6 +594,25 @@ export function AppProvider({ children }) {
     }
     if (Object.keys(patch).length > 0) setUserStatuses(p => ({ ...p, ...patch }));
   }, []);
+
+  /**
+   * Fresh user records from the server: updates the cache, the image versions and statuses, then bumps
+   * userRevision so whatever showed the old records shows the new ones.
+   */
+  const applyUsers = useCallback((list) => {
+    const users = (list ?? []).filter(u => u?.id);
+    if (users.length === 0) return;
+    for (const u of users) {
+      userCacheRef.current[u.id] = { ...(userCacheRef.current[u.id] ?? {}), ...u };
+      noteUser(u);
+    }
+    seedUserStatuses(users);
+    const mine = users.find(u => u.id === currentUserRef.current?.id);
+    if (mine) {
+      setCurrentUser(p => p && { ...p, username: mine.username, blurb: mine.blurb, color: mine.color, avatarVersion: mine.avatarVersion });
+    }
+    setUserRevision(n => n + 1);
+  }, [seedUserStatuses]);
 
   /**
    * How a user's status looks right now: { presence, message, expiresAt }.
@@ -656,7 +717,9 @@ export function AppProvider({ children }) {
 
     const conn = new signalR.HubConnectionBuilder()
       .withUrl(`${BASE}/updates`, { accessTokenFactory: () => jwt })
-      .withAutomaticReconnect()
+      // Never give up: SignalR's default stops after four tries (about 40 s), which a laptop lid or a flaky
+      // network easily outlasts, and then the page sat there disconnected and silently stale until reloaded
+      .withAutomaticReconnect({ nextRetryDelayInMilliseconds: ({ previousRetryCount }) => Math.min(30_000, 1000 * 2 ** Math.min(previousRetryCount, 5)) })
       .configureLogging(signalR.LogLevel.Warning)
       .build();
 
@@ -811,9 +874,19 @@ export function AppProvider({ children }) {
       setChannelUpdatedEvent({ channelId, ts: Date.now() });
     });
 
-    conn.on('UserUpdated', ({ id }) => {
-      // A guild member's roles changed — refresh member colors/list
+    conn.on('UserUpdated', ({ id, user }) => {
+      // A profile change carries the new profile (name, blurb, colour, avatar version)
+      if (user) applyUsers([user]);
+      // Either way (a guild role change sends only the ID) member lists and colours refetch
       setUserUpdatedEvent({ userId: id, ts: Date.now() });
+    });
+
+    conn.on('JoinedGuild', async ({ guildId }) => {
+      // Joined on another device (this one already has it when it did the joining)
+      if (guildsRef.current.some(g => String(g.id) === String(guildId))) return;
+      await reloadGuilds();
+      // The server only adds a connection to a guild's group when it connects
+      await reconnectHub();
     });
 
     conn.on('LeftGuild', async ({ guildId }) => {
@@ -939,9 +1012,8 @@ export function AppProvider({ children }) {
     conn.onreconnecting(() => setIsConnected(false));
     conn.onreconnected(() => {
       setIsConnected(true);
-      // Status changes while we were away were missed: drop what we had and let lists refetch
-      setUserStatuses({});
-      setPresenceResync(n => n + 1);
+      // Everything that happened while we were away was missed
+      resyncAfterOutage();
       const sendStatus = () => conn.invoke('UpdateStatus').catch(() => {});
       sendStatus();
       clearInterval(heartbeatRef.current);
@@ -953,6 +1025,9 @@ export function AppProvider({ children }) {
     try {
       await conn.start();
       setIsConnected(true);
+      // Only the first connection follows a fresh load; one that took retries may have missed things
+      if (connectAttemptsRef.current > 0) resyncAfterOutage();
+      connectAttemptsRef.current = 0;
       // Send status immediately then every 30 seconds
       const sendStatus = () => conn.invoke('UpdateStatus').catch(() => {});
       sendStatus();
@@ -961,6 +1036,10 @@ export function AppProvider({ children }) {
     } catch (e) {
       hubRef.current = null;
       console.error('SignalR connect failed:', e);
+      // The server may be restarting or the network down: keep trying, like a dropped connection does
+      const attempt = ++connectAttemptsRef.current;
+      clearTimeout(connectRetryRef.current);
+      connectRetryRef.current = setTimeout(() => connectHub(), Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5)));
     }
   }
 
@@ -1019,7 +1098,7 @@ export function AppProvider({ children }) {
       userUpdatedEvent,
       guildUpdatedEvent,
       channelUpdatedEvent,
-      userStatuses, seedUserStatuses, getUserStatus, presenceResync, statusClock,
+      userStatuses, seedUserStatuses, getUserStatus, presenceResync, statusClock, syncGeneration,
       ownStatus, setOwnStatus, clearOwnStatus,
       typingUsers,
       hubRef,

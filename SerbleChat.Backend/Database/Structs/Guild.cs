@@ -19,6 +19,9 @@ public class Guild {
     public string OwnerId { get; set; } = null!;
     
     public GuildPermissions DefaultPermissions { get; set; } = null!;
+
+    /// <summary>Changes whenever the icon does. 0 means none, -1 not known yet (see <see cref="ChatUser.AvatarVersion"/>).</summary>
+    public long IconVersion { get; set; }
     
     // Navigation Properties
     [JsonIgnore]

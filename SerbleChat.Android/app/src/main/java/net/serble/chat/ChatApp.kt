@@ -28,6 +28,7 @@ import net.serble.chat.data.Api
 import net.serble.chat.data.AppJson
 import net.serble.chat.data.ChatStore
 import net.serble.chat.data.Hub
+import net.serble.chat.data.ImageVersion
 import net.serble.chat.data.JsonCache
 import net.serble.chat.data.SettingsStore
 import net.serble.chat.data.StoreNotice
@@ -76,7 +77,10 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         store = ChatStore(api, hub, cache, scope)
         themes = net.serble.chat.data.ThemeStore(api, cache, scope)
         files = net.serble.chat.data.Files(BuildConfig.FILES_API_URL, http, api, settings, store, contentResolver, scope)
-        notifier = Notifier(this, http, ::avatarUrl)
+        notifier = Notifier(this, http) { userId ->
+            val version = store.users.value[userId]?.avatarVersion ?: ImageVersion.UNKNOWN
+            Notifier.AvatarSource(avatarUrl(userId, version), version)
+        }
         notifier.createChannels()
         messageNotifications = MessageNotifications(store, api, notifier)
         push = Push(this, api, settings, scope, signedIn = { token != null })
@@ -129,9 +133,20 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    fun avatarUrl(userId: String): String = "${BuildConfig.S3_URL.trimEnd('/')}/pfp/${Api.q(userId)}.webp"
-    fun guildIconUrl(guildId: Long): String = "${BuildConfig.S3_URL.trimEnd('/')}/guild-icons/$guildId.webp"
-    fun groupIconUrl(channelId: Long): String = "${BuildConfig.S3_URL.trimEnd('/')}/channel-icons/$channelId.webp"
+    /** A user's avatar, or null when they have none. Pass the version from their [net.serble.chat.data.User]. */
+    fun avatarUrl(userId: String, version: Long): String? = imageUrl("pfp/${Api.q(userId)}.webp", version)
+    fun guildIconUrl(guild: net.serble.chat.data.Guild): String? = imageUrl("guild-icons/${guild.id}.webp", guild.iconVersion)
+    fun groupIconUrl(channel: net.serble.chat.data.Channel): String? = imageUrl("channel-icons/${channel.id}.webp", channel.iconVersion)
+
+    /**
+     * The version goes in the URL, which is also the image cache's key: a new picture is a new URL, so the old one
+     * can't be shown in its place, and an unchanged one never has to be fetched again.
+     */
+    private fun imageUrl(key: String, version: Long): String? = when {
+        version == ImageVersion.NONE -> null
+        version > 0 -> "${BuildConfig.S3_URL.trimEnd('/')}/$key?v=$version"
+        else -> "${BuildConfig.S3_URL.trimEnd('/')}/$key"
+    }
 
     /** Finishes Serble sign-in with the code from the redirect. */
     suspend fun signIn(code: String) {
@@ -175,9 +190,37 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
     }.getOrNull()
 
     override fun newImageLoader(context: PlatformContext): ImageLoader = ImageLoader.Builder(context)
-        .components { add(OkHttpNetworkFetcherFactory(callFactory = { http })) }
+        .components { add(OkHttpNetworkFetcherFactory(callFactory = { http }, cacheStrategy = { SuccessOnlyCacheStrategy })) }
         .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.2).build() }
         .diskCache { DiskCache.Builder().directory(cacheDir.resolve("images")).maxSizeBytes(64L * 1024 * 1024).build() }
         .crossfade(true)
         .build()
+}
+
+/**
+ * Coil's default disk caching, minus error responses. By default it stores a 404 like any image and serves it
+ * from then on, so someone without an avatar who later uploads one would never show it.
+ *
+ * Fresh copies come from versioned URLs (see [ChatApp.avatarUrl]), not from revalidating, so a successful response
+ * is reused for as long as it stays in the cache.
+ */
+@OptIn(coil3.annotation.ExperimentalCoilApi::class)
+private object SuccessOnlyCacheStrategy : coil3.network.CacheStrategy {
+    override suspend fun read(
+        cacheResponse: coil3.network.NetworkResponse,
+        networkRequest: coil3.network.NetworkRequest,
+        options: coil3.request.Options,
+    ): coil3.network.CacheStrategy.ReadResult =
+        // An error stored by an older version of the app: ask again
+        if (cacheResponse.code in 200..299) coil3.network.CacheStrategy.ReadResult(cacheResponse)
+        else coil3.network.CacheStrategy.ReadResult(networkRequest)
+
+    override suspend fun write(
+        cacheResponse: coil3.network.NetworkResponse?,
+        networkRequest: coil3.network.NetworkRequest,
+        networkResponse: coil3.network.NetworkResponse,
+        options: coil3.request.Options,
+    ): coil3.network.CacheStrategy.WriteResult =
+        if (networkResponse.code in 200..299) coil3.network.CacheStrategy.WriteResult(networkResponse)
+        else coil3.network.CacheStrategy.WriteResult.DISABLED
 }

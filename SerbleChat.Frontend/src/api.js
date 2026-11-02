@@ -1,3 +1,5 @@
+import { noteVersionsIn, versionedUrl, avatarVersionOf, guildIconVersionOf, channelIconVersionOf } from './imageVersions.js';
+
 // Serble OAuth settings
 export const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 export const REDIRECT_URI = `${window.location.origin}/callback`;
@@ -22,6 +24,8 @@ async function handle(res) {
     err.status = res.status;
     throw err;
   }
+  // Every user, guild and channel the server sends carries its image version: remember them for image URLs
+  noteVersionsIn(data);
   return data;
 }
 
@@ -199,11 +203,24 @@ export async function deleteProfilePicture() {
   return handle(res);
 }
 
-/** Helper: construct profile picture URL for a user */
-export function getProfilePictureUrl(userId) {
+/**
+ * Helper: a user's profile picture URL, or null when they have none. Uses the avatar version from the user
+ * records fetched so far (see imageVersions.js), so a changed picture gets a new URL.
+ */
+export function getProfilePictureUrl(userId, version = avatarVersionOf(userId)) {
   // S3 public URL - adjust based on your S3/MinIO setup
   const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
-  return `${S3_PUBLIC_URL}/pfp/${encodeURIComponent(userId)}.webp`;
+  return versionedUrl(`${S3_PUBLIC_URL}/pfp/${encodeURIComponent(userId)}.webp`, version);
+}
+
+/** POST /account/batch – many users' public profiles at once (up to 500). Unknown IDs are left out. */
+export async function getUsersBatch(ids) {
+  const res = await fetch(`${BASE}/account/batch`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return handle(res);
 }
 
 // ── Friends ───────────────────────────────────────────────────────────────────
@@ -512,7 +529,8 @@ export async function deleteGroupChatIcon(groupId) {
 /** Helper: construct group chat icon URL */
 export function getGroupChatIconUrl(groupId) {
   const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
-  return `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(groupId)}.webp`;
+  const url = `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(groupId)}.webp`;
+  return versionedUrl(url, channelIconVersionOf(groupId)) ?? url;
 }
 
 // ── Guilds ────────────────────────────────────────────────────────────────────
@@ -581,7 +599,8 @@ export async function deleteGuildIcon(guildId) {
 /** Helper: construct guild icon URL */
 export function getGuildIconUrl(guildId) {
   const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
-  return `${S3_PUBLIC_URL}/guild-icons/${encodeURIComponent(guildId)}.webp`;
+  const url = `${S3_PUBLIC_URL}/guild-icons/${encodeURIComponent(guildId)}.webp`;
+  return versionedUrl(url, guildIconVersionOf(guildId)) ?? url;
 }
 
 // ── Webhooks ──────────────────────────────────────────────────────────────────
@@ -741,7 +760,8 @@ export async function deleteChannelIcon(guildId, channelId) {
 /** Helper: construct channel icon URL */
 export function getChannelIconUrl(guildId, channelId) {
   const S3_PUBLIC_URL = import.meta.env.VITE_S3_ENDPOINT ?? 'http://127.0.0.1:9000/serblechat';
-  return `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(channelId)}.webp`;
+  const url = `${S3_PUBLIC_URL}/channel-icons/${encodeURIComponent(channelId)}.webp`;
+  return versionedUrl(url, channelIconVersionOf(channelId)) ?? url;
 }
 
 /** GET /guild/:guildId/my-permissions – get the current user's resolved permissions */

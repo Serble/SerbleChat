@@ -59,7 +59,10 @@ data class IncomingNotification(
  * in it, an inline reply and a "mark read" action. Android groups them in the conversations
  * section because each one has a long-lived sharing shortcut.
  */
-class Notifier(private val context: Context, private val http: OkHttpClient, private val avatarUrl: (String) -> String) {
+class Notifier(private val context: Context, private val http: OkHttpClient, private val avatarOf: (String) -> AvatarSource) {
+    /** Where a user's avatar is: [url] is null when they have none; [version] as in [net.serble.chat.data.ImageVersion]. */
+    data class AvatarSource(val url: String?, val version: Long)
+
     private val manager = NotificationManagerCompat.from(context)
     private val avatars = ConcurrentHashMap<String, IconCompat>()
     private val avatarFetches = ConcurrentHashMap.newKeySet<String>()
@@ -133,7 +136,8 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
      */
     fun showMessage(n: IncomingNotification, me: Person) {
         if (!canPost()) return
-        val cached = cachedAvatar(n.authorId)
+        val source = if (n.authorId == WEBHOOK_AUTHOR) null else avatarOf(n.authorId)
+        val cached = source?.let { cachedAvatar(n.authorId, it) }
         val author = person(n.authorId, n.authorName, cached ?: initialsIcon(n.authorName))
         synchronized(this) {
             val conv = conversations.getOrPut(n.channelId) { restore(n.channelId, me) ?: Conversation(n.channelId, me) }
@@ -148,7 +152,7 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
             conv.alert = true
             schedule(conv)
         }
-        if (cached == null && n.authorId != WEBHOOK_AUTHOR) fetchAvatar(n.authorId, n.authorName)
+        if (cached == null && source?.url != null) fetchAvatar(n.authorId, n.authorName, source)
     }
 
     private fun person(key: String, name: String, icon: IconCompat): Person =
@@ -326,32 +330,38 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
     }
 
     /** The avatar from memory or the disk cache, without touching the network. Null if we've never fetched it. */
-    private fun cachedAvatar(userId: String): IconCompat? {
-        if (userId == WEBHOOK_AUTHOR) return null
-        avatars[userId]?.let { return it }
-        val file = avatarFile(userId)
+    private fun cachedAvatar(userId: String, source: AvatarSource): IconCompat? {
+        if (source.url == null) return null  // they have none: initials
+        val key = cacheKey(userId, source)
+        avatars[key]?.let { return it }
+        val file = avatarFile(key)
         val bitmap = runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() ?: return null
         val icon = IconCompat.createWithBitmap(bitmap)
-        avatars[userId] = icon
-        // Still good enough to show; refresh it in the background now and then in case it changed
-        if (System.currentTimeMillis() - file.lastModified() > AVATAR_MAX_AGE_MS) fetchAvatar(userId, null)
+        avatars[key] = icon
+        // A versioned copy is right for good. Without a version, refresh it now and then in case it changed.
+        if (source.version <= 0 && System.currentTimeMillis() - file.lastModified() > AVATAR_MAX_AGE_MS) fetchAvatar(userId, null, source)
         return icon
     }
 
+    /** A new version is a new key, so a changed picture is fetched rather than the old one shown. */
+    private fun cacheKey(userId: String, source: AvatarSource) = if (source.version > 0) "$userId-v${source.version}" else userId
+
     private fun initialsIcon(name: String): IconCompat = IconCompat.createWithBitmap(circle(initials(name)))
 
-    private fun avatarFile(userId: String) = java.io.File(avatarDir, userId.filter { it.isLetterOrDigit() || it == '-' } + ".png")
+    private fun avatarFile(key: String) = java.io.File(avatarDir, key.filter { it.isLetterOrDigit() || it == '-' } + ".png")
 
     /**
      * Downloads an avatar (or settles on initials when they don't have one), keeps it on disk, and updates any
      * notification showing that author.
      */
-    private fun fetchAvatar(userId: String, name: String?) {
-        if (!avatarFetches.add(userId)) return
+    private fun fetchAvatar(userId: String, name: String?, source: AvatarSource) {
+        val url = source.url ?: return
+        val key = cacheKey(userId, source)
+        if (!avatarFetches.add(key)) return
         postScope.launch(Dispatchers.IO) {
             try {
                 val downloaded = runCatching {
-                    avatarClient.newCall(Request.Builder().url(avatarUrl(userId)).build()).execute().use { r ->
+                    avatarClient.newCall(Request.Builder().url(url).build()).execute().use { r ->
                         when {
                             r.isSuccessful -> BitmapFactory.decodeStream(r.body.byteStream())?.let(::circle)
                             r.code == 404 -> NO_AVATAR
@@ -363,13 +373,13 @@ class Notifier(private val context: Context, private val http: OkHttpClient, pri
                 val bitmap = if (downloaded === NO_AVATAR) circle(initials(authorName)) else downloaded
                 runCatching {
                     avatarDir.mkdirs()
-                    avatarFile(userId).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    avatarFile(key).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 }
                 val icon = IconCompat.createWithBitmap(bitmap)
-                avatars[userId] = icon
+                avatars[key] = icon
                 if (downloaded !== NO_AVATAR) refreshAuthor(userId, icon)
             } finally {
-                avatarFetches.remove(userId)
+                avatarFetches.remove(key)
             }
         }
     }

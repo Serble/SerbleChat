@@ -103,7 +103,8 @@ fun AppRoot(app: ChatApp, incoming: Flow<Incoming>) {
 
     val theme by app.themes.active.collectAsStateWithLifecycle()
     SerbleChatTheme(theme.colors) {
-        CompositionLocalProvider(LocalApp provides app, LocalMessages provides messages) {
+        val avatarVersions by app.store.avatarVersions.collectAsStateWithLifecycle()
+        CompositionLocalProvider(LocalApp provides app, LocalMessages provides messages, LocalAvatarVersions provides avatarVersions) {
             val nav = rememberNavController()
             var pendingInvite by remember { mutableStateOf<String?>(null) }
             // Opening a channel from anywhere: back to the panels, which show it

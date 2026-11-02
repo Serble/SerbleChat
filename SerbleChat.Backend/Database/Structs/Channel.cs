@@ -26,6 +26,13 @@ public class Channel {
     
     [JsonProperty(PropertyName = "voice_capable")]
     public bool VoiceCapable { get; set; }
+
+    /// <summary>
+    /// Changes whenever the channel's icon (guild channels and group chats) does. 0 means none, -1 not known yet
+    /// (see <see cref="ChatUser.AvatarVersion"/>).
+    /// </summary>
+    [JsonProperty(PropertyName = "icon_version")]
+    public long IconVersion { get; set; }
     
     // Navigation Properties
     [ApiJsonIgnore]

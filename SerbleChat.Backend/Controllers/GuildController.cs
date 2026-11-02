@@ -14,7 +14,15 @@ namespace SerbleChat.Backend.Controllers;
 [Route("guild")]
 [Authorize]
 public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo roles, IUserRepo users,
-    IHubContext<ChatHub> updates, IImagesService images) : ControllerBase {
+    IHubContext<ChatHub> updates, IImagesService images, IUnreadsRepo unreads) : ControllerBase {
+
+    /// <summary>
+    /// Tells the user's own clients they're in a new guild (the mirror of LeftGuild), so the ones that didn't do
+    /// the joining show it straight away. They need to reconnect to be added to its SignalR group.
+    /// </summary>
+    private Task SignalJoinedGuild(string userId, long guildId) {
+        return updates.Clients.User(userId).SendAsync("JoinedGuild", new { GuildId = guildId });
+    }
 
     private Task SignalGuildUpdated(long guildId) {
         return updates.Clients.Group("guild-" + guildId).SendAsync("GuildUpdated", new {
@@ -77,6 +85,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         };
         await guilds.CreateGuildChannel(guildChannel);
         
+        await SignalJoinedGuild(userId, guild.Id);
         return Ok(guild);
     }
 
@@ -633,6 +642,10 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
         
         await guilds.AddGuildMember(guild.Id, userId);
+        // The guild's history isn't unread to someone who just arrived
+        Channel[] guildChannels = await guilds.GetGuildChannelsAsChannels(guild.Id);
+        await unreads.MarkChannelsReadToLatest([userId], guildChannels.Select(c => c.Id).ToArray());
+        await SignalJoinedGuild(userId, guild.Id);
         return Ok(guild);
     }
     
@@ -1043,7 +1056,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
             return BadRequest(msg);
         }
 
-        await images.UploadImage(file, $"guild-icons/{guildId}.webp");
+        await guilds.SetIconVersion(guild, await images.UploadImage(file, $"guild-icons/{guildId}.webp"));
         await SignalGuildUpdated(guildId);
         return Ok();
     }
@@ -1066,6 +1079,7 @@ public class GuildController(IGuildRepo guilds, IChannelRepo channels, IRoleRepo
         }
 
         await images.DeleteImage($"guild-icons/{guildId}.webp");
+        await guilds.SetIconVersion(guild, 0);
         await SignalGuildUpdated(guildId);
         return Ok();
     }

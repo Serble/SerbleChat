@@ -25,4 +25,10 @@ public interface IPresenceService {
     /// (<c>UserStatusUpdated</c>), and their real status to their own clients (<c>OwnStatusUpdated</c>).
     /// </summary>
     Task BroadcastStatus(ChatUser user);
+    /// <summary>
+    /// Sends the user's public profile (name, blurb, colour, avatar version, status) to the same people as
+    /// <see cref="BroadcastStatus"/> and to their own clients, as <c>UserUpdated</c> <c>{ id, user }</c>.
+    /// </summary>
+    /// <remarks><c>UserUpdated</c> without <c>user</c> still means "this member's roles changed" (GuildController).</remarks>
+    Task BroadcastProfile(ChatUser user);
 }

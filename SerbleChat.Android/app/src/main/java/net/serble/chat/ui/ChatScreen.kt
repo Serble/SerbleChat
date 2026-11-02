@@ -215,12 +215,22 @@ fun ChatScreen(
     }
 
     LaunchedEffect(channelId) {
-        launch { runCatching { store.openChannel(channelId) } }
-        launch {
-            val c = channel ?: runCatching { app.api.channel(channelId) }.getOrNull() ?: return@launch
-            runCatching { store.loadPermissions(c) }
-            runCatching { store.loadMembers(c) }
-        }
+        runCatching { store.openChannel(channelId) }
+    }
+
+    // This screen stays composed under the side panels, so it can sit through the app being away and the hub
+    // reconnecting without being on screen. Each time it comes back into view, and after every reconnect, make sure
+    // it shows what the server has (cheap when nothing was missed: ensureFresh only fetches once per connection).
+    val generation by store.syncGeneration.collectAsStateWithLifecycle()
+    LaunchedEffect(channelId, active, generation) {
+        if (!active) return@LaunchedEffect
+        runCatching { store.ensureFresh(channelId) }
+        store.markLatestRead(channelId)
+    }
+    LaunchedEffect(channelId, generation) {
+        val c = channel ?: runCatching { app.api.channel(channelId) }.getOrNull() ?: return@LaunchedEffect
+        launch { runCatching { store.loadPermissions(c) } }
+        launch { runCatching { store.loadMembers(c) } }
     }
 
     val rows = remember(state?.messages, state?.pending) { buildRows(state?.messages ?: emptyList(), state?.pending ?: emptyList()) }
@@ -299,7 +309,7 @@ fun ChatScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(enabled = dmUser != null) { profileOf = dmUser?.id }) {
                         when (channel?.type) {
                             ChannelType.DM -> Avatar(dmUser?.id, title, 32.dp, status = dmUser?.status ?: "offline")
-                            ChannelType.GROUP -> RemoteImage(app.groupIconUrl(channelId), title, 32.dp)
+                            ChannelType.GROUP -> RemoteImage(app.groupIconUrl(channel), title, 32.dp)
                             else -> Icon(Icons.Default.Tag, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         RowSpacer(10.dp)
@@ -770,7 +780,7 @@ private fun InviteEmbed(id: String) {
     val g = guild
     Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.padding(top = 6.dp).widthIn(max = 420.dp)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (g != null) RemoteImage(app.guildIconUrl(g.id), g.name, 44.dp, RoundedCornerShape(14.dp))
+            if (g != null) RemoteImage(app.guildIconUrl(g), g.name, 44.dp, RoundedCornerShape(14.dp))
             RowSpacer()
             Column(Modifier.weight(1f)) {
                 Text("Invite to a guild", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

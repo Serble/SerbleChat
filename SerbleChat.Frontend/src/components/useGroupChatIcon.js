@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGroupChatIconUrl } from '../api.js';
+import { withQuery } from '../imageVersions.js';
 
 function versionFor(event, channelId) {
   return event && String(event.channelId) === String(channelId) ? event.ts : 0;
@@ -24,7 +25,7 @@ export default function useGroupChatIcon(channelId, channelUpdatedEvent) {
     if (v) setVersion(v);
   }, [channelUpdatedEvent, channelId]);
 
-  const src = getGroupChatIconUrl(channelId) + (version ? '?t=' + version : '');
+  const src = version ? withQuery(getGroupChatIconUrl(channelId), 't=' + version) : getGroupChatIconUrl(channelId);
 
   useEffect(() => {
     let cancelled = false;

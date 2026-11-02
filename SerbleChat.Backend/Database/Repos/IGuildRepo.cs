@@ -9,6 +9,8 @@ public interface IGuildRepo {
     Task CreateGuild(Guild guild);
     Task DeleteGuild(long id);
     Task UpdateGuild(Guild guild);
+    /// <summary>The only way to change <see cref="Guild.IconVersion"/>: <see cref="UpdateGuild"/> leaves it alone.</summary>
+    Task SetIconVersion(Guild guild, long version);
     
     Task AddGuildMember(long guildId, string userId);
     Task<bool> IsGuildMember(long guildId, string userId);

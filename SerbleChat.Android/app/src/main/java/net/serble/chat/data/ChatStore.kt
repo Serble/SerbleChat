@@ -9,9 +9,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -104,6 +108,26 @@ class ChatStore(
 
     private val _users = MutableStateFlow<Map<String, User>>(emptyMap())
     val users: StateFlow<Map<String, User>> = _users.asStateFlow()
+
+    /** User ID to their avatar's version (see [ImageVersion]), for avatar URLs. Changes only when a picture does. */
+    val avatarVersions: StateFlow<Map<String, Long>> = _users
+        .map { users -> users.mapValues { it.value.avatarVersion } }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    /**
+     * Goes up each time the hub (re)connects. Events can have been missed before that, so anything loaded in an
+     * earlier generation is suspect until it has been fetched again (see [ensureFresh]).
+     */
+    private val _syncGeneration = MutableStateFlow(0)
+    val syncGeneration: StateFlow<Int> = _syncGeneration.asStateFlow()
+
+    /** Channel ID to the sync generation its messages were last brought up to date in. */
+    private val freshIn = ConcurrentHashMap<Long, Int>()
+    private val catchUps = ConcurrentHashMap<Long, Job>()
+
+    /** The newest message in each channel, as the server last said. */
+    @Volatile private var serverLatest: Map<Long, Long> = emptyMap()
 
     private val _unreads = MutableStateFlow<Map<Long, Int>>(emptyMap())
     val unreads: StateFlow<Map<Long, Int>> = _unreads.asStateFlow()
@@ -203,6 +227,8 @@ class ChatStore(
         _voice.value = emptyMap()
         _permissions.value = emptyMap()
         _guildPermissions.value = emptyMap()
+        freshIn.clear()
+        serverLatest = emptyMap()
     }
 
     private fun scheduleSave() {
@@ -238,16 +264,45 @@ class ChatStore(
             scope.async { runCatching { loadFriends() } },
             scope.async { runCatching { _unreads.value = api.unreads().mapNotNull { (k, v) -> k.toLongOrNull()?.let { it to v } }.toMap() } },
             scope.async { runCatching { loadBlocks() } },
+            scope.async { runCatching { loadChannelActivity() } },
+            scope.async { runCatching { refreshKnownUsers() } },
         ).awaitAll()
         results.firstOrNull { it.isFailure }?.exceptionOrNull()?.let { if (it is ApiException && it.offline) throw it }
         scheduleSave()
     }
 
     private suspend fun onHubConnected() {
-        // Anything could have happened while we were away
+        // Anything could have happened while we were away: everything loaded so far is suspect
+        _syncGeneration.update { it + 1 }
+        activeChannel?.let { channel -> scope.launch { runCatching { ensureFresh(channel) } } }
         runCatching { refresh() }
-        activeChannel?.let { channel -> scope.launch { catchUp(channel) } }
         scope.launch { refreshVoice() }
+        // Cached conversations that moved on while we were away, so that opening them shows the news at once.
+        // The rest are checked when they're opened (edits and deletions don't show in the newest ID).
+        val latest = serverLatest
+        val moved = _messages.value.filter { (id, state) ->
+            val newest = state.messages.lastOrNull()?.id ?: return@filter false
+            (latest[id] ?: 0) > newest
+        }.keys
+        moved.chunked(4).forEach { batch -> batch.map { id -> scope.async { runCatching { ensureFresh(id) } } }.awaitAll() }
+    }
+
+    /** Orders the conversation lists from the server's newest message per channel, and remembers it. */
+    private suspend fun loadChannelActivity() {
+        val latest = api.channelActivity().mapNotNull { (k, v) -> k.toLongOrNull()?.let { it to v } }.toMap()
+        serverLatest = latest
+        _lastActivity.update { map -> map + latest.filter { (id, newest) -> (map[id] ?: 0) < newest } }
+    }
+
+    /**
+     * Fetches everyone we have cached again. Names, pictures and presence change while we're not listening, and
+     * otherwise a user once seen would never be looked up again.
+     */
+    private suspend fun refreshKnownUsers() {
+        val ids = _users.value.keys - setOfNotNull(userId)
+        ids.chunked(Api.MAX_BATCH_USERS).map { chunk ->
+            scope.async { runCatching { rememberUsers(api.users(chunk)) } }
+        }.awaitAll()
     }
 
     // ── Loading ─────────────────────────────────────────────────────────────────────────
@@ -256,7 +311,8 @@ class ChatStore(
         val account = api.account()
         _account.value = account
         _ownStatus.value = OwnStatus(account.statusType, account.statusMessage, account.statusExpiresAt)
-        rememberUsers(listOf(User(account.id, account.username, blurb = account.blurb, color = account.color, status = "online", isOnline = true)))
+        rememberUsers(listOf(User(account.id, account.username, blurb = account.blurb, color = account.color, status = "online",
+            isOnline = true, avatarVersion = account.avatarVersion)))
     }
 
     private suspend fun loadGuilds() {
@@ -384,20 +440,43 @@ class ChatStore(
         markLatestRead(id)
     }
 
+    /**
+     * Brings a channel's messages up to date, unless that already happened since the hub last (re)connected: until
+     * then, live events keep it current. Cheap to call whenever a chat comes into view.
+     */
+    suspend fun ensureFresh(id: Long) {
+        if (freshIn[id] == _syncGeneration.value) return
+        catchUp(id)
+    }
+
     private suspend fun loadLatest(id: Long) {
+        val generation = _syncGeneration.value
         try {
             val page = api.messages(id, PAGE).reversed()
             onMessagesLoaded(page)
             updateChannelMessages(id) { it.copy(messages = page, reachedStart = page.size < PAGE, loaded = true, error = null) }
+            freshIn[id] = generation
         } catch (e: ApiException) {
             updateChannelMessages(id) { it.copy(loaded = true, error = e.message) }
         }
     }
 
-    /** Fetches what arrived since the newest message we have; starts over if that's a lot. */
+    /**
+     * Fetches what arrived since the newest message we have; starts over if that's a lot. Calls for a channel that
+     * is already catching up wait for that one instead of fetching it all again.
+     */
     suspend fun catchUp(id: Long) {
+        catchUps[id]?.takeIf { it.isActive }?.let { return it.join() }
+        val job = scope.launch { fetchNewer(id) }
+        catchUps[id] = job
+        job.join()
+        catchUps.remove(id, job)
+    }
+
+    private suspend fun fetchNewer(id: Long) {
         val have = _messages.value[id]?.messages ?: return loadLatest(id)
         val newest = have.lastOrNull()?.id ?: return loadLatest(id)
+        val generation = _syncGeneration.value
         try {
             val newer = api.messages(id, CATCH_UP, after = newest).reversed()
             if (newer.size >= CATCH_UP) return loadLatest(id)
@@ -411,6 +490,7 @@ class ChatStore(
                 val kept = state.messages.filter { it.id < oldestLatest }
                 state.copy(messages = (kept + latest).distinctBy { it.id }, loaded = true, error = null)
             }
+            freshIn[id] = generation
         } catch (e: ApiException) {
             updateChannelMessages(id) { it.copy(loaded = true, error = if (it.messages.isEmpty()) e.message else null) }
         }
@@ -657,6 +737,14 @@ class ChatStore(
                 _guilds.update { list -> list.map { if (it.id == id) guild else it } }
                 runCatching { loadGuildChannels(id) }
             }
+            "JoinedGuild" -> {
+                // Joined on another device (this one already has it when it did the joining)
+                val id = p.long("guildId") ?: return
+                if (_guilds.value.any { it.id == id }) return
+                runCatching { loadGuilds() }
+                // The server only adds a connection to a guild's group when it connects
+                hub.reconnect()
+            }
             "LeftGuild" -> {
                 val id = p.long("guildId") ?: return
                 val name = _guilds.value.firstOrNull { it.id == id }?.name
@@ -673,7 +761,14 @@ class ChatStore(
             }
             "UserUpdated" -> {
                 val id = p.string("id") ?: return
-                runCatching { rememberUsers(listOf(api.user(id))) }
+                // A profile change carries the new profile; a role change (from guilds) only says who
+                val user = (p["user"] as? JsonObject)?.let { AppJson.decodeFromJsonElement(User.serializer(), it) }
+                when {
+                    id == userId -> runCatching { loadAccount() }
+                    user != null -> rememberUsers(listOf(user))
+                    else -> runCatching { rememberUsers(listOf(api.user(id))) }
+                }
+                scheduleSave()
             }
             "UserLeft" -> Unit
             "ClientJoinVoice" -> {

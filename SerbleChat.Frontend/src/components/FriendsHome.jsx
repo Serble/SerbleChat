@@ -85,7 +85,7 @@ function FriendRow({ friendship, currentUserId, onRefresh }) {
 
   useEffect(() => {
     resolveUser(otherId).then(setUser);
-  }, [otherId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [otherId, resolveUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleMessage() {
     setBusy(true);
