@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
+import { useClientOptions } from '../context/ClientOptionsContext.jsx';
 import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport } from '../electron-utils.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, ScreenShareIcon, VideoIcon, PlusIcon, MinusIcon } from '../icons.jsx';
+import { MicIcon, ScreenShareIcon, VideoIcon, PlusIcon, MinusIcon, SpeakerIcon, SpeakerMutedIcon } from '../icons.jsx';
+import { ContextMenu, MenuItem, MenuDivider, Slider } from './ui/index.js';
 import VoicePollStrip from './poll/VoicePollStrip.jsx';
 import { useStreamZoom } from './voice/useStreamZoom.js';
 
@@ -641,7 +643,10 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
 
 function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidden }) {
   const [user, setUser] = useState(null);
+  const [menu, setMenu] = useState(null); // { x, y } while the right-click menu is open
   const containerRef = useRef(null);
+  const { voiceParticipants, setStreamAudioSetting } = useVoice();
+  const { voiceParticipantSettings } = useClientOptions();
   // Expanded streams can be zoomed into, to read small text on someone's screen
   const zoom = useStreamZoom(containerRef, share.videoElement, isExpanded && !hidden);
 
@@ -682,12 +687,32 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
 
   const isCamera = share.source === 'camera';
   const TileIcon = isCamera ? VideoIcon : ScreenShareIcon;
+
+  // Stream audio: whether this screen comes with sound, and whether we've muted it
+  const identity = share.participantIdentity != null ? String(share.participantIdentity) : null;
+  const participant = !share.isLocal && !isCamera && identity
+    ? voiceParticipants.find(p => String(p.identity) === identity)
+    : null;
+  const hasStreamAudio = !isCamera && (share.isLocal ? !!share.hasAudio : !!participant?.hasStreamAudio);
+  const saved = (identity && voiceParticipantSettings[identity]) || {};
+  const streamMuted = !!saved.streamMuted;
+  const streamVolume = saved.streamVolume ?? 1;
+  const canAdjustAudio = !share.isLocal && !isCamera && !!identity;
+
+  function handleContextMenu(e) {
+    if (!canAdjustAudio) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY });
+  }
   const username = share.isLocal ? share.username || (isCamera ? 'Your Camera' : 'Your Screen') : (user?.username || users[share.participantIdentity]?.username || share.participantIdentity);
 
    return (
-    <div 
+    <div
       className="stream-tile"
+      data-stream-identity={identity ?? undefined}
       onClick={() => (isExpanded ? zoom.handleClick(onClick) : onClick())}
+      onContextMenu={handleContextMenu}
       style={{
         background: isExpanded ? 'transparent' : 'var(--bg-tertiary)',
         borderRadius: '8px',
@@ -713,6 +738,8 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           flexShrink: 0,
         }}>
           <span style={{
+            flex: 1,
+            minWidth: 0,
             fontSize: '0.85rem',
             fontWeight: 600,
             color: 'var(--text-primary)',
@@ -722,6 +749,23 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           }}>
             <TileIcon size={14} /> {username}
           </span>
+          {hasStreamAudio && (streamMuted && !share.isLocal ? (
+            <span
+              className="stream-muted-badge"
+              title="Stream audio muted. Right-click to unmute."
+              style={{ color: 'var(--danger)', display: 'flex', flexShrink: 0 }}
+            >
+              <SpeakerMutedIcon size={14} />
+            </span>
+          ) : (
+            <span
+              className="stream-audio-icon"
+              title={share.isLocal ? 'Sharing audio' : 'This stream has audio. Right-click to mute or change its volume.'}
+              style={{ color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}
+            >
+              <SpeakerIcon size={14} />
+            </span>
+          ))}
           {share.isLocal && !isCamera && (
             <span style={{
               fontSize: '0.65rem',
@@ -762,6 +806,69 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           cursor: isExpanded ? (zoom.zoomed ? 'grab' : 'zoom-in') : 'pointer',
         }}
       />
+      {/* Expanded tiles have no header, so the muted state goes over the video */}
+      {isExpanded && hasStreamAudio && streamMuted && !share.isLocal && (
+        <div
+          className="stream-muted-badge"
+          title="Stream audio muted. Right-click to unmute."
+          style={{
+            position: 'absolute',
+            top: '8px',
+            left: '8px',
+            display: 'flex', alignItems: 'center', gap: '0.25rem',
+            padding: '0.15rem 0.4rem',
+            borderRadius: '4px',
+            background: 'rgba(0,0,0,0.6)',
+            color: 'var(--danger)',
+            fontSize: '0.68rem', fontWeight: 600,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <SpeakerMutedIcon size={12} /> Muted
+        </div>
+      )}
+      {menu && (
+        // The menu is portalled, but React events still bubble to the tile: keep clicks
+        // in the menu from expanding it
+        <div onClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()} style={{ display: 'contents' }}>
+          <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} minWidth={200}>
+            {hasStreamAudio ? (
+              <>
+                <MenuItem
+                  icon={streamMuted ? SpeakerMutedIcon : SpeakerIcon}
+                  label={streamMuted ? 'Unmute Stream Audio' : 'Mute Stream Audio'}
+                  onClick={() => setStreamAudioSetting(identity, { muted: !streamMuted })}
+                />
+                <div style={{ padding: '0.4rem 0.75rem' }}>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '0.4rem',
+                  }}>
+                    <span>Stream Volume</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.round(streamVolume * 100)}%</span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={500}
+                    step={5}
+                    value={Math.round(streamVolume * 100)}
+                    onChange={v => setStreamAudioSetting(identity, { volume: v / 100 })}
+                  />
+                </div>
+                {(streamMuted || streamVolume !== 1) && (
+                  <>
+                    <MenuDivider />
+                    <MenuItem label="Reset" onClick={() => setStreamAudioSetting(identity, { muted: false, volume: 1 })} />
+                  </>
+                )}
+              </>
+            ) : (
+              <MenuItem icon={SpeakerMutedIcon} label="This stream has no audio" disabled />
+            )}
+          </ContextMenu>
+        </div>
+      )}
       {isExpanded && !hidden && (
         <div
           className="stream-zoom-bar"

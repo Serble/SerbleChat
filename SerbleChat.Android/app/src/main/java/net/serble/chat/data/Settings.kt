@@ -26,6 +26,8 @@ data class LocalSettings(
     val pushEnabled: Boolean = true,
     /** The joined, left, muted, deafened and stream sounds in calls. */
     val callSounds: Boolean = true,
+    /** User IDs whose stream (screen share) audio we've muted. */
+    val mutedStreams: Set<String> = emptySet(),
 )
 
 // Two stores on purpose: the session holds the sign-in token and is excluded from backups
@@ -48,6 +50,7 @@ class SettingsStore(private val context: Context) {
         val agc = stringPreferencesKey("agc")
         val push = stringPreferencesKey("push")
         val sounds = stringPreferencesKey("sounds")
+        val mutedStreams = stringPreferencesKey("muted_streams")
         val filesToken = stringPreferencesKey("files_token")
         val filesConsentState = stringPreferencesKey("files_consent_state")
     }
@@ -65,6 +68,7 @@ class SettingsStore(private val context: Context) {
             p[K.agc] = next.autoGainControl.toString()
             p[K.push] = next.pushEnabled.toString()
             p[K.sounds] = next.callSounds.toString()
+            p[K.mutedStreams] = next.mutedStreams.joinToString(",")
         }
     }
 
@@ -74,6 +78,7 @@ class SettingsStore(private val context: Context) {
         autoGainControl = p[K.agc] != "false",
         pushEnabled = p[K.push] != "false",
         callSounds = p[K.sounds] != "false",
+        mutedStreams = p[K.mutedStreams]?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: emptySet(),
     )
 
     data class Session(val token: String?, val userId: String?)

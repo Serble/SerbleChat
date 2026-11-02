@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setParticipantMuted, setParticipantVolume, setMicVolume, setOutputDevice } from '../voice.js';
+import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setMicVolume, setOutputDevice, setStreamAudio } from '../voice.js';
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
 import { isElectron } from '../electron-utils.js';
@@ -9,7 +9,7 @@ const VoiceContext = createContext();
 
 export function VoiceProvider({ children }) {
   const { addToast, reportVoiceState, isConnected } = useApp();
-  const { getVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings, keybinds } = useClientOptions();
+  const { getVoiceParticipantSetting, setVoiceParticipantSetting, voiceAudioOptions, localDeviceSettings, keybinds } = useClientOptions();
   const [voiceChannelId, setVoiceChannelId] = useState(null);
   const [voiceSession, setVoiceSession] = useState(null);
   const [voiceMuted, setVoiceMuted] = useState(false);
@@ -149,6 +149,8 @@ export function VoiceProvider({ children }) {
         startMuted: voiceMutedRef.current,
         startDeafened: voiceDeafenedRef.current,
         wasUnmutedBeforeDeafen: unmutedBeforeDeafenRef.current,
+        // Saved per-person mute/volume (voice and stream), applied as each track arrives
+        getParticipantSetting: identity => getVoiceParticipantSetting(String(identity)),
       });
 
       if (!isCurrentJoin()) {
@@ -433,32 +435,6 @@ export function VoiceProvider({ children }) {
     };
   }, [voiceStatus]); // Only depend on voiceStatus since we use refs for other state
 
-  // Apply saved participant settings when participants change
-  useEffect(() => {
-    if (!voiceSession || voiceParticipants.length === 0) return;
-    
-    // Use a small delay to ensure audio analyzer is fully set up
-    const timeoutId = setTimeout(() => {
-      voiceParticipants.forEach(participant => {
-        if (participant.isLocal) return; // Skip local participant
-        
-        const settings = getVoiceParticipantSetting(participant.identity);
-        
-        // Only apply mute if gain node exists (audio analyzer is set up)
-        if (settings.muted && voiceSession.participantMuteGainNodes?.[participant.identity]) {
-          setParticipantMuted(voiceSession, participant.identity, true);
-        }
-        
-        // Only apply volume if gain node exists (audio analyzer is set up)
-        if (settings.volume !== 1 && voiceSession.participantGainNodes?.[participant.identity]) {
-          setParticipantVolume(voiceSession, participant.identity, settings.volume);
-        }
-      });
-    }, 100); // 100ms delay should be enough for audio analyzer setup
-    
-    return () => clearTimeout(timeoutId);
-  }, [voiceParticipants, voiceSession]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Handle input mode changes (voice-activity vs push-to-talk)
   useEffect(() => {
     if (!voiceSession || voiceStatus !== 'connected') return;
@@ -559,6 +535,17 @@ export function VoiceProvider({ children }) {
     }
   }
 
+  /** Mute someone's stream audio and/or change its volume, saving it for next time. */
+  function setStreamAudioSetting(participantIdentity, { muted, volume }) {
+    const key = String(participantIdentity);
+    const update = {};
+    if (muted !== undefined) update.streamMuted = muted;
+    if (volume !== undefined) update.streamVolume = volume;
+    setVoiceParticipantSetting(key, update);
+    setStreamAudio(voiceSession, key, { muted, volume });
+    refreshParticipants();
+  }
+
   return (
     <VoiceContext.Provider value={{
       voiceChannelId,
@@ -579,6 +566,7 @@ export function VoiceProvider({ children }) {
       toggleMute: handleToggleMute,
       toggleDeafen: handleToggleDeafen,
       refreshParticipants,
+      setStreamAudioSetting,
     }}>
       {children}
     </VoiceContext.Provider>

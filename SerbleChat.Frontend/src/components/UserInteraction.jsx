@@ -14,7 +14,7 @@ import { SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
  * UserContextMenu
  * Context menu that appears on right-click with "View Profile", "Message", "Block", and guild moderation options
  */
-function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
+function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, streamAudio = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
   const nav = useNavigate();
   const { blockUser, unblockUser, isBlocked, currentUser } = useApp();
   const blocked = isBlocked ? isBlocked(userId) : false;
@@ -98,6 +98,13 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
           )}
         </>
       )}
+      {streamAudio && (
+        <MenuItem
+          icon={streamAudio.muted ? SpeakerMutedIcon : SpeakerIcon}
+          label={streamAudio.muted ? 'Unmute Stream Audio' : 'Mute Stream Audio'}
+          onClick={streamAudio.onToggle}
+        />
+      )}
       {(canKick || canBan) && (
         <>
           <MenuDivider />
@@ -131,7 +138,7 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
  * - disabled: boolean - If true, disables interaction (default: false)
  */
 export default function UserInteraction({ userId, username, guildId = null, voiceSettings = null, onVoiceSettingsChange = null, children, disabled = false }) {
-  const { voiceSession, voiceParticipants, refreshParticipants } = useVoice();
+  const { voiceSession, voiceParticipants, refreshParticipants, setStreamAudioSetting } = useVoice();
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
   const { getMyPerms } = useApp();
   const [popout, setPopout] = useState(null);
@@ -172,6 +179,12 @@ export default function UserInteraction({ userId, username, guildId = null, voic
       refreshParticipants();
     }
   } : onVoiceSettingsChange;
+
+  // While they're streaming with sound, their stream audio can be muted from here too
+  const streamAudio = participantId && voiceParticipant?.hasStreamAudio ? {
+    muted: !!effectiveVoiceSettings?.streamMuted,
+    onToggle: () => setStreamAudioSetting(participantId, { muted: !effectiveVoiceSettings?.streamMuted }),
+  } : null;
 
   function handleClick(e) {
     if (isDisabled) return;
@@ -223,6 +236,7 @@ export default function UserInteraction({ userId, username, guildId = null, voic
           onViewProfile={handleViewProfile}
           voiceSettings={effectiveVoiceSettings}
           onVoiceSettingsChange={effectiveVoiceSettingsHandler}
+          streamAudio={streamAudio}
           guildId={guildId}
           myPerms={myPerms}
           onOpenBanModal={(userId, username, guildId) => {

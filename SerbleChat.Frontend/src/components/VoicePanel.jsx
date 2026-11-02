@@ -99,6 +99,12 @@ export default function VoicePanel({
     });
   }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sharing stopped from the browser's own "Stop sharing" bar
+  const handleShareEnded = () => {
+    setLocalScreenShare(null);
+    playSoundSafe('stream_end');
+  };
+
   const handleToggleScreenShare = async () => {
     if (!canControl) return;
     try {
@@ -109,14 +115,15 @@ export default function VoicePanel({
           playSoundSafe('stream_end');
         });
       } else {
-        await startScreenShare(voiceSession, (videoElement) => {
-          setLocalScreenShare({ 
-            videoElement, 
+        await startScreenShare(voiceSession, (videoElement, { hasAudio } = {}) => {
+          setLocalScreenShare({
+            videoElement,
+            hasAudio,
             username: currentUser?.username || 'Your Screen'
           });
           // Play sound effect when starting screen share
           playSoundSafe('stream_start');
-        }, qualitySettings);
+        }, qualitySettings, handleShareEnded);
       }
     } catch (error) {
       console.error('Screen sharing error:', error);
@@ -181,12 +188,13 @@ export default function VoicePanel({
             setLocalScreenShare(null);
           });
           
-          await startScreenShare(voiceSession, (videoElement) => {
-            setLocalScreenShare({ 
-              videoElement, 
+          await startScreenShare(voiceSession, (videoElement, { hasAudio } = {}) => {
+            setLocalScreenShare({
+              videoElement,
+              hasAudio,
               username: currentUser?.username || 'Your Screen'
             });
-          }, newSettings);
+          }, newSettings, handleShareEnded);
         } catch (restartError) {
           console.error('Failed to restart screen share:', restartError);
           setLocalScreenShare(null);

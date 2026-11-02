@@ -84,7 +84,8 @@ class ChatApp : Application(), SingletonImageLoader.Factory {
         notifier.createChannels()
         messageNotifications = MessageNotifications(store, api, notifier)
         push = Push(this, api, settings, scope, signedIn = { token != null })
-        voice = Voice(this, api, hub, scope, BuildConfig.LIVEKIT_URL, settings = { settings.current() })
+        voice = Voice(this, api, hub, scope, BuildConfig.LIVEKIT_URL, settings = { settings.current() },
+            updateSettings = { change -> settings.update(change) })
 
         store.onChannelRead = { channelId -> notifier.clearRead(channelId) }
 

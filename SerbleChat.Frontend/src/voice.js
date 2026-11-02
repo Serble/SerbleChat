@@ -1,5 +1,5 @@
 import {getChannelVoiceToken} from "./api.js";
-import {createLocalAudioTrack, createLocalVideoTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track, VideoPresets} from "livekit-client";
+import {AudioPresets, createLocalAudioTrack, createLocalVideoTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track, VideoPresets} from "livekit-client";
 import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
 import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
 
@@ -29,6 +29,26 @@ async function ensureRnnoiseLoaded(ctx) {
  */
 function videoKind(publication) {
     return publication?.source === Track.Source.Camera ? 'camera' : 'screen';
+}
+
+/** Whether a remote audio publication is someone's stream (desktop/tab) audio rather than their mic. */
+function isStreamAudio(publication) {
+    return publication?.source === Track.Source.ScreenShareAudio;
+}
+
+/**
+ * Someone's mic publication. Older web clients published it without a source ("unknown"),
+ * so fall back to any audio that isn't their stream's.
+ */
+function micPublication(participant) {
+    return participant.getTrackPublication(Track.Source.Microphone)
+        ?? Array.from(participant.audioTrackPublications.values()).find(pub => !isStreamAudio(pub));
+}
+
+/** Volume (0-5) to gain: squared, so the top end gets loud quickly. Shared by voices and streams. */
+function volumeToGain(volume) {
+    const clamped = Math.max(0, Math.min(5, Number(volume) || 0));
+    return clamped === 0 ? 0 : Math.pow(clamped, 2);
 }
 
 class VoiceSession {
@@ -73,6 +93,8 @@ class VoiceSession {
     rawMicTrack;
     /** @type {LocalVideoTrack} */
     streamTrack;
+    /** The audio captured with the screen share, if the browser gave us any. @type {LocalAudioTrack | null} */
+    streamAudioTrack = null;
     /** @type {LocalVideoTrack | null} */
     cameraTrack = null;
     /** @type {Function} */
@@ -85,6 +107,12 @@ class VoiceSession {
     wasUnmutedBeforeDeafen = null; // Track mute state before deafening
     /** @type {Map<string, {source: MediaStreamAudioSourceNode, muteNode: GainNode | null, gainNode: GainNode, element: HTMLMediaElement | null, analyzer: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>}>} */
     audioGraph = new Map();
+    /**
+     * Remote stream (screen share) audio, by participant identity. Kept apart from voices so it
+     * can be muted on its own and doesn't count towards speaking detection.
+     * @type {Map<string, {source: MediaStreamAudioSourceNode, muteNode: GainNode, gainNode: GainNode, element: HTMLMediaElement, trackSid: string}>}
+     */
+    streamAudioGraph = new Map();
     /** @type {boolean} */
     rnnoiseEnabled;
 
@@ -93,27 +121,27 @@ class VoiceSession {
         // Returns array of { identity: string, isSpeaking: boolean, isMuted: boolean, isClientMuted: boolean }
         const participants = Array.from(this.room.remoteParticipants.values()).map(p => {
             // Check if participant has an audio track and if it's muted
+            // (Only the mic counts: someone streaming also has a stream audio track)
             let isMuted = false;
-            const audioTrack = Array.from(p.audioTrackPublications.values())[0];
+            const audioTrack = micPublication(p);
             if (audioTrack) {
                 isMuted = audioTrack.isMuted || !audioTrack.isSubscribed;
-            } else {
-                // No audio track published yet
-                isMuted = false;
             }
-            
+
             // Check if participant is client-side muted
-            let isClientMuted = false;
-            const graph = this.audioGraph?.[p.identity];
-            if (graph) {
-                isClientMuted = graph.muteNode.gain < 0.5;
-            }
-            
+            const graph = this.audioGraph.get(p.identity);
+            const isClientMuted = !!graph?.muteNode && graph.muteNode.gain.value < 0.5;
+
+            // Whether they're sending audio with their stream, and whether we've muted it
+            const streamGraph = this.streamAudioGraph.get(p.identity);
+
             return {
                 identity: p.identity,
                 isSpeaking: this.speakingStates[p.identity] || false, // Use our detected speaking state
                 isMuted: isMuted,
-                isClientMuted: isClientMuted
+                isClientMuted: isClientMuted,
+                hasStreamAudio: !!p.getTrackPublication(Track.Source.ScreenShareAudio),
+                isStreamMuted: !!streamGraph && streamGraph.muteNode.gain.value < 0.5,
             };
         });
         
@@ -121,7 +149,7 @@ class VoiceSession {
         const local = this.room.localParticipant;
         if (local) {
             let localMuted = false;
-            const localAudioTrack = Array.from(local.audioTrackPublications.values())[0];
+            const localAudioTrack = micPublication(local);
             if (localAudioTrack) {
                 localMuted = localAudioTrack.isMuted;
             }
@@ -131,7 +159,9 @@ class VoiceSession {
                 isSpeaking: this.speakingStates[local.identity] || false, // Use our detected speaking state
                 isMuted: localMuted,
                 isLocal: true,
-                isClientMuted: false // Local participant can't be client-muted
+                isClientMuted: false, // Local participant can't be client-muted
+                hasStreamAudio: !!this.streamAudioTrack,
+                isStreamMuted: false,
             });
         }
         
@@ -148,6 +178,17 @@ class VoiceSession {
             this.audioGraph.delete(participantId);
         }
     }
+
+    cleanStreamAudio(participantId) {
+        const refs = this.streamAudioGraph.get(participantId);
+        if (refs) {
+            refs.source.disconnect();
+            refs.muteNode.disconnect();
+            refs.gainNode.disconnect();
+            refs.element.remove();
+            this.streamAudioGraph.delete(participantId);
+        }
+    }
     
     /**
      * Set the audio output device for all remote participants
@@ -157,7 +198,7 @@ class VoiceSession {
         if (!deviceId || deviceId === 'default') return;
         
         // Update output device for all audio elements
-        for (const [participantId, refs] of this.audioGraph.entries()) {
+        for (const [participantId, refs] of [...this.audioGraph.entries(), ...this.streamAudioGraph.entries()]) {
             if (refs.element && typeof refs.element.setSinkId === 'function') {
                 try {
                     await refs.element.setSinkId(deviceId);
@@ -330,6 +371,37 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         return room.remoteParticipants.has(participant.identity);
     };
 
+    // Someone's stream audio: its own mute and volume, and no speaking detection (it isn't their voice)
+    const attachStreamAudio = async (track, publication, participant) => {
+        const existing = session.streamAudioGraph.get(participant.identity);
+        if (existing?.trackSid === track.sid) return;
+        if (existing) session.cleanStreamAudio(participant.identity);
+
+        if (audioContext.state === 'suspended') audioContext.resume();
+
+        // Same trick as voices: a muted element keeps Chromium pulling the stream
+        const element = track.attach();
+        element.muted = true;
+        element.style.display = 'none';
+        if (audioOptions.outputDeviceId && audioOptions.outputDeviceId !== 'default' && typeof element.setSinkId === 'function') {
+            try { await element.setSinkId(audioOptions.outputDeviceId); } catch (err) { console.warn('Failed to set output device:', err); }
+        }
+
+        const source = audioContext.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+        const muteNode = audioContext.createGain();
+        const gainNode = audioContext.createGain();
+        const saved = audioOptions.getParticipantSetting?.(participant.identity);
+        muteNode.gain.value = saved?.streamMuted ? 0 : 1;
+        gainNode.gain.value = volumeToGain(saved?.streamVolume ?? 1);
+        source.connect(muteNode);
+        muteNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        session.streamAudioGraph.set(participant.identity, { source, muteNode, gainNode, element, trackSid: track.sid });
+        console.log(`Playing stream audio from ${participant.identity}`);
+        if (onParticipantsChange) onParticipantsChange(session.getParticipants());
+    };
+
     // Play remote tracks
     room.on(RoomEvent.TrackSubscribed, async (track, publication, participant) => {
         if (!session.isActive) return;
@@ -345,6 +417,10 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 // join after you deafened. Undeafening re-subscribes every track.
                 if (session.isDeafened) {
                     publication.setSubscribed(false);
+                    return;
+                }
+                if (isStreamAudio(publication)) {
+                    await attachStreamAudio(track, publication, participant);
                     return;
                 }
                 if (session.audioGraph.get(participant.identity)) return; // Use .get() for Map
@@ -388,6 +464,11 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 muteNode.connect(gainNode);
                 gainNode.connect(analyzer);
                 analyzer.connect(audioContext.destination);
+
+                // Saved per-person mute/volume
+                const saved = audioOptions.getParticipantSetting?.(participant.identity);
+                if (saved?.muted) muteNode.gain.value = 0;
+                if (saved?.volume !== undefined && saved.volume !== 1) gainNode.gain.value = volumeToGain(saved.volume);
 
                 // 4. Store references so they aren't garbage collected
                 session.audioGraph.set(participant.identity, { source, muteNode, gainNode, element, analyzer, dataArray });
@@ -435,7 +516,14 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         
         // Clean up audio analyzer if it's an audio track
         if (track.kind === "audio") {
-            session.cleanAudio(participant.identity);
+            if (isStreamAudio(publication)) {
+                if (session.streamAudioGraph.get(participant.identity)?.trackSid === track.sid) {
+                    session.cleanStreamAudio(participant.identity);
+                }
+                if (onParticipantsChange) onParticipantsChange(session.getParticipants());
+            } else {
+                session.cleanAudio(participant.identity);
+            }
         }
         
         removeTrackElement(track.sid);
@@ -457,6 +545,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         
         // Clean up audio analyzer for disconnected participant
         session.cleanAudio(participant.identity);
+        session.cleanStreamAudio(participant.identity);
         
         removeParticipantTracks(participant);
         if (onParticipantsChange) onParticipantsChange(session.getParticipants());
@@ -604,7 +693,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     session.micTrack = processedMicTrack;
     // Muted before joining: mute before publishing so the mic is never live
     if (audioOptions.startMuted) await session.micTrack.mute();
-    await room.localParticipant.publishTrack(session.micTrack);
+    await room.localParticipant.publishTrack(session.micTrack, { source: Track.Source.Microphone });
 
     console.log("Connected to room:", room.name);
     
@@ -627,10 +716,13 @@ export async function leaveChannel(session) {
     // Stop speaking detection
     session.stopSpeakingDetection();
     
-    // Clean up all audio analyzers
-    Object.keys(session.audioGraph).forEach(participantIdentity => {
+    // Clean up all audio graphs
+    for (const participantIdentity of [...session.audioGraph.keys()]) {
         session.cleanAudio(participantIdentity);
-    });
+    }
+    for (const participantIdentity of [...session.streamAudioGraph.keys()]) {
+        session.cleanStreamAudio(participantIdentity);
+    }
     
     // Close audio context
     // if (session.audioContext) {
@@ -720,11 +812,12 @@ export async function setDeafened(session, nextDeafened) {
 /**
  * Start screen sharing
  * @param {VoiceSession} session
- * @param {Function} onScreenTrack - Callback that receives the video element to display the screen share. Called with (videoElement)
+ * @param {Function} onScreenTrack - Callback that receives the video element to display the screen share. Called with (videoElement, { hasAudio })
  * @param {Object} qualitySettings - Optional quality settings { bitrate, fps }
+ * @param {Function} [onEnded] - Called if the share stops from outside the app (e.g. the browser's "Stop sharing" bar)
  * @returns {Promise<void>}
  */
-export async function startScreenShare(session, onScreenTrack, qualitySettings = {}) {
+export async function startScreenShare(session, onScreenTrack, qualitySettings = {}, onEnded = null) {
     if (!session?.isActive) return;
     
     // Default quality settings
@@ -758,12 +851,32 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
                 frameRate: { ideal: fps, max: fps }
                 // Resolution automatically matches the content being shared
               },
-              audio: true // optional: can capture system audio in some browsers
+              // Tab audio (Chromium), or system audio where the browser offers it (Chrome on
+              // Windows/ChromeOS). It's sound for listening to, so no voice processing.
+              audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                // Keep playing it locally, so sharing doesn't silence it for the sharer
+                suppressLocalAudioPlayback: false,
+                // Leave out this page's own sound (the call), so people don't hear themselves.
+                // Ignored by browsers that don't support it yet.
+                restrictOwnAudio: true,
+              },
+              systemAudio: 'include',
             };
 
         const screenStream = await navigator.mediaDevices.getDisplayMedia(constraintOptions);
 
         const screenTrack = screenStream.getVideoTracks()[0];
+        // Only there if the user left "Share audio" ticked (and the browser supports it)
+        const screenAudioTrack = screenStream.getAudioTracks()[0] ?? null;
+
+        // Left the call while the picker was open
+        if (!session.isActive) {
+            screenStream.getTracks().forEach(t => t.stop());
+            return;
+        }
 
         // Log the actual track settings
         const settings = screenTrack.getSettings();
@@ -801,13 +914,42 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
 
             simulcast: false
         });
-        
+
+        if (screenAudioTrack) {
+            try {
+                session.streamAudioTrack = new LocalAudioTrack(screenAudioTrack, undefined, true);
+                await session.room.localParticipant.publishTrack(session.streamAudioTrack, {
+                    source: Track.Source.ScreenShareAudio,
+                    // Music, not speech: stereo, high bitrate, and no dropping "silence"
+                    audioPreset: AudioPresets.musicHighQualityStereo,
+                    forceStereo: true,
+                    dtx: false,
+                    red: false,
+                });
+                console.log("Screen share audio published:", screenAudioTrack.getSettings());
+            } catch (err) {
+                // The picture still works without the sound
+                console.error("Failed to publish screen share audio:", err);
+                screenAudioTrack.stop();
+                session.streamAudioTrack = null;
+            }
+        }
+
+        // Stopped from the browser's own UI: LiveKit unpublishes the track itself,
+        // so we only need to drop the audio with it and tell the UI
+        const videoTrackAtStart = session.streamTrack;
+        screenTrack.addEventListener('ended', () => {
+            if (session.streamTrack !== videoTrackAtStart) return;
+            stopScreenShare(session, () => onEnded?.()).catch(err => console.warn('Cleaning up ended screen share failed:', err));
+        });
+
         // Create video element to display the local screen share
         const video = document.createElement("video");
         video.srcObject = new MediaStream([session.streamTrack.mediaStreamTrack]);
         video.autoplay = true;
-        
-        onScreenTrack(video);
+        video.muted = true;
+
+        onScreenTrack(video, { hasAudio: !!session.streamAudioTrack });
 
         console.log("Screen shared with requested settings:", { bitrate, fps });
         console.log("Actual track frame rate:", screenTrack.getSettings().frameRate);
@@ -904,9 +1046,19 @@ export async function updateScreenShareQuality(session, qualitySettings) {
  */
 export async function stopScreenShare(session, onScreenTrackRemoved) {
     if (!session?.isActive) return;
-    await session.room.localParticipant.unpublishTrack(session.streamTrack);
+    const videoTrack = session.streamTrack;
+    const audioTrack = session.streamAudioTrack;
     session.streamTrack = null;
-    onScreenTrackRemoved();
+    session.streamAudioTrack = null;
+    // Unpublishing also stops the captured tracks
+    if (audioTrack) {
+        try { await session.room.localParticipant.unpublishTrack(audioTrack); } catch (err) { console.warn('Unpublishing screen share audio failed:', err); audioTrack.stop(); }
+    }
+    try {
+        if (videoTrack) await session.room.localParticipant.unpublishTrack(videoTrack);
+    } finally {
+        onScreenTrackRemoved();
+    }
 }
 
 /**
@@ -996,14 +1148,12 @@ export function setParticipantMuted(session, participantIdentity, isMuted) {
     if (!session?.isActive) return;
     
     // Use the mute gain node for proper muting in the Web Audio API chain
-    const { muteNode } = session.audioGraph.get(participantIdentity);
+    const muteNode = session.audioGraph.get(participantIdentity)?.muteNode;
     if (muteNode) {
         muteNode.gain.value = isMuted ? 0.0 : 1.0;
         console.log(`Participant ${participantIdentity} ${isMuted ? 'muted' : 'unmuted'} (via mute gain node)`);
     } else {
         console.warn(`No mute gain node found for participant ${participantIdentity}`);
-        console.warn(`Available mute gain nodes:`, Object.keys(session.audioGraph || {}));
-        console.warn(`Available audio elements:`, Object.keys(session.audioGraph || {}));
     }
 }
 
@@ -1019,26 +1169,35 @@ export function setParticipantVolume(session, participantIdentity, volume) {
     
     // Clamp volume to valid range
     const clampedVolume = Math.max(0, Math.min(5, volume));
-    
-    // Convert volume to gain using an exponential curve:
-    // volume 0.0 = gain 0 (complete silence)
-    // volume 1.0 = gain 1.0 (normal/baseline)
-    // volume 5.0 = gain 25.0 (25x amplified for way louder sound)
-    // 
-    // Using exponential scaling: gain = volume^2
-    // This makes the volume increase feel more natural and get loud much quicker
-    const gainValue = clampedVolume === 0 ? 0 : Math.pow(clampedVolume, 2);
-    
+
+    // Volume to gain is squared (0 = silent, 1 = normal, 5 = 25x) so the
+    // increase feels natural and gets loud quickly
+    const gainValue = volumeToGain(clampedVolume);
+
     // Use the gain node (required for proper volume control with Web Audio API)
-    const { gainNode } = session.audioGraph.get(participantIdentity);
+    const gainNode = session.audioGraph.get(participantIdentity)?.gainNode;
     if (gainNode) {
         gainNode.gain.value = gainValue;
         console.log(`Participant ${participantIdentity} volume set to ${Math.round(clampedVolume * 100)}% (gain: ${gainValue.toFixed(2)})`);
     } else {
         console.warn(`No volume gain node found for participant ${participantIdentity}`);
-        console.warn(`Available volume gain nodes:`, Object.keys(session.audioGraph || {}));
-        console.warn(`Available audio elements:`, Object.keys(session.audioGraph || {}));
     }
+}
+
+/**
+ * Mute/unmute someone's stream audio, and/or set its volume (client-side only).
+ * Does nothing if they aren't sending any; the saved setting is applied when it arrives.
+ * @param {VoiceSession} session
+ * @param {string} participantIdentity
+ * @param {{muted?: boolean, volume?: number}} setting - volume is 0.0 to 5.0, like voices
+ * @returns {void}
+ */
+export function setStreamAudio(session, participantIdentity, { muted, volume } = {}) {
+    if (!session?.isActive) return;
+    const graph = session.streamAudioGraph?.get(participantIdentity);
+    if (!graph) return;
+    if (muted !== undefined) graph.muteNode.gain.value = muted ? 0 : 1;
+    if (volume !== undefined) graph.gainNode.gain.value = volumeToGain(volume);
 }
 
 /**

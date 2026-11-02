@@ -19,6 +19,7 @@ import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.track.CameraPosition
 import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.LocalVideoTrack
+import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
@@ -40,8 +41,11 @@ enum class CallPhase { Connecting, Connected, Reconnecting }
 
 data class AudioOutput(val name: String, val device: AudioDevice)
 
-/** Someone's camera or screen, mine included. [key] is the track's ID, so it stays the same while it's up. */
-data class VideoFeed(val key: String, val userId: String, val screen: Boolean, val track: VideoTrack, val local: Boolean)
+/**
+ * Someone's camera or screen, mine included. [key] is the track's ID, so it stays the same while it's up.
+ * [hasAudio]: a screen that comes with its sound (desktop or tab audio).
+ */
+data class VideoFeed(val key: String, val userId: String, val screen: Boolean, val track: VideoTrack, val local: Boolean, val hasAudio: Boolean = false)
 
 data class CallState(
     val channelId: Long,
@@ -58,6 +62,8 @@ data class CallState(
     val screenSharing: Boolean = false,
     /** Screens first, then cameras. */
     val videos: List<VideoFeed> = emptyList(),
+    /** User IDs whose stream audio we've muted (saved, so it lasts between calls). */
+    val mutedStreams: Set<String> = emptySet(),
 )
 
 /**
@@ -72,6 +78,7 @@ class Voice(
     private val scope: CoroutineScope,
     private val liveKitUrl: String,
     private val settings: suspend () -> LocalSettings,
+    private val updateSettings: suspend ((LocalSettings) -> LocalSettings) -> Unit,
 ) {
     private val _call = MutableStateFlow<CallState?>(null)
     val call: StateFlow<CallState?> = _call.asStateFlow()
@@ -104,7 +111,7 @@ class Voice(
                 if (_call.value?.channelId == channelId) return@withLock
                 leaveLocked()
                 val local = settings()
-                _call.value = CallState(channelId, noiseSuppression = local.noiseSuppression)
+                _call.value = CallState(channelId, noiseSuppression = local.noiseSuppression, mutedStreams = local.mutedStreams)
                 sounds // loads them while connecting, so the join sound is ready
                 CallService.start(context)
                 try {
@@ -175,6 +182,7 @@ class Voice(
             runCatching { it.release() }
         }
         room = null
+        synchronized(this) { streamVolumes.clear() }
         rnnoise?.release()
         rnnoise = null
         if (_call.value != null) {
@@ -311,7 +319,8 @@ class Voice(
                     Track.Source.CAMERA -> false
                     else -> continue
                 }
-                feeds += VideoFeed(pub.sid, userId, screen, video, local)
+                val hasAudio = screen && p.getTrackPublication(Track.Source.SCREEN_SHARE_AUDIO) != null
+                feeds += VideoFeed(pub.sid, userId, screen, video, local, hasAudio)
             }
         }
         collect(room.localParticipant, local = true)
@@ -325,6 +334,38 @@ class Voice(
             else if ((before - after).isNotEmpty()) play(Sound.StreamEnd)
         }
         _call.update { it?.copy(videos = feeds, screenSharing = room.localParticipant.isScreenShareEnabled) }
+        applyStreamAudio(room)
+    }
+
+    /** Silences the stream audio of everyone we've muted, and puts everyone else's back. */
+    @Synchronized
+    private fun applyStreamAudio(room: Room) {
+        val muted = _call.value?.mutedStreams ?: return
+        for (p in room.remoteParticipants.values) {
+            val track = p.getTrackPublication(Track.Source.SCREEN_SHARE_AUDIO)?.track as? RemoteAudioTrack ?: continue
+            val userId = p.identity?.value ?: continue
+            val volume = if (userId in muted) 0.0 else 1.0
+            if (streamVolumes.put(track, volume) == volume) continue
+            Log.d(TAG, "Stream audio from $userId ${if (volume == 0.0) "muted" else "playing"}")
+            runCatching { track.setVolume(volume) }
+        }
+    }
+
+    /**
+     * The volume last set on each stream audio track. By track object, not ID: rejoining gets a new
+     * track (at full volume) for the same publication. Only touched under the object lock.
+     */
+    private val streamVolumes = java.util.WeakHashMap<RemoteAudioTrack, Double>()
+
+    /** Mutes or unmutes someone's stream audio (only for us), and remembers it. */
+    fun setStreamMuted(userId: String, muted: Boolean) {
+        val c = _call.value ?: return
+        val next = if (muted) c.mutedStreams + userId else c.mutedStreams - userId
+        _call.value = c.copy(mutedStreams = next)
+        room?.let { applyStreamAudio(it) }
+        scope.launch {
+            runCatching { updateSettings { s -> s.copy(mutedStreams = if (muted) s.mutedStreams + userId else s.mutedStreams - userId) } }
+        }
     }
 
     private fun reportState() {

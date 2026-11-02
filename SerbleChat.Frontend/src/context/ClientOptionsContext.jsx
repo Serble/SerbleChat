@@ -17,13 +17,15 @@ function cachedDateTimeFormat() {
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
-export const OPTION_DEFAULTS = {
+export const VOICE_PARTICIPANT_DEFAULTS = { muted: false, volume: 1, streamMuted: false, streamVolume: 1 };
+
+const OPTION_DEFAULTS = {
   messageLinesLimit: 28,
   blockedMessageMode: 'masked', // 'masked' | 'visible' | 'hidden'
   sendTypingIndicators: true, // whether to send typing notifications
   timeFormat: 'auto', // 'auto' | '12h' | '24h'
   dateFormat: 'auto', // 'auto' | 'DD/MM/YYYY' | 'DD/MM/YY' | 'MM/DD/YYYY' | 'MM/DD/YY' | 'YYYY/MM/DD
-  voiceParticipantSettings: {}, // { [participantIdentity]: { muted: boolean, volume: number } }
+  voiceParticipantSettings: {}, // { [participantIdentity]: { muted, volume, streamMuted, streamVolume } } (streams: their screen share's audio)
   voiceAudioOptions: {
     echoCancellation: false,
     noiseSuppression: false,
@@ -266,11 +268,11 @@ export function ClientOptionsProvider({ children }) {
   }
 
   function setVoiceParticipantSetting(participantIdentity, setting) {
-    const current = voiceSettingsRef.current[participantIdentity] || { muted: false, volume: 1 };
+    const current = voiceSettingsRef.current[participantIdentity] || VOICE_PARTICIPANT_DEFAULTS;
     const updated = { ...current, ...setting };
-    
-    // Remove if both are defaults
-    if (!updated.muted && updated.volume === 1) {
+
+    // Remove if everything is back to defaults
+    if (!updated.muted && (updated.volume ?? 1) === 1 && !updated.streamMuted && (updated.streamVolume ?? 1) === 1) {
       const newSettings = { ...voiceSettingsRef.current };
       delete newSettings[participantIdentity];
       voiceSettingsRef.current = newSettings;
@@ -284,7 +286,8 @@ export function ClientOptionsProvider({ children }) {
   }
 
   function getVoiceParticipantSetting(participantIdentity) {
-    return voiceSettingsRef.current[participantIdentity] || { muted: false, volume: 1 };
+    // Older saved entries predate the stream fields
+    return { ...VOICE_PARTICIPANT_DEFAULTS, ...voiceSettingsRef.current[participantIdentity] };
   }
 
   function setVoiceAudioOption(optionName, value) {

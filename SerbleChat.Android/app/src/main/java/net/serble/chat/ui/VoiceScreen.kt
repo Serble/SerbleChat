@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.ChatBubble
@@ -178,7 +180,9 @@ fun VoiceScreen(onBack: () -> Unit, onOpenChat: (Long) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(screens, key = { "s" + it.key }, span = { GridItemSpan(maxLineSpan) }) { feed ->
-                    ScreenTile(feed, nameOf(feed.userId), onOpen = { watching = feed.key }, onStop = { app.voice.stopScreenShare() })
+                    ScreenTile(feed, nameOf(feed.userId), audioMuted = feed.userId in c.mutedStreams,
+                        onOpen = { watching = feed.key }, onStop = { app.voice.stopScreenShare() },
+                        onSetAudioMuted = { app.voice.setStreamMuted(feed.userId, it) })
                 }
                 items(participants, key = { it.userId }) { p ->
                     val isMe = p.userId == me
@@ -216,6 +220,8 @@ fun VoiceScreen(onBack: () -> Unit, onOpenChat: (Long) -> Unit) {
             feed = open,
             title = if (open.screen) "${nameOf(open.userId)}'s screen" else nameOf(open.userId),
             mirror = !open.screen && open.local && c.frontCamera,
+            audioMuted = if (open.screen && open.hasAudio && !open.local) open.userId in c.mutedStreams else null,
+            onSetAudioMuted = { app.voice.setStreamMuted(open.userId, it) },
             onDismiss = { watching = null },
         )
     }
@@ -279,15 +285,26 @@ private fun StateIcons(muted: Boolean, deafened: Boolean) {
     if (deafened) Icon(Icons.Default.HeadsetOff, "Deafened", Modifier.padding(start = 2.dp).size(16.dp), tint = MaterialTheme.colorScheme.error)
 }
 
-/** Someone's shared screen, a whole row wide. Your own isn't shown back to you: it would only show itself. */
+/**
+ * Someone's shared screen, a whole row wide. Your own isn't shown back to you: it would only show itself.
+ * Long-press someone else's for their stream audio.
+ */
 @Composable
-private fun ScreenTile(feed: VideoFeed, name: String, onOpen: () -> Unit, onStop: () -> Unit) {
+private fun ScreenTile(
+    feed: VideoFeed,
+    name: String,
+    audioMuted: Boolean,
+    onOpen: () -> Unit,
+    onStop: () -> Unit,
+    onSetAudioMuted: (Boolean) -> Unit,
+) {
     val shape = RoundedCornerShape(16.dp)
+    var menu by remember { mutableStateOf(false) }
     Surface(
         shape = shape,
         color = Color.Black,
         modifier = Modifier.fillMaxWidth().aspectRatio(16 / 9f).clip(shape)
-            .then(if (feed.local) Modifier else Modifier.clickable(onClick = onOpen)),
+            .then(if (feed.local) Modifier else Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true })),
     ) {
         Box(Modifier.fillMaxSize()) {
             if (feed.local) {
@@ -311,9 +328,25 @@ private fun ScreenTile(feed: VideoFeed, name: String, onOpen: () -> Unit, onStop
                     Icon(Icons.Default.ScreenShare, null, Modifier.size(14.dp), tint = Color.White)
                     Spacer(Modifier.size(6.dp))
                     Text("$name's screen", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (feed.hasAudio) {
+                        Spacer(Modifier.size(6.dp))
+                        if (audioMuted) Icon(Icons.AutoMirrored.Filled.VolumeOff, "Stream audio muted", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                        else Icon(Icons.AutoMirrored.Filled.VolumeUp, "Has audio", Modifier.size(14.dp), tint = Color.White)
+                    }
                 }
                 Icon(Icons.Default.Fullscreen, "Full screen", Modifier.align(Alignment.TopEnd).padding(8.dp)
                     .background(Color.Black.copy(alpha = 0.55f), CircleShape).padding(4.dp).size(20.dp), tint = Color.White)
+                DropdownMenu(menu, { menu = false }) {
+                    if (feed.hasAudio) {
+                        DropdownMenuItem(
+                            text = { Text(if (audioMuted) "Unmute stream audio" else "Mute stream audio") },
+                            leadingIcon = { Icon(if (audioMuted) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, null) },
+                            onClick = { menu = false; onSetAudioMuted(!audioMuted) },
+                        )
+                    } else {
+                        DropdownMenuItem(text = { Text("This stream has no audio") }, enabled = false, onClick = { menu = false })
+                    }
+                }
             }
         }
     }
@@ -324,7 +357,15 @@ private fun ScreenTile(feed: VideoFeed, name: String, onOpen: () -> Unit, onStop
  * look around, tap to hide the buttons, and a button to turn it sideways.
  */
 @Composable
-private fun StreamViewer(feed: VideoFeed, title: String, mirror: Boolean, onDismiss: () -> Unit) {
+private fun StreamViewer(
+    feed: VideoFeed,
+    title: String,
+    mirror: Boolean,
+    /** Null when there's no stream audio to mute. */
+    audioMuted: Boolean?,
+    onSetAudioMuted: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val zoom = rememberZoomState(feed.key)
     val scope = rememberCoroutineScope()
     var chrome by remember { mutableStateOf(true) }
@@ -371,6 +412,10 @@ private fun StreamViewer(feed: VideoFeed, title: String, mirror: Boolean, onDism
                     if (zoom.zoomed) {
                         Text("${(zoom.scale * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { zoom.reset() }.padding(horizontal = 8.dp, vertical = 6.dp))
+                    }
+                    if (audioMuted != null) IconButton(onClick = { onSetAudioMuted(!audioMuted) }) {
+                        if (audioMuted) Icon(Icons.AutoMirrored.Filled.VolumeOff, "Unmute stream audio", tint = MaterialTheme.colorScheme.error)
+                        else Icon(Icons.AutoMirrored.Filled.VolumeUp, "Mute stream audio", tint = Color.White)
                     }
                     if (activity != null) IconButton(onClick = { activity.toggleLandscape() }) { Icon(Icons.Default.ScreenRotation, "Rotate", tint = Color.White) }
                 }
