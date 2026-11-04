@@ -12,7 +12,8 @@ const IDENTITY = { s: 1, x: 0, y: 0 };
 
 /**
  * Zoom and pan for a stream or an image: the mouse wheel zooms towards the cursor, dragging
- * pans once zoomed in, two fingers pinch, and a double-click zooms in on that spot (or back out).
+ * pans once zoomed in, two fingers pinch, and (unless `doubleClick` is false) a double-click
+ * zooms in on that spot (or back out).
  *
  * The transform goes on `videoEl` (a <video> or an <img>), which fills `containerRef`'s
  * element. Everything is in that element's pixels, with the origin at its top-left corner,
@@ -24,7 +25,7 @@ const IDENTITY = { s: 1, x: 0, y: 0 };
  * once it's clear the click wasn't a drag, the start of a double-click, or made while zoomed.
  * Pass `{ delay: false }` to run it straight away when a double-click doesn't matter.
  */
-export function useStreamZoom(containerRef, videoEl, enabled) {
+export function useStreamZoom(containerRef, videoEl, enabled, { doubleClick = true } = {}) {
   const [view, setView] = useState(IDENTITY);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -201,7 +202,7 @@ export function useStreamZoom(containerRef, videoEl, enabled) {
     el.addEventListener('pointermove', onPointerMove);
     el.addEventListener('pointerup', onPointerUp);
     el.addEventListener('pointercancel', onPointerUp);
-    el.addEventListener('dblclick', onDoubleClick);
+    if (doubleClick) el.addEventListener('dblclick', onDoubleClick);
     return () => {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('pointerdown', onPointerDown);
@@ -210,7 +211,7 @@ export function useStreamZoom(containerRef, videoEl, enabled) {
       el.removeEventListener('pointercancel', onPointerUp);
       el.removeEventListener('dblclick', onDoubleClick);
     };
-  }, [containerRef, enabled, zoomAt, clampView]);
+  }, [containerRef, enabled, doubleClick, zoomAt, clampView]);
 
   const handleClick = useCallback((action, { delay = true } = {}) => {
     if (draggedRef.current) {

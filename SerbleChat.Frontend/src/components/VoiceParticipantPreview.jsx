@@ -671,8 +671,10 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
   const poppedOut = usePoppedOutStreams().has(key) && !isPlaceholder;
   const popOutAvailable = !isPlaceholder && canPopOut();
   const showsVideo = !hidden && !isPlaceholder && !poppedOut;
-  // Expanded streams can be zoomed into, to read small text on someone's screen
-  const zoom = useStreamZoom(containerRef, isPlaceholder ? null : share.videoElement, isExpanded && showsVideo);
+  // Expanded streams can be zoomed into, to read small text on someone's screen. No
+  // double-click zoom: a click leaves the expanded view, and it shouldn't have to wait to
+  // rule out a double-click first.
+  const zoom = useStreamZoom(containerRef, isPlaceholder ? null : share.videoElement, isExpanded && showsVideo, { doubleClick: false });
 
   useEffect(() => {
     if (share.isLocal || !share.participantIdentity) return;
@@ -760,7 +762,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
     <div
       className="stream-tile"
       data-stream-identity={identity ?? undefined}
-      onClick={() => (isExpanded ? zoom.handleClick(onClick) : onClick())}
+      onClick={() => (isExpanded ? zoom.handleClick(onClick, { delay: false }) : onClick())}
       onContextMenu={handleContextMenu}
       style={{
         background: isExpanded ? 'transparent' : 'var(--bg-tertiary)',
@@ -975,7 +977,6 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           className="stream-zoom-bar"
           data-zoomed={zoom.zoomed}
           onClick={e => e.stopPropagation()}
-          onDoubleClick={e => e.stopPropagation()}
         >
           <button type="button" onClick={zoom.zoomOut} disabled={!zoom.zoomed} title="Zoom out" aria-label="Zoom out">
             <MinusIcon size={14} />
@@ -983,7 +984,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           <button type="button" className="stream-zoom-level" onClick={zoom.reset} disabled={!zoom.zoomed} title="Reset zoom">
             {Math.round(zoom.scale * 100)}%
           </button>
-          <button type="button" onClick={zoom.zoomIn} disabled={zoom.scale >= 7.99} title="Zoom in (or scroll, pinch, double-click)" aria-label="Zoom in">
+          <button type="button" onClick={zoom.zoomIn} disabled={zoom.scale >= 7.99} title="Zoom in (or scroll, pinch)" aria-label="Zoom in">
             <PlusIcon size={14} />
           </button>
           {popOutAvailable && (
