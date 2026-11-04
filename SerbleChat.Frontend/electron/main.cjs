@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, globalShortcut, shell, clipboard, desktopCa
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
+const { LinuxStreamAudio, checkSupport: checkLinuxStreamAudio } = require('./linuxStreamAudio.cjs');
 const isDev = process.env.NODE_ENV === 'development';
 
 // Load environment variables from .env file
@@ -36,6 +38,21 @@ let oauthCallbackResolve = null;
 
 // Store user-selected display source
 let selectedDisplaySource = null;
+
+// Stream audio on Linux: a virtual mic fed with every app's sound except ours (see linuxStreamAudio.cjs)
+let linuxStreamAudio = null;
+function getLinuxStreamAudio() {
+  // Everything we play comes from one of our own processes (Chromium's audio service, mostly)
+  linuxStreamAudio ??= new LinuxStreamAudio(() => app.getAppMetrics().map(m => m.pid));
+  return linuxStreamAudio;
+}
+function stopLinuxStreamAudio() {
+  linuxStreamAudio?.stop();
+}
+
+// Windows can capture system audio minus our own app from build 19045 (22H2) on. Before that,
+// only all of it, call included.
+const windowsLoopbackExcludesSelf = process.platform === 'win32' && Number(os.release().split('.').pop()) >= 19045;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -82,6 +99,13 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    stopLinuxStreamAudio();
+  });
+
+  // The page (and its stream) went away without stopping it
+  mainWindow.webContents.on('render-process-gone', stopLinuxStreamAudio);
+  mainWindow.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) stopLinuxStreamAudio();
   });
 
   // Intercept all new-window requests (target="_blank" links) and open in system browser
@@ -269,10 +293,16 @@ app.whenReady().then(() => {
     console.log('Screen share request received');
     
     // If user has already selected a source via our picker, use it
+    // Stream audio on Windows: Chromium captures it. (Linux does its own, see linuxStreamAudio.cjs.)
+    const audio = request.audioRequested && process.platform === 'win32'
+      ? (windowsLoopbackExcludesSelf ? 'loopbackWithoutChrome' : 'loopback')
+      : undefined;
+
     if (selectedDisplaySource) {
       console.log('Using user-selected source:', selectedDisplaySource.name);
       callback({ 
-        video: selectedDisplaySource 
+        video: selectedDisplaySource,
+        ...(audio && { audio }),
       });
       selectedDisplaySource = null; // Clear for next time
       return;
@@ -292,7 +322,8 @@ app.whenReady().then(() => {
       console.log('Auto-selected display source:', primarySource.name);
       
       callback({ 
-        video: primarySource 
+        video: primarySource,
+        ...(audio && { audio }),
       });
     }).catch(err => {
       console.error('Failed to get display sources:', err);
@@ -316,6 +347,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  stopLinuxStreamAudio();
   if (oauthCallbackServer) {
     oauthCallbackServer.close();
     oauthCallbackServer = null;
@@ -574,6 +606,51 @@ function registerIPCHandlers() {
       console.error('Failed to get display source:', err);
       return { success: false, error: err.message };
     }
+  });
+
+  // Stream audio: how (and whether) this platform can share sound with a screen share
+  ipcMain.handle('stream-audio-support', async () => {
+    if (process.platform === 'linux') {
+      const { supported, reason } = await checkLinuxStreamAudio();
+      return { method: supported ? 'pipewire' : null, supported, reason, excludesSelf: true, canPickApps: true };
+    }
+    if (process.platform === 'win32') {
+      return { method: 'loopback', supported: true, reason: null, excludesSelf: windowsLoopbackExcludesSelf, canPickApps: false };
+    }
+    return { method: null, supported: false, reason: 'Sharing audio isn\'t supported on macOS yet.', excludesSelf: false, canPickApps: false };
+  });
+
+  ipcMain.handle('stream-audio-list-apps', async () => {
+    if (process.platform !== 'linux') return [];
+    try {
+      return await getLinuxStreamAudio().listApps();
+    } catch (err) {
+      console.error('Failed to list audio apps:', err);
+      return [];
+    }
+  });
+
+  // Starts feeding the virtual mic. Returns its label, for the page to find it by.
+  ipcMain.handle('stream-audio-start', async (event, options) => {
+    if (process.platform !== 'linux') return { success: false, error: 'Not supported here' };
+    try {
+      const apps = Array.isArray(options?.apps) ? options.apps.map(String) : null;
+      const { label } = await getLinuxStreamAudio().start({ apps });
+      return { success: true, label };
+    } catch (err) {
+      console.error('Failed to start stream audio:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('stream-audio-set-apps', (event, apps) => {
+    linuxStreamAudio?.setApps(Array.isArray(apps) ? apps.map(String) : null);
+    return { success: true };
+  });
+
+  ipcMain.handle('stream-audio-stop', () => {
+    stopLinuxStreamAudio();
+    return { success: true };
   });
 
   // OAuth handlers for Electron

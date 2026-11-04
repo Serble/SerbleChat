@@ -2,6 +2,7 @@ import {getChannelVoiceToken} from "./api.js";
 import {AudioPresets, createLocalAudioTrack, createLocalVideoTrack, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, Track, VideoPresets} from "livekit-client";
 import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
 import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
+import { getStreamAudioSupport, captureLinuxStreamAudio, setLinuxStreamAudioApps, stopLinuxStreamAudio } from "./streamAudio.js";
 
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -95,6 +96,8 @@ class VoiceSession {
     streamTrack;
     /** The audio captured with the screen share, if the browser gave us any. @type {LocalAudioTrack | null} */
     streamAudioTrack = null;
+    /** Whether the Linux desktop app's virtual stream audio mic is running for us. */
+    linuxStreamAudio = false;
     /** @type {LocalVideoTrack | null} */
     cameraTrack = null;
     /** @type {Function} */
@@ -712,6 +715,12 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
  */
 export async function leaveChannel(session) {
     session.isActive = false;
+
+    // Disconnecting ends the stream, but the Linux virtual mic is ours to remove
+    if (session.linuxStreamAudio) {
+        session.linuxStreamAudio = false;
+        stopLinuxStreamAudio()?.catch?.(err => console.warn('Stopping stream audio failed:', err));
+    }
     
     // Stop speaking detection
     session.stopSpeakingDetection();
@@ -812,8 +821,9 @@ export async function setDeafened(session, nextDeafened) {
 /**
  * Start screen sharing
  * @param {VoiceSession} session
- * @param {Function} onScreenTrack - Callback that receives the video element to display the screen share. Called with (videoElement, { hasAudio })
- * @param {Object} qualitySettings - Optional quality settings { bitrate, fps }
+ * @param {Function} onScreenTrack - Callback that receives the video element to display the screen share.
+ *   Called with (videoElement, { hasAudio, audioIssue }): audioIssue says why there's no sound when some was asked for.
+ * @param {Object} qualitySettings - Optional settings { bitrate, fps, audio, audioApps }
  * @param {Function} [onEnded] - Called if the share stops from outside the app (e.g. the browser's "Stop sharing" bar)
  * @returns {Promise<void>}
  */
@@ -823,8 +833,12 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
     // Default quality settings
     const {
         bitrate = 8_000_000,
-        fps = 30
+        fps = 30,
+        audio: wantAudio = true,
+        audioApps = null,
     } = qualitySettings;
+    const audioSupport = wantAudio ? await getStreamAudioSupport() : null;
+    const audioMethod = audioSupport?.supported ? audioSupport.method : null;
     
     try {
         // For Electron, show source picker before starting capture
@@ -843,10 +857,14 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
             console.log('User selected source, proceeding with getDisplayMedia...');
         }
         
-        // For Electron, simpler constraints work better
+        // For Electron, simpler constraints work better. On Windows, asking for audio gets the
+        // system loopback (see main.cjs). On Linux we capture it ourselves, after.
         const constraintOptions = isElectron 
-          ? { video: true, audio: false }  // Electron handles screen sharing differently
-          : {
+          ? { video: true, audio: audioMethod === 'loopback' }
+          : audioMethod !== 'browser' ? {
+              video: { frameRate: { ideal: fps, max: fps } },
+              audio: false,
+            } : {
               video: {
                 frameRate: { ideal: fps, max: fps }
                 // Resolution automatically matches the content being shared
@@ -869,13 +887,33 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         const screenStream = await navigator.mediaDevices.getDisplayMedia(constraintOptions);
 
         const screenTrack = screenStream.getVideoTracks()[0];
-        // Only there if the user left "Share audio" ticked (and the browser supports it)
-        const screenAudioTrack = screenStream.getAudioTracks()[0] ?? null;
+        // In a browser, only there if the user left "Share audio" ticked (and the browser supports it)
+        let screenAudioTrack = screenStream.getAudioTracks()[0] ?? null;
+        let audioIssue = null;
+        if (wantAudio && !audioMethod) audioIssue = audioSupport?.reason ?? null;
+        else if (audioMethod === 'browser' && !screenAudioTrack) audioIssue = audioSupport.hint;
 
         // Left the call while the picker was open
         if (!session.isActive) {
             screenStream.getTracks().forEach(t => t.stop());
             return;
+        }
+
+        if (audioMethod === 'pipewire') {
+            try {
+                screenAudioTrack = await captureLinuxStreamAudio(audioApps);
+                session.linuxStreamAudio = true;
+            } catch (err) {
+                // The picture still works without the sound
+                console.error("Failed to capture stream audio:", err);
+                audioIssue = `Couldn't share audio: ${err.message}`;
+            }
+            if (!session.isActive) {
+                screenStream.getTracks().forEach(t => t.stop());
+                screenAudioTrack?.stop();
+                if (session.linuxStreamAudio) { session.linuxStreamAudio = false; stopLinuxStreamAudio(); }
+                return;
+            }
         }
 
         // Log the actual track settings
@@ -916,23 +954,7 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         });
 
         if (screenAudioTrack) {
-            try {
-                session.streamAudioTrack = new LocalAudioTrack(screenAudioTrack, undefined, true);
-                await session.room.localParticipant.publishTrack(session.streamAudioTrack, {
-                    source: Track.Source.ScreenShareAudio,
-                    // Music, not speech: stereo, high bitrate, and no dropping "silence"
-                    audioPreset: AudioPresets.musicHighQualityStereo,
-                    forceStereo: true,
-                    dtx: false,
-                    red: false,
-                });
-                console.log("Screen share audio published:", screenAudioTrack.getSettings());
-            } catch (err) {
-                // The picture still works without the sound
-                console.error("Failed to publish screen share audio:", err);
-                screenAudioTrack.stop();
-                session.streamAudioTrack = null;
-            }
+            if (!await publishStreamAudio(session, screenAudioTrack)) audioIssue = 'Couldn\'t share audio: sending it failed.';
         }
 
         // Stopped from the browser's own UI: LiveKit unpublishes the track itself,
@@ -949,7 +971,7 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         video.autoplay = true;
         video.muted = true;
 
-        onScreenTrack(video, { hasAudio: !!session.streamAudioTrack });
+        onScreenTrack(video, { hasAudio: !!session.streamAudioTrack, audioIssue });
 
         console.log("Screen shared with requested settings:", { bitrate, fps });
         console.log("Actual track frame rate:", screenTrack.getSettings().frameRate);
@@ -974,6 +996,95 @@ export async function startScreenShare(session, onScreenTrack, qualitySettings =
         const error = new Error(errorMessage);
         error.originalError = err;
         throw error;
+    }
+}
+
+/**
+ * Publishes a screen share's sound. False if that failed (the picture carries on without it).
+ * @param {VoiceSession} session
+ * @param {MediaStreamTrack} mediaTrack
+ */
+async function publishStreamAudio(session, mediaTrack) {
+    try {
+        session.streamAudioTrack = new LocalAudioTrack(mediaTrack, undefined, true);
+        await session.room.localParticipant.publishTrack(session.streamAudioTrack, {
+            source: Track.Source.ScreenShareAudio,
+            // Music, not speech: stereo, high bitrate, and no dropping "silence"
+            audioPreset: AudioPresets.musicHighQualityStereo,
+            forceStereo: true,
+            dtx: false,
+            red: false,
+        });
+        console.log("Screen share audio published:", mediaTrack.getSettings());
+        return true;
+    } catch (err) {
+        console.error("Failed to publish screen share audio:", err);
+        mediaTrack.stop();
+        session.streamAudioTrack = null;
+        if (session.linuxStreamAudio) { session.linuxStreamAudio = false; stopLinuxStreamAudio(); }
+        return false;
+    }
+}
+
+/** Stops sending a screen share's sound (and capturing it). */
+async function unpublishStreamAudio(session) {
+    const audioTrack = session.streamAudioTrack;
+    session.streamAudioTrack = null;
+    // Unpublishing also stops the captured track
+    if (audioTrack) {
+        try { await session.room.localParticipant.unpublishTrack(audioTrack); } catch (err) { console.warn('Unpublishing screen share audio failed:', err); audioTrack.stop(); }
+    }
+    if (session.linuxStreamAudio) {
+        session.linuxStreamAudio = false;
+        await stopLinuxStreamAudio();
+    }
+}
+
+/**
+ * Applies changed audio settings to a running screen share.
+ * @param {VoiceSession} session
+ * @param {{ audio?: boolean, audioApps?: string[] | null }} settings
+ * @returns {Promise<{ hasAudio: boolean, needsRestart: boolean, audioIssue: string | null }>}
+ *   needsRestart: this platform can't change it without picking the screen again
+ */
+export async function updateScreenShareAudio(session, { audio: wantAudio = true, audioApps = null } = {}) {
+    if (!session?.isActive || !session.streamTrack) return { hasAudio: false, needsRestart: false, audioIssue: null };
+    const hasAudio = !!session.streamAudioTrack;
+    const support = await getStreamAudioSupport();
+
+    if (!support.canChangeLive) {
+        // Only a browser picker (or Windows' loopback) gives us the sound, so turning it on
+        // means picking again. Turning it off doesn't.
+        if (!wantAudio && hasAudio) {
+            await unpublishStreamAudio(session);
+            return { hasAudio: false, needsRestart: false, audioIssue: null };
+        }
+        return { hasAudio, needsRestart: wantAudio && !hasAudio && support.supported, audioIssue: null };
+    }
+
+    // Linux: the sound is ours to start and stop
+    if (!wantAudio) {
+        if (hasAudio) await unpublishStreamAudio(session);
+        return { hasAudio: false, needsRestart: false, audioIssue: null };
+    }
+    if (hasAudio) {
+        await setLinuxStreamAudioApps(audioApps);
+        return { hasAudio: true, needsRestart: false, audioIssue: null };
+    }
+    try {
+        const track = await captureLinuxStreamAudio(audioApps);
+        session.linuxStreamAudio = true;
+        if (!session.isActive || !session.streamTrack) {
+            track.stop();
+            session.linuxStreamAudio = false;
+            await stopLinuxStreamAudio();
+            return { hasAudio: false, needsRestart: false, audioIssue: null };
+        }
+        const ok = await publishStreamAudio(session, track);
+        return { hasAudio: ok, needsRestart: false, audioIssue: ok ? null : 'Couldn\'t share audio: sending it failed.' };
+    } catch (err) {
+        console.error("Failed to capture stream audio:", err);
+        return { hasAudio: false, needsRestart: false, audioIssue: `Couldn't share audio: ${err.message}` };
     }
 }
 
@@ -1047,13 +1158,9 @@ export async function updateScreenShareQuality(session, qualitySettings) {
 export async function stopScreenShare(session, onScreenTrackRemoved) {
     if (!session?.isActive) return;
     const videoTrack = session.streamTrack;
-    const audioTrack = session.streamAudioTrack;
     session.streamTrack = null;
-    session.streamAudioTrack = null;
     // Unpublishing also stops the captured tracks
-    if (audioTrack) {
-        try { await session.room.localParticipant.unpublishTrack(audioTrack); } catch (err) { console.warn('Unpublishing screen share audio failed:', err); audioTrack.stop(); }
-    }
+    await unpublishStreamAudio(session);
     try {
         if (videoTrack) await session.room.localParticipant.unpublishTrack(videoTrack);
     } finally {

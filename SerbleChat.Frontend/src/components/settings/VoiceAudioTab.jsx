@@ -3,6 +3,7 @@ import { useClientOptions } from '../../context/ClientOptionsContext.jsx';
 import { Slider, Select, Button, Card, SectionTitle, OptionCard, Hint } from '../ui/index.js';
 import { MicIcon, SpeakerIcon, BrainIcon, RefreshIcon, VideoIcon } from '../../icons.jsx';
 import { TabBody } from './common.jsx';
+import { STREAM_AUDIO_DEVICE_LABEL } from '../../streamAudio.js';
 
 const PROCESSING_OPTIONS = [
   {
@@ -37,7 +38,8 @@ async function enumerateMediaDevices() {
   }
   return {
     // 'default' is already offered as its own option
-    inputs: devices.filter(d => d.kind === 'audioinput' && d.deviceId !== 'default'),
+    // (and our own stream audio device, which only carries what's being streamed)
+    inputs: devices.filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.label !== STREAM_AUDIO_DEVICE_LABEL),
     outputs: devices.filter(d => d.kind === 'audiooutput' && d.deviceId !== 'default'),
     cameras: devices.filter(d => d.kind === 'videoinput' && d.deviceId),
   };

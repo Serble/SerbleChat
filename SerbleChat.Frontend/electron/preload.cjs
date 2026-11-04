@@ -34,4 +34,14 @@ contextBridge.exposeInMainWorld('electron', {
   // Screen sharing for Electron
   getDisplaySources: () => ipcRenderer.invoke('get-display-sources'),
   getDisplaySource: (sourceId) => ipcRenderer.invoke('get-display-source', sourceId),
+
+  // Stream audio (sound shared along with a screen share)
+  streamAudio: {
+    support: () => ipcRenderer.invoke('stream-audio-support'),
+    listApps: () => ipcRenderer.invoke('stream-audio-list-apps'),
+    // Linux only: start/stop the virtual mic that carries the shared sound
+    start: (options) => ipcRenderer.invoke('stream-audio-start', options),
+    setApps: (apps) => ipcRenderer.invoke('stream-audio-set-apps', apps),
+    stop: () => ipcRenderer.invoke('stream-audio-stop'),
+  },
 });

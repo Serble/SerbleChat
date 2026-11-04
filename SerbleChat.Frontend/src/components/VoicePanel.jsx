@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { useVoice } from '../context/VoiceContext.jsx';
 import { useClientOptions } from '../context/ClientOptionsContext.jsx';
-import { startScreenShare, stopScreenShare, updateScreenShareQuality, startCamera, stopCamera } from '../voice.js';
+import { startScreenShare, stopScreenShare, updateScreenShareQuality, updateScreenShareAudio, startCamera, stopCamera } from '../voice.js';
+import { DEFAULT_STREAM_AUDIO } from '../streamAudio.js';
 import { playSound } from '../sound.js';
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
@@ -45,19 +46,17 @@ export default function VoicePanel({
   // so the button's mouseup, mouseleave and the window mouseup can't each release it.
   const pttHeldRef = useRef(false);
   const [qualitySettings, setQualitySettings] = useState(() => {
-    // Load saved quality settings from localStorage
+    const defaults = { bitrate: 8_000_000, fps: 30, ...DEFAULT_STREAM_AUDIO };
+    // Load saved stream settings from localStorage (older saves have no audio settings)
     try {
       const saved = localStorage.getItem('screenShareQualitySettings');
       if (saved) {
-        return JSON.parse(saved);
+        return { ...defaults, ...JSON.parse(saved) };
       }
     } catch (error) {
       console.error('Failed to load quality settings:', error);
     }
-    return {
-      bitrate: 8_000_000,
-      fps: 30
-    };
+    return defaults;
   });
   const canControl = voiceSession && voiceStatus === 'connected';
   const isPtt = voiceAudioOptions.inputMode === 'push-to-talk';
@@ -105,6 +104,23 @@ export default function VoicePanel({
     playSoundSafe('stream_end');
   };
 
+  // Asked for sound but the stream has none: say why, rather than leave people guessing
+  const warnNoAudio = (audioIssue) => {
+    if (audioIssue) addToast({ title: 'Sharing without audio', body: audioIssue, type: 'warning' });
+  };
+
+  const beginScreenShare = (settings, { sound = true } = {}) =>
+    startScreenShare(voiceSession, (videoElement, { hasAudio, audioIssue } = {}) => {
+      setLocalScreenShare({
+        videoElement,
+        hasAudio,
+        username: currentUser?.username || 'Your Screen'
+      });
+      warnNoAudio(audioIssue);
+      // Play sound effect when starting screen share
+      if (sound) playSoundSafe('stream_start');
+    }, settings, handleShareEnded);
+
   const handleToggleScreenShare = async () => {
     if (!canControl) return;
     try {
@@ -115,15 +131,7 @@ export default function VoicePanel({
           playSoundSafe('stream_end');
         });
       } else {
-        await startScreenShare(voiceSession, (videoElement, { hasAudio } = {}) => {
-          setLocalScreenShare({
-            videoElement,
-            hasAudio,
-            username: currentUser?.username || 'Your Screen'
-          });
-          // Play sound effect when starting screen share
-          playSoundSafe('stream_start');
-        }, qualitySettings, handleShareEnded);
+        await beginScreenShare(qualitySettings);
       }
     } catch (error) {
       console.error('Screen sharing error:', error);
@@ -178,23 +186,27 @@ export default function VoicePanel({
     
     // If already sharing, update settings without requiring new selection
     if (isScreenSharing && voiceSession) {
+      let needsRestart = false;
       try {
         await updateScreenShareQuality(voiceSession, newSettings);
+        const audioResult = await updateScreenShareAudio(voiceSession, newSettings);
+        needsRestart = audioResult.needsRestart;
+        if (!needsRestart) {
+          setLocalScreenShare(prev => prev && { ...prev, hasAudio: audioResult.hasAudio });
+          warnNoAudio(audioResult.audioIssue);
+        }
       } catch (error) {
         console.error('Failed to apply quality settings:', error);
         // If update fails, we might need to restart
+        needsRestart = true;
+      }
+      // Some changes (turning on audio in a browser, say) need the screen picking again
+      if (needsRestart) {
         try {
           await stopScreenShare(voiceSession, () => {
             setLocalScreenShare(null);
           });
-          
-          await startScreenShare(voiceSession, (videoElement, { hasAudio } = {}) => {
-            setLocalScreenShare({
-              videoElement,
-              hasAudio,
-              username: currentUser?.username || 'Your Screen'
-            });
-          }, newSettings, handleShareEnded);
+          await beginScreenShare(newSettings, { sound: false });
         } catch (restartError) {
           console.error('Failed to restart screen share:', restartError);
           setLocalScreenShare(null);
@@ -338,16 +350,15 @@ export default function VoicePanel({
           <span>Share</span>
         </VoiceButton>
 
-        {isScreenSharing && (
-          <VoiceButton
-            disabled={!canControl}
-            style={{ padding: '0.4rem 0.5rem' }}
-            onClick={() => setShowQualityModal(true)}
-            title="Screen share quality settings"
-          >
-            <GearIcon size={16} />
-          </VoiceButton>
-        )}
+        {/* Always there, so audio and quality can be set up before going live */}
+        <VoiceButton
+          disabled={!canControl}
+          style={{ padding: '0.4rem 0.5rem' }}
+          onClick={() => setShowQualityModal(true)}
+          title="Stream settings"
+        >
+          <GearIcon size={16} />
+        </VoiceButton>
       </div>
 
       <ScreenShareQualityModal
@@ -355,6 +366,7 @@ export default function VoicePanel({
         onClose={() => setShowQualityModal(false)}
         currentSettings={qualitySettings}
         onApply={handleApplyQualitySettings}
+        isLive={isScreenSharing}
       />
     </div>
   );
