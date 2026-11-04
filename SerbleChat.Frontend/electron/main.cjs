@@ -38,6 +38,8 @@ let oauthCallbackResolve = null;
 
 // Store user-selected display source
 let selectedDisplaySource = null;
+// The sources the last get-display-sources call returned, to pick the user's choice from
+let listedDisplaySources = [];
 
 // Stream audio on Linux: a virtual mic fed with every app's sound except ours (see linuxStreamAudio.cjs)
 let linuxStreamAudio = null;
@@ -613,7 +615,11 @@ function registerIPCHandlers() {
   ipcMain.handle('get-display-sources', async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      
+      // Keep them, so the choice can be looked up without asking for the sources again. On
+      // Wayland every getSources() opens the system's screen picker, and its source IDs are
+      // only good for the picker session they came from.
+      listedDisplaySources = sources;
+
       // Format sources for the frontend (remove large thumbnail data for efficiency)
       const formattedSources = sources.map(source => ({
         id: source.id,
@@ -631,25 +637,21 @@ function registerIPCHandlers() {
   });
 
   // Screen sharing - get the actual source for capture (after user selection)
-  ipcMain.handle('get-display-source', async (event, sourceId) => {
-    try {
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      const source = sources.find(s => s.id === sourceId);
-      
-      if (!source) {
-        return { success: false, error: 'Source not found' };
-      }
-      
-      console.log(`User selected source for screen sharing: ${source.name}`);
-      
-      // Store the source so the display media request handler can use it
-      selectedDisplaySource = source;
-      
-      return { success: true, source };
-    } catch (err) {
-      console.error('Failed to get display source:', err);
-      return { success: false, error: err.message };
+  ipcMain.handle('get-display-source', (event, sourceId) => {
+    const source = listedDisplaySources.find(s => s.id === sourceId);
+    listedDisplaySources = [];
+
+    if (!source) {
+      console.error(`Display source ${sourceId} wasn't in the last list of sources`);
+      return { success: false, error: 'Source not found' };
     }
+
+    console.log(`User selected source for screen sharing: ${source.name}`);
+
+    // Store the source so the display media request handler can use it
+    selectedDisplaySource = source;
+
+    return { success: true, source: { id: source.id, name: source.name } };
   });
 
   // Stream audio: how (and whether) this platform can share sound with a screen share

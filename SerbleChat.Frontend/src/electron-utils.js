@@ -260,8 +260,16 @@ export const pickDisplaySourceElectron = async () => {
     throw new Error('Display source picker only available in Electron');
   }
 
+  // Tells the main process which source to capture. If it can't, getDisplayMedia would capture
+  // some other screen, so stop here instead.
+  const selectSource = async (id) => {
+    const selected = await window.electron.getDisplaySource(id);
+    if (!selected?.success) throw new Error(selected?.error || 'Failed to select display source');
+  };
+
   try {
-    // Get available sources
+    // Get available sources. On Wayland this is the system's screen picker, and it returns
+    // just the one source the user picked there.
     const result = await window.electron.getDisplaySources();
     
     if (!result.success) {
@@ -276,7 +284,7 @@ export const pickDisplaySourceElectron = async () => {
     // If only one source, return it without showing a dialog
     if (sources.length === 1) {
       console.log('Only one source available, auto-selecting:', sources[0].name);
-      await window.electron.getDisplaySource(sources[0].id);
+      await selectSource(sources[0].id);
       return sources[0].id;
     }
 
@@ -370,7 +378,7 @@ export const pickDisplaySourceElectron = async () => {
 
           sourceBtn.onclick = async () => {
             try {
-              await window.electron.getDisplaySource(source.id);
+              await selectSource(source.id);
               modal.remove();
               resolve(source.id);
             } catch (err) {
