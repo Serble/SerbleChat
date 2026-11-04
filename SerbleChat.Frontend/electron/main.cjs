@@ -54,6 +54,10 @@ function stopLinuxStreamAudio() {
 // only all of it, call included.
 const windowsLoopbackExcludesSelf = process.platform === 'win32' && Number(os.release().split('.').pop()) >= 19045;
 
+// Popped-out stream windows, by window name (see src/streamPopout.js)
+const STREAM_POPOUT_NAME = /^serble-stream-[\w-]+$/;
+const streamPopouts = new Map();
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -100,6 +104,11 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     stopLinuxStreamAudio();
+    // Popped-out streams go with the app (otherwise they'd keep it running)
+    for (const win of streamPopouts.values()) {
+      if (!win.isDestroyed()) win.close();
+    }
+    streamPopouts.clear();
   });
 
   // The page (and its stream) went away without stopping it
@@ -108,10 +117,36 @@ function createWindow() {
     if (isMainFrame && !isInPlace) stopLinuxStreamAudio();
   });
 
-  // Intercept all new-window requests (target="_blank" links) and open in system browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  // Intercept all new-window requests (target="_blank" links) and open in system browser.
+  // The exception is popped-out streams: blank windows the page fills in itself.
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (url === 'about:blank' && STREAM_POPOUT_NAME.test(frameName)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          minWidth: 240,
+          minHeight: 135,
+          backgroundColor: '#000000',
+          autoHideMenuBar: true,
+          title: 'Serble Chat',
+          show: true,
+        },
+      };
+    }
     shell.openExternal(url).catch(err => console.error('Failed to open external URL:', err));
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('did-create-window', (win, { frameName }) => {
+    if (!STREAM_POPOUT_NAME.test(frameName)) return;
+    streamPopouts.set(frameName, win);
+    win.setMenu(null);
+    // Nothing in a popout should navigate it or open more windows
+    win.webContents.on('will-navigate', event => event.preventDefault());
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.on('closed', () => {
+      if (streamPopouts.get(frameName) === win) streamPopouts.delete(frameName);
+    });
   });
 
   // Also intercept will-navigate to prevent external URLs from navigating the main window
@@ -460,6 +495,15 @@ function stopOAuthCallbackServer() {
 function registerIPCHandlers() {
   // IPC handlers for any Electron-specific features
   ipcMain.handle('is-electron', () => true);
+
+  // Keep a popped-out stream above other windows (or stop)
+  ipcMain.handle('stream-popout-on-top', (event, name, onTop) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    const win = streamPopouts.get(String(name));
+    if (!win || win.isDestroyed()) return false;
+    win.setAlwaysOnTop(!!onTop, 'floating');
+    return true;
+  });
   ipcMain.handle('get-platform', () => process.platform);
 
   // Open an external URL in the system browser

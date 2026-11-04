@@ -300,7 +300,7 @@ export default function VoicePanel({
                     {name}
                     {p.isLocal && <span style={{ color: 'var(--text-muted)', marginLeft: '0.3rem' }}>(you)</span>}
                   </span>
-                  <VoiceStatusIcons isSpeaking={p.isSpeaking} isMuted={p.isMuted} isDeafened={voiceStates[p.identity]?.deafened} isClientMuted={p.isClientMuted} />
+                  <VoiceStatusIcons isSpeaking={p.isSpeaking} isMuted={p.isMuted} isDeafened={voiceStates[p.identity]?.deafened} isClientMuted={p.isClientMuted} isVideoDisabled={p.videoDisabled} />
                 </div>
               </UserInteraction>
             );
@@ -329,7 +329,8 @@ export default function VoicePanel({
       {/* Camera and screen share buttons */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <VoiceButton
-          tone={isCameraOn ? 'success' : 'neutral'}
+          // Red while on: pressing it stops something
+          tone={isCameraOn ? 'danger' : 'neutral'}
           disabled={!canControl || cameraBusy}
           style={{ flex: 1 }}
           onClick={handleToggleCamera}
@@ -340,7 +341,7 @@ export default function VoicePanel({
         </VoiceButton>
 
         <VoiceButton
-          tone={isScreenSharing ? 'success' : 'neutral'}
+          tone={isScreenSharing ? 'danger' : 'neutral'}
           disabled={!canControl}
           style={{ flex: 1 }}
           onClick={handleToggleScreenShare}

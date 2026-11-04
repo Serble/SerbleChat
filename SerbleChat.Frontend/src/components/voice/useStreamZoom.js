@@ -11,15 +11,18 @@ const DRAG_THRESHOLD_PX = 4;
 const IDENTITY = { s: 1, x: 0, y: 0 };
 
 /**
- * Zoom and pan for a stream: the mouse wheel zooms towards the cursor, dragging pans once
- * zoomed in, two fingers pinch, and a double-click zooms in on that spot (or back out).
+ * Zoom and pan for a stream or an image: the mouse wheel zooms towards the cursor, dragging
+ * pans once zoomed in, two fingers pinch, and a double-click zooms in on that spot (or back out).
  *
- * The transform goes on `videoEl`, which fills `containerRef`'s element. Everything is in
- * that element's pixels, with the origin at its top-left corner, and the video is never
- * pulled so far that one of its edges comes away from the side of the box.
+ * The transform goes on `videoEl` (a <video> or an <img>), which fills `containerRef`'s
+ * element. Everything is in that element's pixels, with the origin at its top-left corner,
+ * and the picture is never pulled so far that one of its edges comes away from the side of
+ * the box. The picture is wherever the element draws it: inside its padding, with
+ * `object-fit: contain`, or `scale-down` (never bigger than its own size).
  *
  * `handleClick(action)` runs a single click's action (e.g. leaving the expanded view) only
  * once it's clear the click wasn't a drag, the start of a double-click, or made while zoomed.
+ * Pass `{ delay: false }` to run it straight away when a double-click doesn't matter.
  */
 export function useStreamZoom(containerRef, videoEl, enabled) {
   const [view, setView] = useState(IDENTITY);
@@ -31,29 +34,50 @@ export function useStreamZoom(containerRef, videoEl, enabled) {
   const videoRef = useRef(videoEl);
   videoRef.current = videoEl;
 
-  const clampView = useCallback((s, x, y) => {
+  /** Where the picture sits in the box when unzoomed: { w, h, left, top, cw, ch }. */
+  const contentRect = useCallback(() => {
     const el = containerRef.current;
     const w = el?.clientWidth ?? 0;
     const h = el?.clientHeight ?? 0;
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
-    // The picture inside the box (object-fit: contain leaves bars along one side)
-    let cw = w;
-    let ch = h;
-    const vw = videoRef.current?.videoWidth;
-    const vh = videoRef.current?.videoHeight;
-    if (vw > 0 && vh > 0 && w > 0 && h > 0) {
-      if (vw / vh > w / h) ch = w * vh / vw;
-      else cw = h * vw / vh;
+    const media = videoRef.current;
+    let padL = 0, padR = 0, padT = 0, padB = 0, fit = 'contain';
+    if (media) {
+      const cs = getComputedStyle(media);
+      padL = parseFloat(cs.paddingLeft) || 0;
+      padR = parseFloat(cs.paddingRight) || 0;
+      padT = parseFloat(cs.paddingTop) || 0;
+      padB = parseFloat(cs.paddingBottom) || 0;
+      fit = cs.objectFit;
     }
-    const left = (w - cw) / 2;
-    const top = (h - ch) / 2;
+    const iw = Math.max(0, w - padL - padR);
+    const ih = Math.max(0, h - padT - padB);
+    // The picture inside the box (object-fit: contain leaves bars along one side)
+    let cw = iw;
+    let ch = ih;
+    const vw = media?.videoWidth || media?.naturalWidth;
+    const vh = media?.videoHeight || media?.naturalHeight;
+    if (vw > 0 && vh > 0 && iw > 0 && ih > 0) {
+      if (vw / vh > iw / ih) ch = iw * vh / vw;
+      else cw = ih * vw / vh;
+      // scale-down: small pictures stay their own size
+      if (fit === 'scale-down' && cw > vw) {
+        cw = vw;
+        ch = vh;
+      }
+    }
+    return { w, h, cw, ch, left: padL + (iw - cw) / 2, top: padT + (ih - ch) / 2 };
+  }, [containerRef]);
+
+  const clampView = useCallback((s, x, y) => {
+    const { w, h, cw, ch, left, top } = contentRect();
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
     // Along a side the zoomed picture fills, keep its edges outside the box; along one it
     // doesn't fill yet, keep it centred
     const axis = (pos, box, start, size) => (scale * size >= box
       ? Math.min(-scale * start, Math.max(box - scale * (start + size), pos))
       : (box - scale * size) / 2 - scale * start);
     return { s: scale, x: axis(x, w, left, cw), y: axis(y, h, top, ch) };
-  }, [containerRef]);
+  }, [contentRect]);
 
   /** Scales by `factor` keeping the point (px, py) where it is, after moving by (dx, dy). */
   const zoomAt = useCallback((factor, px, py, dx = 0, dy = 0) => {
@@ -188,15 +212,28 @@ export function useStreamZoom(containerRef, videoEl, enabled) {
     };
   }, [containerRef, enabled, zoomAt, clampView]);
 
-  const handleClick = useCallback((action) => {
+  const handleClick = useCallback((action, { delay = true } = {}) => {
     if (draggedRef.current) {
       draggedRef.current = false;
       return;
     }
     if (viewRef.current.s > 1.01) return;
     clearTimeout(clickTimerRef.current);
-    clickTimerRef.current = setTimeout(action, CLICK_DELAY_MS);
+    if (delay) clickTimerRef.current = setTimeout(action, CLICK_DELAY_MS);
+    else action();
   }, []);
+
+  /** Whether a point on screen is over the picture (rather than the bars or padding around it). */
+  const isOnContent = useCallback((clientX, clientY) => {
+    const el = containerRef.current;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const { cw, ch, left, top } = contentRect();
+    const v = viewRef.current;
+    const px = (clientX - r.left - v.x) / v.s;
+    const py = (clientY - r.top - v.y) / v.s;
+    return px >= left && px <= left + cw && py >= top && py <= top + ch;
+  }, [containerRef, contentRect]);
 
   return {
     scale: view.s,
@@ -205,5 +242,6 @@ export function useStreamZoom(containerRef, videoEl, enabled) {
     zoomOut: () => zoomBy(1 / 1.5),
     reset,
     handleClick,
+    isOnContent,
   };
 }

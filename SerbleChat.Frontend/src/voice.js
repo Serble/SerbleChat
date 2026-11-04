@@ -118,6 +118,17 @@ class VoiceSession {
     streamAudioGraph = new Map();
     /** @type {boolean} */
     rnnoiseEnabled;
+    /**
+     * Saved per-person settings, by identity (from client options). @type {(identity: string) => object | undefined}
+     */
+    getParticipantSetting = () => undefined;
+    /** Video track sids we just turned back on, so their return doesn't sound like a new stream. @type {Set<string>} */
+    resumedVideo = new Set();
+
+    /** Whether we've turned off someone's video (screen share and camera) to save bandwidth. */
+    isVideoDisabled(identity) {
+        return !!this.getParticipantSetting(String(identity))?.videoDisabled;
+    }
 
     getParticipants() {
         if (!this.room) return [];
@@ -145,6 +156,11 @@ class VoiceSession {
                 isClientMuted: isClientMuted,
                 hasStreamAudio: !!p.getTrackPublication(Track.Source.ScreenShareAudio),
                 isStreamMuted: !!streamGraph && streamGraph.muteNode.gain.value < 0.5,
+                // Whether we've turned their video off, and what they're sending (so a
+                // placeholder can stand in for each feed we aren't receiving)
+                videoDisabled: this.isVideoDisabled(p.identity),
+                videoPublications: Array.from(p.videoTrackPublications.values())
+                    .map(pub => ({ trackSid: pub.trackSid, source: videoKind(pub) })),
             };
         });
         
@@ -165,6 +181,8 @@ class VoiceSession {
                 isClientMuted: false, // Local participant can't be client-muted
                 hasStreamAudio: !!this.streamAudioTrack,
                 isStreamMuted: false,
+                videoDisabled: false,
+                videoPublications: [],
             });
         }
         
@@ -343,6 +361,7 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     let room = new Room();
     let session = new VoiceSession(room, onParticipantsChange, onRemoteScreenShare);
     session.rnnoiseEnabled = audioOptions.rnnoise ?? true;
+    if (audioOptions.getParticipantSetting) session.getParticipantSetting = audioOptions.getParticipantSetting;
     // Deafened before joining: start deafened so no remote audio plays at all
     if (audioOptions.startDeafened) {
         session.isDeafened = true;
@@ -480,6 +499,11 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 if (onParticipantsChange) onParticipantsChange(session.getParticipants());
             }
             else if (track.kind === "video") {
+                // Their video is turned off: don't take it (the server stops sending it)
+                if (session.isVideoDisabled(participant.identity)) {
+                    publication.setSubscribed(false);
+                    return;
+                }
                 if (session.trackElements[track.sid]) return;
                 const video = document.createElement("video");
                 video.srcObject = new MediaStream([track.mediaStreamTrack]);
@@ -501,9 +525,11 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
                 });
                 
                 // Call the callback with the video element, who it's from, and whether
-                // it's a screen share or a camera (one person can send both at once)
+                // it's a screen share or a camera (one person can send both at once).
+                // Quiet when it's one we turned back on, rather than a new stream.
+                const quiet = session.resumedVideo.delete(publication.trackSid);
                 if (onRemoteScreenShare) {
-                    onRemoteScreenShare(video, participant.identity, videoKind(publication), track.sid);
+                    onRemoteScreenShare(video, participant.identity, videoKind(publication), track.sid, { quiet });
                 }
             }
         } catch (err) {
@@ -531,8 +557,10 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
         
         removeTrackElement(track.sid);
         if (track.kind === "video" && onRemoteUnScreenShare) {
-            onRemoteUnScreenShare(participant.identity, videoKind(publication), track.sid);
+            // Quiet when we turned it off ourselves: they're still streaming
+            onRemoteUnScreenShare(participant.identity, videoKind(publication), track.sid, { quiet: !publication.isDesired });
         }
+        if (track.kind === "video" && onParticipantsChange) onParticipantsChange(session.getParticipants());
     });
     
     // Notify when participants join/leave
@@ -561,9 +589,13 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     });
     
     // Listen for when remote participants publish tracks
-    room.on(RoomEvent.TrackPublished, () => {
+    room.on(RoomEvent.TrackPublished, (publication, participant) => {
         if (!session.isActive) return;
         console.log('Track published by remote participant');
+        // Turned-off video: turn the server's automatic subscription down before it sends much
+        if (publication.kind === 'video' && session.isVideoDisabled(participant.identity)) {
+            publication.setSubscribed(false);
+        }
         if (onParticipantsChange) onParticipantsChange(session.getParticipants());
     });
     
@@ -598,6 +630,12 @@ export async function joinChannel(channelId, onParticipantsChange, onRemoteScree
     });
 
     await room.connect(import.meta.env.VITE_LIVEKIT_URL, token);
+
+    // People already streaming when we joined, whose video we've turned off
+    for (const participant of room.remoteParticipants.values()) {
+        if (!session.isVideoDisabled(participant.identity)) continue;
+        for (const publication of participant.videoTrackPublications.values()) publication.setSubscribed(false);
+    }
 
     // Create the initial raw microphone track with error handling
     // Browser audio processing is always disabled - all processing is done via RNNoise worklet
@@ -1305,6 +1343,31 @@ export function setStreamAudio(session, participantIdentity, { muted, volume } =
     if (!graph) return;
     if (muted !== undefined) graph.muteNode.gain.value = muted ? 0 : 1;
     if (volume !== undefined) graph.gainNode.gain.value = volumeToGain(volume);
+}
+
+/**
+ * Turn someone's video (screen share and camera) off or back on, client-side. Off means
+ * unsubscribing, so the server stops sending it and it costs no bandwidth. The setting is
+ * read from client options (`videoDisabled`), so save it there first; it also covers video
+ * they start later.
+ * @param {VoiceSession} session
+ * @param {string} participantIdentity
+ * @param {boolean} disabled
+ * @returns {void}
+ */
+export function setParticipantVideoDisabled(session, participantIdentity, disabled) {
+    if (!session?.isActive) return;
+    const participant = session.room?.remoteParticipants.get(String(participantIdentity));
+    if (!participant) return;
+    for (const publication of participant.videoTrackPublications.values()) {
+        if (disabled) {
+            publication.setSubscribed(false);
+        } else if (!publication.isDesired) {
+            session.resumedVideo.add(publication.trackSid);
+            publication.setSubscribed(true);
+        }
+    }
+    if (session.onParticipantsChange) session.onParticipantsChange(session.getParticipants());
 }
 
 /**

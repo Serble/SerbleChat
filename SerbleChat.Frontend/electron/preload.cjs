@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('electron', {
   getDisplaySources: () => ipcRenderer.invoke('get-display-sources'),
   getDisplaySource: (sourceId) => ipcRenderer.invoke('get-display-source', sourceId),
 
+  // Keep a popped-out stream window (see src/streamPopout.js) above other windows
+  setStreamPopoutOnTop: (name, onTop) => ipcRenderer.invoke('stream-popout-on-top', name, onTop),
+
   // Stream audio (sound shared along with a screen share)
   streamAudio: {
     support: () => ipcRenderer.invoke('stream-audio-support'),

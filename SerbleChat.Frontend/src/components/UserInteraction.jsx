@@ -8,13 +8,13 @@ import { getOrCreateDmChannel, kickGuildMember, banGuildMember } from '../api.js
 import UserPopout from './UserPopout.jsx';
 import BanModal from './BanModal.jsx';
 import { ContextMenu, MenuItem, MenuDivider, Slider } from './ui/index.js';
-import { SpeakerMutedIcon, SpeakerIcon } from '../icons.jsx';
+import { SpeakerMutedIcon, SpeakerIcon, VideoIcon, VideoOffIcon } from '../icons.jsx';
 
 /**
  * UserContextMenu
  * Context menu that appears on right-click with "View Profile", "Message", "Block", and guild moderation options
  */
-function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, streamAudio = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
+function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voiceSettings = null, onVoiceSettingsChange = null, streamAudio = null, video = null, guildId = null, myPerms = null, onOpenBanModal = null }) {
   const nav = useNavigate();
   const { blockUser, unblockUser, isBlocked, currentUser } = useApp();
   const blocked = isBlocked ? isBlocked(userId) : false;
@@ -105,6 +105,13 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
           onClick={streamAudio.onToggle}
         />
       )}
+      {video && (
+        <MenuItem
+          icon={video.disabled ? VideoIcon : VideoOffIcon}
+          label={video.disabled ? 'Turn On Their Video' : 'Turn Off Their Video'}
+          onClick={() => { video.onToggle(); onClose(); }}
+        />
+      )}
       {(canKick || canBan) && (
         <>
           <MenuDivider />
@@ -138,7 +145,7 @@ function UserContextMenu({ x, y, userId, username, onClose, onViewProfile, voice
  * - disabled: boolean - If true, disables interaction (default: false)
  */
 export default function UserInteraction({ userId, username, guildId = null, voiceSettings = null, onVoiceSettingsChange = null, children, disabled = false }) {
-  const { voiceSession, voiceParticipants, refreshParticipants, setStreamAudioSetting } = useVoice();
+  const { voiceSession, voiceParticipants, refreshParticipants, setStreamAudioSetting, setVideoDisabledSetting } = useVoice();
   const { getVoiceParticipantSetting, setVoiceParticipantSetting } = useClientOptions();
   const { getMyPerms } = useApp();
   const [popout, setPopout] = useState(null);
@@ -184,6 +191,12 @@ export default function UserInteraction({ userId, username, guildId = null, voic
   const streamAudio = participantId && voiceParticipant?.hasStreamAudio ? {
     muted: !!effectiveVoiceSettings?.streamMuted,
     onToggle: () => setStreamAudioSetting(participantId, { muted: !effectiveVoiceSettings?.streamMuted }),
+  } : null;
+
+  // Their screen share and camera can be turned off (not sent to us at all, to save bandwidth)
+  const video = participantId ? {
+    disabled: !!effectiveVoiceSettings?.videoDisabled,
+    onToggle: () => setVideoDisabledSetting(participantId, !effectiveVoiceSettings?.videoDisabled),
   } : null;
 
   function handleClick(e) {
@@ -237,6 +250,7 @@ export default function UserInteraction({ userId, username, guildId = null, voic
           voiceSettings={effectiveVoiceSettings}
           onVoiceSettingsChange={effectiveVoiceSettingsHandler}
           streamAudio={streamAudio}
+          video={video}
           guildId={guildId}
           myPerms={myPerms}
           onOpenBanModal={(userId, username, guildId) => {

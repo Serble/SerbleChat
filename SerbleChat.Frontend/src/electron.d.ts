@@ -22,6 +22,9 @@ export interface ElectronAPI {
   // Screen sharing for Electron
   getDisplaySources: () => Promise<{ success: boolean; sources?: Array<{ id: string; name: string; thumbnail: string; isScreen: boolean }>; error?: string }>;
   getDisplaySource: (sourceId: string) => Promise<{ success: boolean; source?: any; error?: string }>;
+
+  // Keep a popped-out stream window (by its window name) above other windows
+  setStreamPopoutOnTop?: (name: string, onTop: boolean) => Promise<boolean>;
 }
 
 declare global {

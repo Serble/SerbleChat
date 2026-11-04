@@ -1,4 +1,4 @@
-import { MicIcon, MicOffIcon, HeadphonesOffIcon, BellOffIcon } from '../../icons.jsx';
+import { MicIcon, MicOffIcon, HeadphonesOffIcon, BellOffIcon, VideoOffIcon } from '../../icons.jsx';
 import './voice.css';
 
 /**
@@ -10,8 +10,8 @@ export function VoiceButton({ tone = 'neutral', size, className, type = 'button'
   return <button type={type} className={classes} data-tone={tone} {...rest} />;
 }
 
-/** Speaking / muted / deafened / muted-by-you indicators shown after a participant's name. */
-export function VoiceStatusIcons({ isSpeaking, isMuted, isDeafened, isClientMuted, size = 12 }) {
+/** Speaking / muted / deafened / muted-by-you / video-off-by-you indicators shown after a participant's name. */
+export function VoiceStatusIcons({ isSpeaking, isMuted, isDeafened, isClientMuted, isVideoDisabled, size = 12 }) {
   return (
     <>
       {isSpeaking && !isMuted && !isDeafened && (
@@ -32,6 +32,11 @@ export function VoiceStatusIcons({ isSpeaking, isMuted, isDeafened, isClientMute
       {isClientMuted && (
         <span style={{ color: 'var(--danger)', display: 'inline-flex' }} title="You muted this user">
           <BellOffIcon size={size} />
+        </span>
+      )}
+      {isVideoDisabled && (
+        <span style={{ color: 'var(--danger)', display: 'inline-flex' }} title="You turned off this user's video">
+          <VideoOffIcon size={size} />
         </span>
       )}
     </>

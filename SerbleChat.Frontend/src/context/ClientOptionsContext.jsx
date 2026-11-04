@@ -17,7 +17,7 @@ function cachedDateTimeFormat() {
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
-export const VOICE_PARTICIPANT_DEFAULTS = { muted: false, volume: 1, streamMuted: false, streamVolume: 1 };
+export const VOICE_PARTICIPANT_DEFAULTS = { muted: false, volume: 1, streamMuted: false, streamVolume: 1, videoDisabled: false };
 
 const OPTION_DEFAULTS = {
   messageLinesLimit: 28,
@@ -25,7 +25,7 @@ const OPTION_DEFAULTS = {
   sendTypingIndicators: true, // whether to send typing notifications
   timeFormat: 'auto', // 'auto' | '12h' | '24h'
   dateFormat: 'auto', // 'auto' | 'DD/MM/YYYY' | 'DD/MM/YY' | 'MM/DD/YYYY' | 'MM/DD/YY' | 'YYYY/MM/DD
-  voiceParticipantSettings: {}, // { [participantIdentity]: { muted, volume, streamMuted, streamVolume } } (streams: their screen share's audio)
+  voiceParticipantSettings: {}, // { [participantIdentity]: { muted, volume, streamMuted, streamVolume, videoDisabled } } (streams: their screen share's audio; videoDisabled: don't receive their screen or camera)
   voiceAudioOptions: {
     echoCancellation: false,
     noiseSuppression: false,
@@ -272,7 +272,7 @@ export function ClientOptionsProvider({ children }) {
     const updated = { ...current, ...setting };
 
     // Remove if everything is back to defaults
-    if (!updated.muted && (updated.volume ?? 1) === 1 && !updated.streamMuted && (updated.streamVolume ?? 1) === 1) {
+    if (!updated.muted && (updated.volume ?? 1) === 1 && !updated.streamMuted && (updated.streamVolume ?? 1) === 1 && !updated.videoDisabled) {
       const newSettings = { ...voiceSettingsRef.current };
       delete newSettings[participantIdentity];
       voiceSettingsRef.current = newSettings;

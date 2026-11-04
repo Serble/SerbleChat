@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setMicVolume, setOutputDevice, setStreamAudio } from '../voice.js';
+import { joinChannel, leaveChannel, setMuted as applyVoiceMuted, setDeafened as applyVoiceDeafened, setMicVolume, setOutputDevice, setStreamAudio, setParticipantVideoDisabled } from '../voice.js';
+import { closePopoutsExcept, popoutKey } from '../streamPopout.js';
 import { useApp } from './AppContext.jsx';
 import { useClientOptions } from './ClientOptionsContext.jsx';
 import { isElectron } from '../electron-utils.js';
@@ -126,18 +127,19 @@ export function VoiceProvider({ children }) {
       const session = await joinChannel({ channelId }, (participants) => {
         if (!isCurrentJoin()) return;
         setVoiceParticipants(participants);
-      }, (videoElement, participantIdentity, source, trackSid) => {
+      }, (videoElement, participantIdentity, source, trackSid, { quiet = false } = {}) => {
         if (!isCurrentJoin()) return;
         // Handle remote screen share or camera
         setRemoteScreenShares(prev => [...prev, { videoElement, participantIdentity, source, trackSid }]);
-        // Play sound effect when someone starts screen sharing (not for cameras)
-        if (source === 'screen') playSoundSafe('stream_start');
-      }, (participantIdentity, source, trackSid) => {
+        // Play sound effect when someone starts screen sharing (not for cameras, or
+        // for one we'd turned off coming back)
+        if (source === 'screen' && !quiet) playSoundSafe('stream_start');
+      }, (participantIdentity, source, trackSid, { quiet = false } = {}) => {
         if (!isCurrentJoin()) return;
         // Handle remote screen share or camera stop
         setRemoteScreenShares(prev => prev.filter(s => s.trackSid !== trackSid));
-        // Play sound effect when someone stops screen sharing
-        if (source === 'screen') playSoundSafe('stream_end');
+        // Play sound effect when someone stops screen sharing (not when we turned it off)
+        if (source === 'screen' && !quiet) playSoundSafe('stream_end');
       }, (err, context) => {
         if (!isCurrentJoin()) return;
         reportFatalError(err, context);
@@ -546,6 +548,26 @@ export function VoiceProvider({ children }) {
     refreshParticipants();
   }
 
+  /**
+   * Turn someone's video (screen share and camera) off or back on, saving it for next time.
+   * Off stops it being sent to us at all, which saves bandwidth.
+   */
+  function setVideoDisabledSetting(participantIdentity, disabled) {
+    const key = String(participantIdentity);
+    setVoiceParticipantSetting(key, { videoDisabled: !!disabled });
+    setParticipantVideoDisabled(voiceSession, key, !!disabled);
+    refreshParticipants();
+  }
+
+  // Popped-out streams close when their stream ends (or we leave the call)
+  useEffect(() => {
+    const active = new Map();
+    for (const share of remoteScreenShares) active.set(popoutKey(share), share.videoElement);
+    if (localScreenShare) active.set(popoutKey({ ...localScreenShare, isLocal: true, source: 'screen' }), localScreenShare.videoElement);
+    if (localCamera) active.set(popoutKey({ ...localCamera, isLocal: true, source: 'camera' }), localCamera.videoElement);
+    closePopoutsExcept(active);
+  }, [remoteScreenShares, localScreenShare, localCamera]);
+
   return (
     <VoiceContext.Provider value={{
       voiceChannelId,
@@ -567,6 +589,7 @@ export function VoiceProvider({ children }) {
       toggleDeafen: handleToggleDeafen,
       refreshParticipants,
       setStreamAudioSetting,
+      setVideoDisabledSetting,
     }}>
       {children}
     </VoiceContext.Provider>

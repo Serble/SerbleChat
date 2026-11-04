@@ -88,5 +88,48 @@
 .stream-zoom-bar button:not(:disabled):hover { background: rgba(255, 255, 255, 0.15); }
 .stream-zoom-bar button:disabled { opacity: 0.45; cursor: default; }
 .stream-zoom-level { min-width: 44px !important; font-variant-numeric: tabular-nums; }
+/* Small icon button in a stream tile's header (pop out) */
+.stream-tile-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.stream-tile-btn:hover { background: color-mix(in srgb, var(--text-primary) 14%, transparent); color: var(--text-primary); }
+.stream-zoom-sep { width: 1px; height: 16px; margin: 0 2px; background: rgba(255, 255, 255, 0.25); }
+
+/* Stands in for a stream we aren't showing (turned off, or popped out), over its black box */
+.stream-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  pointer-events: none;
+}
+.stream-placeholder[data-expanded='true'] { gap: 0.6rem; }
+.stream-placeholder > * { pointer-events: auto; }
+.stream-placeholder-text { font-size: 0.8rem; font-weight: 600; color: rgba(255, 255, 255, 0.75); pointer-events: none !important; }
+.stream-placeholder[data-expanded='true'] .stream-placeholder-text { font-size: 0.95rem; }
+/* The button sits on black whatever the theme */
+.stream-placeholder .voice-btn { --tone: #fff; color: #fff; border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.08); }
+.stream-placeholder .voice-btn:not(:disabled):hover { background: rgba(255, 255, 255, 0.18); }
+
+/* The image viewer has nothing else on screen: keep them visible there */
+.image-viewer .stream-zoom-bar { opacity: 1; }
 /* Touch screens have no hover: keep the controls visible */
 @media (hover: none) { .stream-zoom-bar { opacity: 1; } }

@@ -6,7 +6,8 @@ import { requestFullscreenWithElectronSupport, exitFullscreenWithElectronSupport
 import Avatar from './Avatar.jsx';
 import UserInteraction from './UserInteraction.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
-import { MicIcon, ScreenShareIcon, VideoIcon, PlusIcon, MinusIcon, SpeakerIcon, SpeakerMutedIcon } from '../icons.jsx';
+import { MicIcon, ScreenShareIcon, VideoIcon, VideoOffIcon, PlusIcon, MinusIcon, SpeakerIcon, SpeakerMutedIcon, PopOutIcon, PopInIcon } from '../icons.jsx';
+import { canPopOut, closePopout, popOutStream, popoutKey, usePoppedOutStreams } from '../streamPopout.js';
 import { ContextMenu, MenuItem, MenuDivider, Slider } from './ui/index.js';
 import VoicePollStrip from './poll/VoicePollStrip.jsx';
 import { useStreamZoom } from './voice/useStreamZoom.js';
@@ -107,20 +108,36 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
   // Check if we're in this voice channel
   const isInVoiceChannel = voiceChannelId === Number(channelId);
   
+  // Feeds from people whose video we've turned off: we aren't receiving them, so each gets
+  // a placeholder tile to turn it back on from. Keyed on a string so it only changes when
+  // those feeds do (participants update for every bit of speaking).
+  const videoOffKey = JSON.stringify(voiceParticipants
+    .filter(p => !p.isLocal && p.videoDisabled)
+    .map(p => [String(p.identity), (p.videoPublications ?? []).map(pub => [pub.trackSid, pub.source])]));
+  const videoOff = useMemo(() => JSON.parse(videoOffKey), [videoOffKey]);
+
   // Collect all video feeds (local + remote; screen shares first, then cameras)
   // if we're in this channel. Memoized so effects keyed on it only run when the
   // feeds actually change.
   const allScreenShares = useMemo(() => {
     if (!isInVoiceChannel) return [];
-    const remoteScreens = remoteScreenShares.filter(s => s.source !== 'camera');
-    const remoteCameras = remoteScreenShares.filter(s => s.source === 'camera');
+    const offIds = new Set(videoOff.map(([identity]) => identity));
+    const remote = [
+      // (A feed being turned off can still be here for a moment: the placeholder wins)
+      ...remoteScreenShares.filter(s => !offIds.has(String(s.participantIdentity))),
+      ...videoOff.flatMap(([identity, pubs]) => pubs.map(([trackSid, source]) => ({
+        placeholder: true, participantIdentity: identity, source, trackSid,
+      }))),
+    ];
+    const remoteScreens = remote.filter(s => s.source !== 'camera');
+    const remoteCameras = remote.filter(s => s.source === 'camera');
     return [
       ...(localScreenShare ? [{ ...localScreenShare, source: 'screen', isLocal: true }] : []),
       ...remoteScreens.map(share => ({ ...share, isLocal: false })),
       ...(localCamera ? [{ ...localCamera, source: 'camera', isLocal: true }] : []),
       ...remoteCameras.map(share => ({ ...share, isLocal: false })),
     ];
-  }, [isInVoiceChannel, localScreenShare, localCamera, remoteScreenShares]);
+  }, [isInVoiceChannel, localScreenShare, localCamera, remoteScreenShares, videoOff]);
 
   const getMinPanelHeight = () => (allScreenShares.length > 0 ? 200 : 100);
 
@@ -304,7 +321,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
     // Small delay to ensure DOM is ready
     const timeoutId = setTimeout(() => {
       allScreenShares.forEach(share => {
-        if (share.videoElement && share.videoElement.tagName === 'VIDEO') {
+        if (share.videoElement && share.videoElement.tagName === 'VIDEO' && share.videoElement.isConnected) {
           const videoEl = share.videoElement;
           // Check if video is paused and has a valid source
           if (videoEl.paused && videoEl.srcObject) {
@@ -443,7 +460,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
                     }}>
                       <Avatar userId={user?.id} name={name} size={16} color={user?.color} />
                       <span style={{ flex: 1 }}>{name}</span>
-                      <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} />
+                      <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} isVideoDisabled={participant?.videoDisabled} />
                     </div>
                   </UserInteraction>
                 );
@@ -590,7 +607,7 @@ export default function VoiceParticipantPreview({ channelId, compact = false, ca
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
-                    <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} />
+                    <VoiceStatusIcons isSpeaking={isSpeaking} isMuted={isMuted} isDeafened={voiceStates[id]?.deafened} isClientMuted={isClientMuted} isVideoDisabled={participant?.videoDisabled} />
                   </div>
                 </UserInteraction>
               );
@@ -645,10 +662,17 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
   const [user, setUser] = useState(null);
   const [menu, setMenu] = useState(null); // { x, y } while the right-click menu is open
   const containerRef = useRef(null);
-  const { voiceParticipants, setStreamAudioSetting } = useVoice();
+  const { addToast } = useApp();
+  const { voiceParticipants, setStreamAudioSetting, setVideoDisabledSetting } = useVoice();
   const { voiceParticipantSettings } = useClientOptions();
+  // A feed we've turned off (nothing to show), or one popped out into its own window
+  const isPlaceholder = !!share.placeholder;
+  const key = popoutKey(share);
+  const poppedOut = usePoppedOutStreams().has(key) && !isPlaceholder;
+  const popOutAvailable = !isPlaceholder && canPopOut();
+  const showsVideo = !hidden && !isPlaceholder && !poppedOut;
   // Expanded streams can be zoomed into, to read small text on someone's screen
-  const zoom = useStreamZoom(containerRef, share.videoElement, isExpanded && !hidden);
+  const zoom = useStreamZoom(containerRef, isPlaceholder ? null : share.videoElement, isExpanded && showsVideo);
 
   useEffect(() => {
     if (share.isLocal || !share.participantIdentity) return;
@@ -659,7 +683,9 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!hidden && container && share.videoElement && share.videoElement instanceof HTMLElement) {
+    // Popped out (or turned off): the call view lets go of its copy of the video
+    if (container && !showsVideo && !hidden) container.innerHTML = '';
+    if (showsVideo && container && share.videoElement && share.videoElement instanceof HTMLElement) {
       // Clear container first
       container.innerHTML = '';
       
@@ -683,7 +709,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
         }
       }
     }
-  }, [share.videoElement, hidden, share.participantIdentity]);
+  }, [share.videoElement, hidden, showsVideo, share.participantIdentity]);
 
   const isCamera = share.source === 'camera';
   const TileIcon = isCamera ? VideoIcon : ScreenShareIcon;
@@ -698,14 +724,37 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
   const streamMuted = !!saved.streamMuted;
   const streamVolume = saved.streamVolume ?? 1;
   const canAdjustAudio = !share.isLocal && !isCamera && !!identity;
+  // Someone else's feed: can be turned off, which stops it being sent to us
+  const canToggleVideo = !share.isLocal && !!identity;
+  const videoDisabled = !!saved.videoDisabled;
 
   function handleContextMenu(e) {
-    if (!canAdjustAudio) return;
+    if (!canAdjustAudio && !canToggleVideo && !popOutAvailable) return;
     e.preventDefault();
     e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY });
   }
   const username = share.isLocal ? share.username || (isCamera ? 'Your Camera' : 'Your Screen') : (user?.username || users[share.participantIdentity]?.username || share.participantIdentity);
+  const popoutTitle = share.isLocal
+    ? (isCamera ? 'Your camera' : 'Your screen')
+    : `${username}'s ${isCamera ? 'camera' : 'screen'}`;
+
+  function handlePopOut(e) {
+    e?.stopPropagation();
+    if (poppedOut) {
+      closePopout(key);
+      return;
+    }
+    popOutStream(key, share.videoElement, popoutTitle).catch(err => {
+      console.error('Pop out failed:', err);
+      addToast({ title: 'Couldn\'t pop out the stream', body: err.message || String(err), type: 'danger' });
+    });
+  }
+
+  function toggleVideo(e) {
+    e?.stopPropagation();
+    setVideoDisabledSetting(identity, !videoDisabled);
+  }
 
    return (
     <div
@@ -779,8 +828,8 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
               LIVE
             </span>
           )}
-          {!isExpanded && (
-            <span style={{
+          {!isExpanded && !isPlaceholder && !poppedOut && (
+            <span className="stream-expand-hint" style={{
               fontSize: '0.7rem',
               color: 'var(--text-muted)',
               flexShrink: 0,
@@ -788,24 +837,61 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
               Click to expand
             </span>
           )}
+          {popOutAvailable && (
+            <button
+              type="button"
+              className="stream-tile-btn"
+              onClick={handlePopOut}
+              title={poppedOut ? 'Bring back' : 'Pop out'}
+              aria-label={poppedOut ? 'Bring back' : 'Pop out'}
+            >
+              {poppedOut ? <PopInIcon size={14} /> : <PopOutIcon size={14} />}
+            </button>
+          )}
         </div>
       )}
-      <div 
-        ref={containerRef}
-        style={{
-          background: '#000',
-          borderRadius: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: 1,
-          minHeight: '0',
-          overflow: 'hidden',
-          // Pinch zooms the stream rather than the page
-          touchAction: isExpanded ? 'none' : 'auto',
-          cursor: isExpanded ? (zoom.zoomed ? 'grab' : 'zoom-in') : 'pointer',
-        }}
-      />
+      <div style={{
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minHeight: 0,
+        // Without a video to size it, keep the tile the shape of one
+        ...(!showsVideo && !isExpanded ? { aspectRatio: '16 / 9', flex: 'none' } : null),
+      }}>
+        <div
+          ref={containerRef}
+          style={{
+            background: '#000',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 1,
+            minHeight: '0',
+            overflow: 'hidden',
+            // Pinch zooms the stream rather than the page
+            touchAction: isExpanded ? 'none' : 'auto',
+            cursor: isExpanded && showsVideo ? (zoom.zoomed ? 'grab' : 'zoom-in') : 'pointer',
+          }}
+        />
+        {/* Nothing to show: say why, with a way back */}
+        {(isPlaceholder || poppedOut) && !hidden && (
+          <div className="stream-placeholder" data-expanded={isExpanded}>
+            {isPlaceholder ? <VideoOffIcon size={isExpanded ? 32 : 22} /> : <PopOutIcon size={isExpanded ? 32 : 22} />}
+            <div className="stream-placeholder-text">
+              {isPlaceholder ? `You turned off ${username}'s video` : 'Popped out'}
+            </div>
+            <VoiceButton
+              size="sm"
+              onClick={isPlaceholder ? toggleVideo : handlePopOut}
+              onDoubleClick={e => e.stopPropagation()}
+            >
+              {isPlaceholder ? <><VideoIcon size={13} /> Turn on</> : <><PopInIcon size={13} /> Bring back</>}
+            </VoiceButton>
+          </div>
+        )}
+      </div>
       {/* Expanded tiles have no header, so the muted state goes over the video */}
       {isExpanded && hasStreamAudio && streamMuted && !share.isLocal && (
         <div
@@ -833,7 +919,22 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
         // in the menu from expanding it
         <div onClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()} style={{ display: 'contents' }}>
           <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} minWidth={200}>
-            {hasStreamAudio ? (
+            {popOutAvailable && (
+              <MenuItem
+                icon={poppedOut ? PopInIcon : PopOutIcon}
+                label={poppedOut ? 'Bring Back' : 'Pop Out'}
+                onClick={() => { handlePopOut(); setMenu(null); }}
+              />
+            )}
+            {canToggleVideo && (
+              <MenuItem
+                icon={videoDisabled ? VideoIcon : VideoOffIcon}
+                label={videoDisabled ? 'Turn On Their Video' : 'Turn Off Their Video'}
+                onClick={() => { toggleVideo(); setMenu(null); }}
+              />
+            )}
+            {canAdjustAudio && (popOutAvailable || canToggleVideo) && <MenuDivider />}
+            {!canAdjustAudio ? null : hasStreamAudio ? (
               <>
                 <MenuItem
                   icon={streamMuted ? SpeakerMutedIcon : SpeakerIcon}
@@ -869,7 +970,7 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           </ContextMenu>
         </div>
       )}
-      {isExpanded && !hidden && (
+      {isExpanded && !hidden && showsVideo && (
         <div
           className="stream-zoom-bar"
           data-zoomed={zoom.zoomed}
@@ -885,6 +986,14 @@ function ScreenShareTile({ share, isExpanded, onClick, resolveUser, users, hidde
           <button type="button" onClick={zoom.zoomIn} disabled={zoom.scale >= 7.99} title="Zoom in (or scroll, pinch, double-click)" aria-label="Zoom in">
             <PlusIcon size={14} />
           </button>
+          {popOutAvailable && (
+            <>
+              <span className="stream-zoom-sep" />
+              <button type="button" onClick={handlePopOut} title="Pop out" aria-label="Pop out">
+                <PopOutIcon size={14} />
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

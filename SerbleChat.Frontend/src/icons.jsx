@@ -113,6 +113,14 @@ export function StopScreenShareIcon(p) {
 export function VideoIcon(p) {
   return <Svg {...p}><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></Svg>;
 }
+/** A window with an arrow leaving it: pop something out into its own window */
+export function PopOutIcon(p) {
+  return <Svg {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></Svg>;
+}
+/** Bring a popped-out thing back in */
+export function PopInIcon(p) {
+  return <Svg {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="10 8 10 14 16 14"/><line x1="21" y1="3" x2="10" y2="14"/></Svg>;
+}
 export function VideoOffIcon(p) {
   return <Svg {...p}><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></Svg>;
 }
