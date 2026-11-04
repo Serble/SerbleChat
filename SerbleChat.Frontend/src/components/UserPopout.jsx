@@ -23,6 +23,7 @@ import { STATUS_META, formatUntil } from './status/status.js';
 import { useDateFormat } from '../dateFormat.js';
 import './chat/chat.css';
 import { clearFilesAuth } from '../filesAuth.js';
+import ModSlot from '../mods/ModSlot.jsx';
 
 const BLURB_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
@@ -435,6 +436,8 @@ export default function UserPopout({ userId, username, anchorRect, onClose, guil
               </div>
             </>
           )}
+
+          <ModSlot name="user-popout" userId={userId} user={user} guildId={guildId} />
 
           {/* User ID */}
           <div style={sectionLabel}>User ID</div>

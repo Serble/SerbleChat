@@ -4,7 +4,8 @@ import { NoiseSuppressorWorklet_Name } from "@timephy/rnnoise-wasm";
 import NoiseSuppressorWorklet from "@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url";
 import { getStreamAudioSupport, captureLinuxStreamAudio, setLinuxStreamAudioApps, stopLinuxStreamAudio } from "./streamAudio.js";
 
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+// Exported for mods, whose audio nodes must live in the same context as the call's
+export const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
 // Global promise to ensure worklet is loaded only once
 let rnnoiseLoadPromise = null;

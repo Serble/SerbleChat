@@ -25,6 +25,33 @@ export interface ElectronAPI {
 
   // Keep a popped-out stream window (by its window name) above other windows
   setStreamPopoutOnTop?: (name: string, onTop: boolean) => Promise<boolean>;
+
+  // Client mods (electron/mods.cjs, src/mods/, MODDING.md)
+  mods?: {
+    list: () => Promise<ModListing[]>;
+    setEnabled: (id: string, enabled: boolean) => Promise<boolean>;
+    reload: () => Promise<ModListing[]>;
+    folder: () => Promise<string | null>;
+    openFolder: () => Promise<{ success: boolean; path?: string; error?: string }>;
+    invoke: (id: string, channel: string, ...args: unknown[]) => Promise<unknown>;
+    send: (id: string, channel: string, ...args: unknown[]) => void;
+    on: (id: string, channel: string, callback: (...args: unknown[]) => void) => () => void;
+    onLog: (callback: (id: string, level: 'log' | 'warn' | 'error', message: string) => void) => () => void;
+  };
+}
+
+export interface ModListing {
+  id: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  author: string | null;
+  dir: string;
+  hasMain: boolean;
+  rendererUrl: string | null;
+  enabled: boolean;
+  status: 'running' | 'stopped' | 'disabled' | 'error';
+  error: string | null;
 }
 
 declare global {

@@ -1,0 +1,11 @@
+{
+  "name": "serble-mod-discord-link",
+  "private": true,
+  "description": "Serble Chat mod: be in a Discord voice channel at the same time as a Serble one.",
+  "license": "MIT",
+  "dependencies": {
+    "@snazzah/davey": "^0.2.0",
+    "htm": "^3.1.1",
+    "ws": "^8.18.3"
+  }
+}

@@ -4,6 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const { LinuxStreamAudio, checkSupport: checkLinuxStreamAudio } = require('./linuxStreamAudio.cjs');
+const { ModManager, registerModScheme } = require('./mods.cjs');
 const isDev = process.env.NODE_ENV === 'development';
 
 // Load environment variables from .env file
@@ -25,6 +26,10 @@ function loadEnv() {
 }
 
 loadEnv();
+
+// Client mods (see mods.cjs). The scheme they're loaded from has to be set up before the app is ready.
+registerModScheme();
+let modManager = null;
 
 let mainWindow;
 let currentKeybinds = {
@@ -298,7 +303,17 @@ function registerKeybinds() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Mods' main halves start before the window, so the page's halves can count on them being there
+  modManager = new ModManager({ getMainWindow: () => mainWindow });
+  modManager.registerProtocol();
+  modManager.registerIpc();
+  try {
+    await modManager.startAll();
+  } catch (err) {
+    console.error('Failed to start mods:', err);
+  }
+
   createWindow();
   
   // Register IPC handlers
@@ -380,6 +395,17 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// Give mods a moment to stop (leave calls, close connections) before quitting
+let modsStopped = false;
+app.on('before-quit', (event) => {
+  if (modsStopped || !modManager) return;
+  event.preventDefault();
+  modsStopped = true;
+  Promise.race([modManager.stopAll(), new Promise(resolve => setTimeout(resolve, 3000))])
+    .catch(err => console.error('Failed to stop mods:', err))
+    .finally(() => app.quit());
 });
 
 app.on('will-quit', () => {

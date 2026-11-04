@@ -5,6 +5,7 @@ import { IconButton } from '../ui/index.js';
 import { PersonIcon, PeopleIcon, MenuIcon, MicIcon, SpeakerIcon, PlusIcon, DoorIcon, SearchIcon } from '../../icons.jsx';
 import './chat.css';
 import { withQuery } from '../../imageVersions.js';
+import ModSlot from '../../mods/ModSlot.jsx';
 
 function HeaderBtn({ children, title, onClick, active, danger, disabled }) {
   return (
@@ -120,6 +121,7 @@ export default function ChatHeader({
         </div>
       )}
 
+      <ModSlot name="chat-header" channel={channel} channelId={channelId} />
       <HeaderBtn title={isMobile ? 'Search' : 'Search (Ctrl+F)'} active={showSearch} onClick={onToggleSearch}><SearchIcon size={16} /></HeaderBtn>
       <HeaderBtn title="Member List" active={showMembers && !(showSearch && !isMobile)} onClick={onToggleMembers}><PeopleIcon size={16} /></HeaderBtn>
     </div>

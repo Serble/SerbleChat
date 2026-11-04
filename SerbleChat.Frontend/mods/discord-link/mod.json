@@ -1,0 +1,9 @@
+{
+  "id": "discord-link",
+  "name": "Discord Link",
+  "version": "0.1.0",
+  "author": "Serble",
+  "description": "Join a Discord voice channel along with a Serble one: your mic goes to both, you hear both, and you can watch Discord streams.",
+  "main": "main/index.cjs",
+  "renderer": "renderer/index.js"
+}

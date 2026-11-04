@@ -12,6 +12,7 @@ import ScreenShareQualityModal from './ScreenShareQualityModal.jsx';
 import { VoiceButton, VoiceStatusIcons } from './voice/VoiceControls.jsx';
 import { MicIcon, MegaphoneIcon, ScreenShareIcon, StopScreenShareIcon, GearIcon, VideoIcon, VideoOffIcon, PollIcon, ChevronRightIcon } from '../icons.jsx';
 import { useActivePolls } from './poll/useActivePolls.js';
+import ModSlot from '../mods/ModSlot.jsx';
 import './poll/poll.css';
 
 // Helper to safely play sounds with consistent error handling
@@ -307,6 +308,8 @@ export default function VoicePanel({
           })}
         </div>
       )}
+
+      <ModSlot name="voice-panel" channelId={channelId} voiceSession={voiceSession} participants={participants} />
 
       {/* Hold-to-talk button in push-to-talk mode. (Mute and deafen live in the
           user panel below, which shows them in and out of calls.) */}

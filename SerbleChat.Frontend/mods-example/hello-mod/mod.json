@@ -1,0 +1,9 @@
+{
+  "id": "hello-mod",
+  "name": "Hello Mod",
+  "version": "1.0.0",
+  "author": "Serble",
+  "description": "Example mod: shows every part of the mod API (Node.js main half, IPC, UI slots, call audio in and out).",
+  "main": "main.cjs",
+  "renderer": "renderer.js"
+}

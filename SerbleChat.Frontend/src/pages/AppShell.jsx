@@ -6,6 +6,7 @@ import GuildSidebar    from '../components/GuildSidebar.jsx';
 import FriendsHome     from '../components/FriendsHome.jsx';
 import ChatView        from '../components/ChatView.jsx';
 import ToastContainer  from '../components/ToastContainer.jsx';
+import ModBridge       from '../mods/ModBridge.jsx';
 import { getGuildChannels } from '../api.js';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
@@ -197,6 +198,7 @@ export default function AppShell() {
         </Routes>
       </div>
       <ToastContainer />
+      <ModBridge />
     </div>
   );
 }
